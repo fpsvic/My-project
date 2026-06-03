@@ -532,7 +532,7 @@ public sealed class JungleCatsGameBootstrap : MonoBehaviour
         for (int i = predators.Count - 1; i >= 0; i--)
         {
             PredatorAgent predator = predators[i];
-            if (predator.Health <= 0f || predator.Courage <= 0f)
+            if (predator.Health <= 0f && predator.Courage <= 0f)
             {
                 continue;
             }
@@ -796,7 +796,7 @@ public sealed class JungleCatsGameBootstrap : MonoBehaviour
 
     private void DefeatPredator(PredatorAgent predator, string message)
     {
-        if (!predators.Contains(predator) || predator.Health <= 0f || predator.Courage <= 0f)
+        if (!predators.Contains(predator) || (predator.Health <= 0f && predator.Courage <= 0f))
         {
             return;
         }
