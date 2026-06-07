@@ -103,6 +103,15 @@ A **Preview Human Figure** shortcut is also on the VM desktop.
 
 Unity **Play Mode** preview still needs an activated Personal license (`UNITY_LICENSE` + account secrets, or Hub login on Desktop).
 
+### Playable character controls
+
+`SampleScene` includes **Human Figure** with WASD movement:
+
+- **W / A / S / D** or arrow keys — move
+- **Camera** follows the character automatically
+
+Scripts: `Assets/Scripts/PlayerMovement.cs`, `Assets/Scripts/CameraFollow.cs`
+
 ### Gotchas
 
 - Unity Hub deb install may hang on an interactive `unityhub/add-apt-repo` debconf prompt; preset with `debconf-set-selections` and `DEBIAN_FRONTEND=noninteractive`.
