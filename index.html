@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arrow Fighter</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- UI HUD -->
+    <div id="ui">
+        <h1 class="hud-text" id="levelHud">Level: <span id="levelDisplay">1</span></h1>
+        <h1 class="hud-text">Score: <span id="score">0</span></h1>
+        <h1 class="hud-text">Health: <span id="health">5</span></h1>
+    </div>
+
+    <!-- GEMS & PAUSE HUD -->
+    <div id="gem-ui">
+        <h1 class="hud-text">Gems: <span style="color: #00e5ff;">💎</span><span id="gemDisplay">0</span></h1>
+        <button id="btnPause" class="action-btn">II PAUSE</button>
+    </div>
+
+    <!-- SCREENS -->
+    <div id="startScreen" class="screen-overlay" style="display: flex;">
+        <h1 class="title">Arrow Fighter</h1>
+        <div style="display: flex; gap: 20px;">
+            <button id="btnStart" class="action-btn">PLAY</button>
+            <button id="btnShop" class="action-btn" style="background: #8e44ad; box-shadow: 0 6px 0 #732d91;">SHOP</button>
+        </div>
+    </div>
+
+    <div id="mapScreen" class="screen-overlay" style="background: #1a252f;">
+        <button id="btnBackMap" class="action-btn" style="background: #7f8c8d; box-shadow: 0 4px 0 #34495e;">⬅ BACK</button>
+        <h1 class="title" style="font-size: 48px; margin-top: 20px; text-shadow: none; position: absolute; top: 0;">SELECT LEVEL</h1>
+        <div id="mapContainer"></div>
+    </div>
+
+    <div id="shopScreen" class="screen-overlay">
+        <h1 class="title" style="font-size: 64px;">UPGRADES</h1>
+        <div class="shop-container">
+            <div class="shop-item">
+                <h3>VITALITY</h3>
+                <p>Start with more Health.</p>
+                <p>Level: <span id="upgHealthLvl">0</span></p>
+                <button id="btnUpgHealth" class="action-btn" style="font-size: 16px; padding: 10px 20px;">BUY (<span id="upgHealthCost">10</span> 💎)</button>
+            </div>
+            <div class="shop-item">
+                <h3>STRENGTH</h3>
+                <p>Arrows deal more damage.</p>
+                <p>Level: <span id="upgPowerLvl">0</span></p>
+                <button id="btnUpgPower" class="action-btn" style="font-size: 16px; padding: 10px 20px;">BUY (<span id="upgPowerCost">15</span> 💎)</button>
+            </div>
+            <div class="shop-item">
+                <h3>AGILITY</h3>
+                <p>Charge bow much faster.</p>
+                <p>Level: <span id="upgSpeedLvl">0</span></p>
+                <button id="btnUpgSpeed" class="action-btn" style="font-size: 16px; padding: 10px 20px;">BUY (<span id="upgSpeedCost">15</span> 💎)</button>
+            </div>
+        </div>
+        <button id="btnShopBack" class="action-btn" style="margin-top: 40px; background: #7f8c8d; box-shadow: 0 6px 0 #34495e;">BACK TO MENU</button>
+    </div>
+
+    <div id="rewardScreen" class="screen-overlay" style="background: rgba(17, 17, 17, 0.95);">
+        <h1 class="title" style="text-shadow: 0 0 20px #f1c40f, 0 0 40px #f39c12;">REWARD</h1>
+        <div id="rewardChest" style="font-size: 200px; cursor: pointer; transition: transform 0.2s; animation: chestPulse 1.5s infinite;"></div>
+        <h2 id="rewardText" style="display: none; font-size: 48px; color: #00e5ff; text-shadow: 0 0 20px #00e5ff; margin-top: 20px;">+20 💎</h2>
+        <button id="btnRewardContinue" class="action-btn" style="display: none; margin-top: 30px; background: #f39c12; box-shadow: 0 6px 0 #d68910;">CONTINUE</button>
+    </div>
+
+    <div id="pauseScreen" class="screen-overlay">
+        <h1 class="title">PAUSED</h1>
+        <button id="btnResume" class="action-btn">RESUME</button>
+        <button id="btnQuitToMap" class="action-btn" style="background: #7f8c8d; box-shadow: 0 6px 0 #34495e;">QUIT TO MAP</button>
+    </div>
+
+    <div id="nextLevelScreen" class="screen-overlay">
+        <h1 class="title" style="text-shadow: 0 0 10px #f1c40f, 0 0 20px #f39c12, 0 0 40px #f39c12;">LEVEL CLEARED!</h1>
+        <button id="nextLevelBtn" class="action-btn" style="background: #f39c12; box-shadow: 0 6px 0 #d68910;">MOVE TO NEXT LEVEL</button>
+        <button id="btnMapFromWin" class="action-btn" style="background: #3498db; box-shadow: 0 6px 0 #2980b9;">WORLD MAP</button>
+    </div>
+
+    <div id="gameOverScreen" class="screen-overlay">
+        <h1 class="title" style="color: #e74c3c; text-shadow: 0 0 10px #c0392b, 0 0 20px #900;">GAME OVER</h1>
+        <button id="btnRetryLevel" class="action-btn">RETRY LEVEL</button>
+        <button id="btnMapFromLoss" class="action-btn" style="background: #3498db; box-shadow: 0 6px 0 #2980b9;">WORLD MAP</button>
+    </div>
+
+    <canvas id="gameCanvas" width="1000" height="600"></canvas>
+
+    <script src="script.js"></script>
+</body>
+</html>
