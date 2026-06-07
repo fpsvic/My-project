@@ -82,6 +82,27 @@ The template scene (`Assets/Scenes/SampleScene.unity`) contains a Main Camera, D
 - No ESLint, dotnet format, or repo CI config is present.
 - `com.unity.test-framework` is installed but **no tests are authored**; there is nothing to run until Edit Mode / Play Mode tests are added.
 
+### Desktop preview (no Unity license required)
+
+To preview the **Human Figure** model on the Desktop pane (`DISPLAY=:1`):
+
+```bash
+/workspace/scripts/preview-desktop.sh browser
+```
+
+This starts a local web server and opens a Three.js viewer at `Preview/index.html` (same GLB as `Assets/Models/HumanFigure.glb`).
+
+Other modes:
+
+```bash
+/workspace/scripts/preview-desktop.sh blender   # Blender viewport
+/workspace/scripts/preview-desktop.sh unity     # Unity Editor (license required)
+```
+
+A **Preview Human Figure** shortcut is also on the VM desktop.
+
+Unity **Play Mode** preview still needs an activated Personal license (`UNITY_LICENSE` + account secrets, or Hub login on Desktop).
+
 ### Gotchas
 
 - Unity Hub deb install may hang on an interactive `unityhub/add-apt-repo` debconf prompt; preset with `debconf-set-selections` and `DEBIAN_FRONTEND=noninteractive`.
