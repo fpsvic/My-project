@@ -8,7 +8,8 @@ using UnityEngine.SceneManagement;
 public static class PlayerGameplaySetup
 {
     const string SetupDoneKey = "PlayerGameplaySetup.done";
-    const string PlayerName = "Human Figure";
+    const string PlayerName = "Player";
+    const string LegacyPlayerName = "Human Figure";
     const string GroundName = "Ground";
 
     static PlayerGameplaySetup()
@@ -25,13 +26,15 @@ public static class PlayerGameplaySetup
         if (!scene.IsValid() || scene.path != "Assets/Scenes/SampleScene.unity")
             return;
 
-        var player = GameObject.Find(PlayerName);
+        var player = GameObject.Find(PlayerName) ?? GameObject.Find(LegacyPlayerName);
         if (player == null)
             return;
 
+        player.name = PlayerName;
         EnsureGround();
         EnsurePlayerComponents(player);
         EnsureCameraFollow(player.transform);
+        EnsureBladeArena();
 
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);
@@ -62,7 +65,22 @@ public static class PlayerGameplaySetup
         if (player.GetComponent<PlayerMovement>() == null)
             player.AddComponent<PlayerMovement>();
 
+        if (player.GetComponent<MeleeAttack>() == null)
+            player.AddComponent<MeleeAttack>();
+
+        if (player.GetComponent<PlayerHealth>() == null)
+            player.AddComponent<PlayerHealth>();
+
         player.tag = "Player";
+    }
+
+    static void EnsureBladeArena()
+    {
+        if (Object.FindFirstObjectByType<BladeArenaGame>() != null)
+            return;
+
+        var arena = new GameObject("Blade Arena");
+        arena.AddComponent<BladeArenaGame>();
     }
 
     static void EnsureCameraFollow(Transform target)

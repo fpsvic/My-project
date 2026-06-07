@@ -8,7 +8,8 @@ public static class HumanFigureSceneSetup
 {
     const string ModelPath = "Assets/Models/HumanFigure.glb";
     const string ScenePath = "Assets/Scenes/SampleScene.unity";
-    const string InstanceName = "Human Figure";
+    const string InstanceName = "Player";
+    const string ModelPathName = "Human Figure";
     const string SetupDoneKey = "HumanFigureSceneSetup.done";
 
     static HumanFigureSceneSetup()
@@ -28,8 +29,10 @@ public static class HumanFigureSceneSetup
         var scene = EditorSceneManager.OpenScene(ScenePath);
         foreach (var root in scene.GetRootGameObjects())
         {
-            if (root.name == InstanceName)
+            if (root.name == InstanceName || root.name == ModelPathName)
             {
+                if (root.name != InstanceName)
+                    root.name = InstanceName;
                 EditorPrefs.SetBool(SetupDoneKey, true);
                 return;
             }
@@ -37,6 +40,7 @@ public static class HumanFigureSceneSetup
 
         var instance = (GameObject)PrefabUtility.InstantiatePrefab(model);
         instance.name = InstanceName;
+        instance.tag = "Player";
         instance.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
 
         EditorSceneManager.MarkSceneDirty(scene);

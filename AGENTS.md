@@ -105,12 +105,16 @@ Unity **Play Mode** preview still needs an activated Personal license (`UNITY_LI
 
 ### Playable character controls
 
-`SampleScene` includes **Human Figure** with WASD movement:
+`SampleScene` runs **Blade Arena** with your uploaded model as the **Player** character:
 
 - **W / A / S / D** or arrow keys — move
-- **Camera** follows the character automatically
+- **Space** — melee attack
+- **R** — restart after defeat
+- **Camera** follows the player automatically
 
-Scripts: `Assets/Scripts/PlayerMovement.cs`, `Assets/Scripts/CameraFollow.cs`
+The player uses `Assets/Models/HumanFigure.glb` (scene object named **Player**).
+
+Scripts: `BladeArenaGame.cs`, `PlayerMovement.cs`, `MeleeAttack.cs`, `PlayerHealth.cs`, `ArenaEnemy.cs`, `CameraFollow.cs`
 
 ### Gotchas
 

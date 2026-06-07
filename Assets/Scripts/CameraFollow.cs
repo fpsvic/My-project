@@ -11,7 +11,9 @@ public class CameraFollow : MonoBehaviour
     {
         if (target == null)
         {
-            var player = GameObject.Find("Human Figure");
+            var player = GameObject.FindWithTag("Player");
+            if (player == null)
+                player = GameObject.Find("Player");
             if (player != null)
                 target = player.transform;
         }
