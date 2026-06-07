@@ -12,6 +12,8 @@ public class BladeArenaGame : MonoBehaviour
     int enemiesRemaining;
     int score;
     bool gameOver;
+    string weaponMessage = "Weapon: Rusty Blade";
+    float weaponMessageTimer;
 
     void Awake()
     {
@@ -25,12 +27,17 @@ public class BladeArenaGame : MonoBehaviour
         BuildArenaIfNeeded();
         EnsurePlayerIsPlayable();
         EnsureStormSystem();
+        EnsureFpsCounter();
         SpawnEnemies();
+        SpawnBuildingLoot();
         enemiesRemaining = FindObjectsByType<ArenaEnemy>(FindObjectsSortMode.None).Length;
     }
 
     void Update()
     {
+        if (weaponMessageTimer > 0f)
+            weaponMessageTimer -= Time.deltaTime;
+
         if (!gameOver || Keyboard.current == null)
             return;
 
@@ -116,6 +123,63 @@ public class BladeArenaGame : MonoBehaviour
 
         if (player.GetComponent<PlayerHealth>() == null)
             player.AddComponent<PlayerHealth>();
+
+        if (player.GetComponent<PlayerWeapon>() == null)
+            player.AddComponent<PlayerWeapon>();
+    }
+
+    static void EnsureFpsCounter()
+    {
+        if (FindFirstObjectByType<FpsCounter>() != null)
+            return;
+
+        var fpsObject = new GameObject("FPS Counter");
+        fpsObject.AddComponent<FpsCounter>();
+    }
+
+    void SpawnBuildingLoot()
+    {
+        if (FindFirstObjectByType<SwordLoot>() != null)
+            return;
+
+        SpawnLootInBuilding("Shelter Building A", "Iron Sword", 2f, 2.5f, 0.38f, new Color(0.72f, 0.45f, 0.2f));
+        SpawnLootInBuilding("Shelter Building B", "Steel Sword", 3f, 2.8f, 0.32f, new Color(0.78f, 0.82f, 0.9f));
+        SpawnLootInBuilding("Shelter Building C", "Storm Blade", 4.5f, 3.2f, 0.28f, new Color(0.45f, 0.75f, 1f));
+    }
+
+    static void SpawnLootInBuilding(
+        string buildingName,
+        string swordName,
+        float damage,
+        float range,
+        float cooldown,
+        Color color)
+    {
+        var building = GameObject.Find(buildingName);
+        if (building == null)
+            return;
+
+        var pedestal = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        pedestal.name = swordName + " Pedestal";
+        pedestal.transform.SetParent(building.transform, false);
+        pedestal.transform.localPosition = new Vector3(0f, -0.55f, 0f);
+        pedestal.transform.localScale = new Vector3(0.7f, 0.08f, 0.7f);
+        var pedestalRenderer = pedestal.GetComponent<Renderer>();
+        if (pedestalRenderer != null)
+            pedestalRenderer.material.color = new Color(0.25f, 0.25f, 0.28f);
+
+        var loot = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        loot.name = swordName + " Loot";
+        loot.transform.SetParent(building.transform, false);
+        loot.transform.localPosition = new Vector3(0f, -0.15f, 0f);
+        loot.transform.localScale = new Vector3(0.12f, 0.9f, 0.22f);
+        loot.transform.localRotation = Quaternion.Euler(0f, 35f, 90f);
+
+        var collider = loot.GetComponent<Collider>();
+        collider.isTrigger = true;
+
+        var pickup = loot.AddComponent<SwordLoot>();
+        pickup.Configure(swordName, damage, range, cooldown, color);
     }
 
     static void EnsureStormSystem()
@@ -160,20 +224,31 @@ public class BladeArenaGame : MonoBehaviour
         Debug.Log("Blade Arena: Defeated. Press R to restart.");
     }
 
+    public void OnWeaponEquipped(string weaponName)
+    {
+        weaponMessage = "Weapon: " + weaponName;
+        weaponMessageTimer = 3f;
+    }
+
     void OnGUI()
     {
         var player = GameObject.FindGameObjectWithTag("Player");
         var health = player != null ? player.GetComponent<PlayerHealth>() : null;
+        var weapon = player != null ? player.GetComponent<PlayerWeapon>() : null;
         var storm = FindFirstObjectByType<StormSystem>();
 
         GUI.Label(new Rect(12f, 12f, 500f, 24f), "Blade Arena");
         GUI.Label(new Rect(12f, 36f, 560f, 24f), "Right-click move · Space jump · A attack · R restart");
         if (health != null)
             GUI.Label(new Rect(12f, 60f, 400f, 24f), "Health: " + health.CurrentHealth);
-        GUI.Label(new Rect(12f, 84f, 400f, 24f), "Enemies left: " + enemiesRemaining + " · Score: " + score);
+        if (weapon != null)
+            GUI.Label(new Rect(12f, 84f, 500f, 24f), "Equipped: " + weapon.CurrentWeaponName + " (" + weapon.CurrentDamage + " dmg)");
+        GUI.Label(new Rect(12f, 108f, 400f, 24f), "Enemies left: " + enemiesRemaining + " · Score: " + score);
         if (storm != null && storm.IsStormActive)
-            GUI.Label(new Rect(12f, 108f, 560f, 24f), "STORM — stay under a building or risk lightning!");
+            GUI.Label(new Rect(12f, 132f, 560f, 24f), "STORM — hide in buildings for shelter and better swords!");
+        if (weaponMessageTimer > 0f)
+            GUI.Label(new Rect(12f, 156f, 560f, 24f), weaponMessage);
         if (gameOver)
-            GUI.Label(new Rect(12f, 132f, 500f, 24f), "Defeated — press R to try again");
+            GUI.Label(new Rect(12f, 180f, 500f, 24f), "Defeated — press R to try again");
     }
 }

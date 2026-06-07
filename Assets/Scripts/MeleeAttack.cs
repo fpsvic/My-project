@@ -7,7 +7,19 @@ public class MeleeAttack : MonoBehaviour
     [SerializeField] float damage = 1f;
     [SerializeField] float cooldown = 0.45f;
 
+    string weaponName = "Rusty Blade";
     float cooldownTimer;
+
+    public string WeaponName => weaponName;
+    public float Damage => damage;
+
+    public void ApplyWeaponStats(float newDamage, float newRange, float newCooldown, string newWeaponName)
+    {
+        damage = newDamage;
+        range = newRange;
+        cooldown = newCooldown;
+        weaponName = newWeaponName;
+    }
 
     void Update()
     {
