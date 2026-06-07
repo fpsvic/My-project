@@ -15,7 +15,7 @@ public class MeleeAttack : MonoBehaviour
         if (cooldownTimer > 0f)
             return;
 
-        if (Keyboard.current == null || !Keyboard.current.spaceKey.wasPressedThisFrame)
+        if (Keyboard.current == null || !Keyboard.current.aKey.wasPressedThisFrame)
             return;
 
         cooldownTimer = cooldown;
@@ -33,7 +33,7 @@ public class MeleeAttack : MonoBehaviour
 
             var enemy = hit.GetComponentInParent<ArenaEnemy>();
             if (enemy != null)
-                enemy.TakeDamage(damage);
+                enemy.TakeDamage(damage, true);
         }
     }
 }

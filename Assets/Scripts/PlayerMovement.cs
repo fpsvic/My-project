@@ -4,67 +4,91 @@ using UnityEngine.InputSystem;
 [RequireComponent(typeof(CharacterController))]
 public class PlayerMovement : MonoBehaviour
 {
-    [SerializeField] float moveSpeed = 4f;
-    [SerializeField] float rotationSpeed = 12f;
+    [SerializeField] float moveSpeed = 5f;
+    [SerializeField] float rotationSpeed = 14f;
+    [SerializeField] float jumpForce = 6f;
+    [SerializeField] float gravity = -20f;
+    [SerializeField] float stopDistance = 0.2f;
+    [SerializeField] LayerMask groundMask = ~0;
 
     CharacterController controller;
     Camera mainCamera;
+    Vector3 destination;
+    bool hasDestination;
+    float verticalVelocity;
+    bool jumpRequested;
 
     void Awake()
     {
         controller = GetComponent<CharacterController>();
         mainCamera = Camera.main;
+        destination = transform.position;
     }
 
     void Update()
     {
-        Vector2 input = ReadMoveInput();
-        if (input.sqrMagnitude > 1f)
-            input.Normalize();
-
-        Vector3 move = new Vector3(input.x, 0f, input.y);
-        if (mainCamera != null)
-        {
-            Vector3 forward = mainCamera.transform.forward;
-            forward.y = 0f;
-            forward.Normalize();
-
-            Vector3 right = mainCamera.transform.right;
-            right.y = 0f;
-            right.Normalize();
-
-            move = forward * move.z + right * input.x;
-        }
-
-        controller.Move(move * moveSpeed * Time.deltaTime);
-
-        if (move.sqrMagnitude > 0.001f)
-        {
-            Quaternion targetRotation = Quaternion.LookRotation(move);
-            transform.rotation = Quaternion.Slerp(
-                transform.rotation,
-                targetRotation,
-                rotationSpeed * Time.deltaTime);
-        }
+        HandleClickMove();
+        HandleJumpInput();
+        MoveCharacter();
     }
 
-    static Vector2 ReadMoveInput()
+    void HandleClickMove()
     {
-        if (Keyboard.current == null)
-            return Vector2.zero;
+        if (Mouse.current == null || mainCamera == null)
+            return;
 
-        float x = 0f;
-        float y = 0f;
+        if (!Mouse.current.rightButton.wasPressedThisFrame)
+            return;
 
-        if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed)
-            x -= 1f;
-        if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed)
-            x += 1f;
-        if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed)
-            y -= 1f;
-        if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed)
-            y += 1f;
+        Ray ray = mainCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
+        if (!Physics.Raycast(ray, out RaycastHit hit, 200f, groundMask, QueryTriggerInteraction.Ignore))
+            return;
 
-        return new Vector2(x, y);
+        destination = hit.point;
+        hasDestination = true;
+    }
+
+    void HandleJumpInput()
+    {
+        if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
+            jumpRequested = true;
+    }
+
+    void MoveCharacter()
+    {
+        bool grounded = controller.isGrounded;
+        if (grounded && verticalVelocity < 0f)
+            verticalVelocity = -2f;
+
+        if (jumpRequested && grounded)
+            verticalVelocity = jumpForce;
+
+        jumpRequested = false;
+        verticalVelocity += gravity * Time.deltaTime;
+
+        Vector3 horizontal = Vector3.zero;
+        if (hasDestination)
+        {
+            Vector3 toDestination = destination - transform.position;
+            toDestination.y = 0f;
+
+            if (toDestination.magnitude <= stopDistance)
+            {
+                hasDestination = false;
+            }
+            else
+            {
+                horizontal = toDestination.normalized * moveSpeed;
+                Quaternion targetRotation = Quaternion.LookRotation(toDestination);
+                transform.rotation = Quaternion.Slerp(
+                    transform.rotation,
+                    targetRotation,
+                    rotationSpeed * Time.deltaTime);
+            }
+        }
+
+        Vector3 motion = horizontal;
+        motion.y = verticalVelocity;
+        controller.Move(motion * Time.deltaTime);
     }
 }

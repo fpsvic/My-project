@@ -6,7 +6,7 @@ public class BladeArenaGame : MonoBehaviour
 {
     public static BladeArenaGame Instance { get; private set; }
 
-    [SerializeField] int startingEnemyCount = 4;
+    [SerializeField] int startingEnemyCount = 6;
     [SerializeField] float enemySpawnRadius = 12f;
 
     int enemiesRemaining;
@@ -24,7 +24,9 @@ public class BladeArenaGame : MonoBehaviour
         Instance = this;
         BuildArenaIfNeeded();
         EnsurePlayerIsPlayable();
+        EnsureStormSystem();
         SpawnEnemies();
+        enemiesRemaining = FindObjectsByType<ArenaEnemy>(FindObjectsSortMode.None).Length;
     }
 
     void Update()
@@ -38,18 +40,25 @@ public class BladeArenaGame : MonoBehaviour
 
     void BuildArenaIfNeeded()
     {
-        if (GameObject.Find("Blade Arena Floor") != null)
-            return;
+        if (GameObject.Find("Blade Arena Floor") == null)
+        {
+            var floor = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            floor.name = "Blade Arena Floor";
+            floor.transform.position = new Vector3(0f, -0.05f, 0f);
+            floor.transform.localScale = new Vector3(6f, 0.05f, 6f);
 
-        var floor = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        floor.name = "Blade Arena Floor";
-        floor.transform.position = new Vector3(0f, -0.05f, 0f);
-        floor.transform.localScale = new Vector3(6f, 0.05f, 6f);
+            CreateWall("Arena Wall North", new Vector3(0f, 1.5f, 15f), new Vector3(30f, 3f, 1f));
+            CreateWall("Arena Wall South", new Vector3(0f, 1.5f, -15f), new Vector3(30f, 3f, 1f));
+            CreateWall("Arena Wall East", new Vector3(15f, 1.5f, 0f), new Vector3(1f, 3f, 30f));
+            CreateWall("Arena Wall West", new Vector3(-15f, 1.5f, 0f), new Vector3(1f, 3f, 30f));
+        }
 
-        CreateWall("Arena Wall North", new Vector3(0f, 1.5f, 15f), new Vector3(30f, 3f, 1f));
-        CreateWall("Arena Wall South", new Vector3(0f, 1.5f, -15f), new Vector3(30f, 3f, 1f));
-        CreateWall("Arena Wall East", new Vector3(15f, 1.5f, 0f), new Vector3(1f, 3f, 30f));
-        CreateWall("Arena Wall West", new Vector3(-15f, 1.5f, 0f), new Vector3(1f, 3f, 30f));
+        if (GameObject.Find("Shelter Building A") == null)
+        {
+            CreateShelterBuilding("Shelter Building A", new Vector3(-8f, 0f, 6f));
+            CreateShelterBuilding("Shelter Building B", new Vector3(7f, 0f, -5f));
+            CreateShelterBuilding("Shelter Building C", new Vector3(0f, 0f, 9f));
+        }
     }
 
     static void CreateWall(string name, Vector3 position, Vector3 scale)
@@ -58,6 +67,28 @@ public class BladeArenaGame : MonoBehaviour
         wall.name = name;
         wall.transform.position = position;
         wall.transform.localScale = scale;
+    }
+
+    static void CreateShelterBuilding(string name, Vector3 position)
+    {
+        var baseBlock = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        baseBlock.name = name;
+        baseBlock.transform.position = position + new Vector3(0f, 1.5f, 0f);
+        baseBlock.transform.localScale = new Vector3(4f, 3f, 4f);
+
+        var roof = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        roof.name = name + " Roof";
+        roof.transform.SetParent(baseBlock.transform);
+        roof.transform.localPosition = new Vector3(0f, 1.1f, 0f);
+        roof.transform.localScale = new Vector3(1.2f, 0.2f, 1.2f);
+
+        var shelterZone = new GameObject(name + " Shelter Zone");
+        shelterZone.transform.SetParent(baseBlock.transform, false);
+        shelterZone.transform.localPosition = new Vector3(0f, 0.4f, 0f);
+        var shelterCollider = shelterZone.AddComponent<BoxCollider>();
+        shelterCollider.isTrigger = true;
+        shelterCollider.size = new Vector3(5f, 4f, 5f);
+        shelterZone.AddComponent<BuildingShelter>();
     }
 
     void EnsurePlayerIsPlayable()
@@ -87,9 +118,17 @@ public class BladeArenaGame : MonoBehaviour
             player.AddComponent<PlayerHealth>();
     }
 
+    static void EnsureStormSystem()
+    {
+        if (FindFirstObjectByType<StormSystem>() != null)
+            return;
+
+        var stormObject = new GameObject("Storm System");
+        stormObject.AddComponent<StormSystem>();
+    }
+
     void SpawnEnemies()
     {
-        enemiesRemaining = startingEnemyCount;
         for (int i = 0; i < startingEnemyCount; i++)
         {
             float angle = (Mathf.PI * 2f / startingEnemyCount) * i;
@@ -110,7 +149,7 @@ public class BladeArenaGame : MonoBehaviour
     public void OnEnemyDefeated()
     {
         score++;
-        enemiesRemaining--;
+        enemiesRemaining = Mathf.Max(0, FindObjectsByType<ArenaEnemy>(FindObjectsSortMode.None).Length);
         if (enemiesRemaining <= 0 && !gameOver)
             Debug.Log("Blade Arena: You cleared the arena! Score: " + score);
     }
@@ -125,13 +164,16 @@ public class BladeArenaGame : MonoBehaviour
     {
         var player = GameObject.FindGameObjectWithTag("Player");
         var health = player != null ? player.GetComponent<PlayerHealth>() : null;
+        var storm = FindFirstObjectByType<StormSystem>();
 
-        GUI.Label(new Rect(12f, 12f, 400f, 24f), "Blade Arena");
-        GUI.Label(new Rect(12f, 36f, 400f, 24f), "WASD move · Space melee · R restart");
+        GUI.Label(new Rect(12f, 12f, 500f, 24f), "Blade Arena");
+        GUI.Label(new Rect(12f, 36f, 560f, 24f), "Right-click move · Space jump · A attack · R restart");
         if (health != null)
             GUI.Label(new Rect(12f, 60f, 400f, 24f), "Health: " + health.CurrentHealth);
         GUI.Label(new Rect(12f, 84f, 400f, 24f), "Enemies left: " + enemiesRemaining + " · Score: " + score);
+        if (storm != null && storm.IsStormActive)
+            GUI.Label(new Rect(12f, 108f, 560f, 24f), "STORM — stay under a building or risk lightning!");
         if (gameOver)
-            GUI.Label(new Rect(12f, 120f, 500f, 24f), "Defeated — press R to try again");
+            GUI.Label(new Rect(12f, 132f, 500f, 24f), "Defeated — press R to try again");
     }
 }

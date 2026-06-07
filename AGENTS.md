@@ -107,9 +107,11 @@ Unity **Play Mode** preview still needs an activated Personal license (`UNITY_LI
 
 `SampleScene` runs **Blade Arena** with your uploaded model as the **Player** character:
 
-- **W / A / S / D** or arrow keys — move
-- **Space** — melee attack
+- **Right-click** — move to spot
+- **Space** — jump
+- **A** — melee attack
 - **R** — restart after defeat
+- **Storm** — 10% chance; night + lightning; 5% strike chance if not under a building
 - **Camera** follows the player automatically
 
 The player uses `Assets/Models/HumanFigure.glb` (scene object named **Player**).
