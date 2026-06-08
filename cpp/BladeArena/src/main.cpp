@@ -333,6 +333,41 @@ bool SetupCharacterShader(GameState& game) {
     return true;
 }
 
+float ComputeMeshMinY(const Model& model) {
+    float minY = 1e9f;
+    for (int m = 0; m < model.meshCount; ++m) {
+        const Mesh& mesh = model.meshes[m];
+        if (mesh.vertices == nullptr)
+            continue;
+        for (int i = 0; i < mesh.vertexCount; ++i)
+            minY = std::min(minY, mesh.vertices[i * 3 + 1]);
+    }
+    return minY < 1e8f ? minY : 0.0f;
+}
+
+float ComputeVisualSoleY(const Model& model, float meshMinY, float meshMaxY) {
+    float bandTop = meshMinY + std::max((meshMaxY - meshMinY) * 0.12f, 0.025f);
+    std::vector<float> ys;
+    ys.reserve(512);
+    for (int m = 0; m < model.meshCount; ++m) {
+        const Mesh& mesh = model.meshes[m];
+        if (mesh.vertices == nullptr)
+            continue;
+        for (int i = 0; i < mesh.vertexCount; ++i) {
+            float y = mesh.vertices[i * 3 + 1];
+            if (y <= bandTop)
+                ys.push_back(y);
+        }
+    }
+    if (ys.empty())
+        return meshMinY;
+    std::sort(ys.begin(), ys.end());
+    size_t idx = static_cast<size_t>(static_cast<float>(ys.size()) * 0.92f);
+    if (idx >= ys.size())
+        idx = ys.size() - 1;
+    return ys[idx];
+}
+
 void DownscaleModelTextures(Model& model, int maxSize) {
     static const int kTextureMaps[] = {MATERIAL_MAP_ALBEDO, MATERIAL_MAP_NORMAL, MATERIAL_MAP_ROUGHNESS,
                                        MATERIAL_MAP_OCCLUSION};
@@ -365,8 +400,12 @@ void SetupPlayerModel(GameState& game, const char* path) {
     BoundingBox bounds = GetModelBoundingBox(game.playerModel);
     float height = bounds.max.y - bounds.min.y;
     game.playerModelScale = height > 0.01f ? 1.85f / height : 1.85f;
-    game.playerModelFeetOffset = bounds.min.y * game.playerModelScale;
-    game.playerModelGroundLift = 0.03f;
+    float meshMinY = ComputeMeshMinY(game.playerModel);
+    float scaledHeight = height * game.playerModelScale;
+    float soleY = ComputeVisualSoleY(game.playerModel, meshMinY, bounds.max.y);
+    // Anchor draw position to the visible sole, not the mesh bbox minimum.
+    game.playerModelFeetOffset = soleY * game.playerModelScale;
+    game.playerModelGroundLift = std::max(0.04f, scaledHeight * 0.025f);
     game.playerModelCenterOffset = {(bounds.min.x + bounds.max.x) * 0.5f, 0.0f, (bounds.min.z + bounds.max.z) * 0.5f};
 
     if (!game.characterShaderLoaded)
@@ -1007,7 +1046,9 @@ void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
     float bladeLen = std::strstr(game.player.weapon.name, "Storm")   ? 1.2f
                      : std::strstr(game.player.weapon.name, "Steel") ? 1.05f
                                                                      : 0.95f;
-    Vector3 hand = feet + Vector3{right.x * 0.28f + forward.x * 0.12f, 1.05f, right.z * 0.28f + forward.z * 0.12f};
+    float visualFootY = feet.y + (game.playerModelLoaded ? game.playerModelGroundLift : 0.0f);
+    Vector3 hand{feet.x + right.x * 0.28f + forward.x * 0.12f, visualFootY + 1.05f,
+                 feet.z + right.z * 0.28f + forward.z * 0.12f};
     Vector3 tip = hand + Vector3{forward.x * bladeLen, 0.08f, forward.z * bladeLen};
     DrawCylinderEx(hand, tip, 0.05f, 0.02f, 8, game.player.weapon.color);
 }
