@@ -6,6 +6,7 @@ WORKSPACE="${WORKSPACE:-/workspace}"
 CPP_DIR="$WORKSPACE/cpp/BladeArena"
 BUILD_DIR="$CPP_DIR/build"
 BINARY="$BUILD_DIR/blade_arena"
+MODEL_WALK="$WORKSPACE/Assets/Models/HumanFigure_walk.glb"
 MODEL_GAME="$WORKSPACE/Assets/Models/HumanFigure_game.glb"
 MODEL="$WORKSPACE/Assets/Models/HumanFigure.glb"
 DISPLAY="${DISPLAY:-:1}"
@@ -43,7 +44,9 @@ if $BUILD_ONLY; then
 fi
 
 MODEL_ARG=""
-if [[ -f "$MODEL_GAME" ]]; then
+if [[ -f "$MODEL_WALK" ]]; then
+  MODEL_ARG="$MODEL_WALK"
+elif [[ -f "$MODEL_GAME" ]]; then
   MODEL_ARG="$MODEL_GAME"
 elif [[ -f "$MODEL" ]]; then
   echo "Note: Using full HumanFigure.glb — simplified HumanFigure_game.glb is recommended." >&2

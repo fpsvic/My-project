@@ -118,6 +118,11 @@ struct GameState {
     float weaponMessageTimer = 0.0f;
     float smoothedFpsDelta = 1.0f / 60.0f;
     Model playerModel{};
+    ModelAnimation* playerAnimations = nullptr;
+    int playerAnimCount = 0;
+    int playerAnimFrame = 0;
+    float playerAnimAccum = 0.0f;
+    bool playerSkeletonAnim = false;
     bool playerModelLoaded = false;
     float playerModelScale = 1.0f;
     float playerModelFeetOffset = 0.0f;
@@ -424,8 +429,43 @@ void SetupPlayerModel(GameState& game, const char* path) {
     game.playerModelGroundLift = soleGap + std::max(0.14f, scaledHeight * 0.06f);
     game.playerModelCenterOffset = {(bounds.min.x + bounds.max.x) * 0.5f, 0.0f, (bounds.min.z + bounds.max.z) * 0.5f};
 
+    game.playerAnimations = LoadModelAnimations(path, &game.playerAnimCount);
+    game.playerSkeletonAnim =
+        game.playerAnimations != nullptr && game.playerAnimCount > 0 &&
+        IsModelAnimationValid(game.playerModel, game.playerAnimations[0]);
+    if (game.playerAnimCount > 0) {
+        TraceLog(LOG_INFO, "Player animations: count=%d valid=%s frames=%d bones=%d",
+                 game.playerAnimCount, game.playerSkeletonAnim ? "yes" : "no",
+                 game.playerAnimations[0].frameCount, game.playerAnimations[0].boneCount);
+    }
+
     if (!game.characterShaderLoaded)
         SetupCharacterShader(game);
+}
+
+void UpdatePlayerSkeleton(GameState& game, bool grounded, float dt) {
+    if (!game.playerSkeletonAnim || game.playerAnimCount <= 0)
+        return;
+
+    ModelAnimation anim = game.playerAnimations[0];
+    if (anim.frameCount <= 0)
+        return;
+
+    bool playWalk = grounded && game.player.walkAnimBlend > 0.12f;
+    if (playWalk) {
+        float speed = 1.1f + game.player.walkAnimBlend * 0.45f;
+        game.playerAnimAccum += dt * 24.0f * speed;
+        while (game.playerAnimAccum >= 1.0f) {
+            game.playerAnimAccum -= 1.0f;
+            game.playerAnimFrame = (game.playerAnimFrame + 1) % anim.frameCount;
+        }
+    } else {
+        game.playerAnimAccum = 0.0f;
+        game.playerAnimFrame = 0;
+    }
+
+    UpdateModelAnimation(game.playerModel, anim, game.playerAnimFrame);
+    UpdateModelAnimationBones(game.playerModel, anim, game.playerAnimFrame);
 }
 
 void UpdateWalkAnimation(PlayerState& p, float horizontalSpeed, bool grounded, float dt) {
@@ -723,6 +763,9 @@ void SpawnEnemies(GameState& game) {
 
 void ResetGameplay(GameState& game) {
     Model model = game.playerModel;
+    ModelAnimation* animations = game.playerAnimations;
+    int animCount = game.playerAnimCount;
+    bool skeletonAnim = game.playerSkeletonAnim;
     bool modelLoaded = game.playerModelLoaded;
     float modelScale = game.playerModelScale;
     float feetOffset = game.playerModelFeetOffset;
@@ -743,6 +786,11 @@ void ResetGameplay(GameState& game) {
     game.player.destination = game.player.position;
 
     game.playerModel = model;
+    game.playerAnimations = animations;
+    game.playerAnimCount = animCount;
+    game.playerSkeletonAnim = skeletonAnim;
+    game.playerAnimFrame = 0;
+    game.playerAnimAccum = 0.0f;
     game.playerModelLoaded = modelLoaded;
     game.playerModelScale = modelScale;
     game.playerModelFeetOffset = feetOffset;
@@ -969,6 +1017,7 @@ void UpdatePlayer(GameState& game, Camera3D camera, float dt) {
     if (p.isDashing) {
         UpdateDashMovement(game, dt);
         UpdateWalkAnimation(p, p.dashSpeed, grounded, dt);
+        UpdatePlayerSkeleton(game, grounded, dt);
         TryPickupLoot(game);
         return;
     }
@@ -992,6 +1041,7 @@ void UpdatePlayer(GameState& game, Camera3D camera, float dt) {
     ClampToMap(p.position);
 
     UpdateWalkAnimation(p, Vector3Length(horizontal), grounded, dt);
+    UpdatePlayerSkeleton(game, grounded, dt);
 
     p.attackCooldown -= dt;
     if (IsKeyPressed(KEY_A) && p.attackCooldown <= 0.0f) {
@@ -1156,7 +1206,8 @@ void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
     Vector3 right{-forward.z, 0.0f, forward.x};
 
     float walkBlend = airborne ? 0.0f : game.player.walkAnimBlend;
-    WalkPose walk = ComputeWalkPose(walkBlend, game.player.walkPhase, forward, right);
+    float proceduralBlend = game.playerSkeletonAnim ? walkBlend * 0.2f : walkBlend;
+    WalkPose walk = ComputeWalkPose(proceduralBlend, game.player.walkPhase, forward, right);
 
     float footBaseY = airborne ? game.player.position.y : groundY;
     Vector3 footWorld{
@@ -1324,6 +1375,8 @@ std::string ResolveModelPath(int argc, char** argv) {
         return env;
 
     const char* candidates[] = {
+        "/workspace/Assets/Models/HumanFigure_walk.glb",
+        "../../Assets/Models/HumanFigure_walk.glb",
         "/workspace/Assets/Models/HumanFigure_game.glb",
         "../../Assets/Models/HumanFigure_game.glb",
         "/workspace/Assets/Models/HumanFigure.glb",
@@ -1401,6 +1454,8 @@ int main(int argc, char** argv) {
         EndDrawing();
     }
 
+    if (game.playerAnimations != nullptr)
+        UnloadModelAnimations(game.playerAnimations, game.playerAnimCount);
     if (game.playerModelLoaded)
         UnloadModel(game.playerModel);
     if (game.characterShaderLoaded)

@@ -51,6 +51,6 @@ Walk into shelter buildings to pick up **Iron Sword**, **Steel Sword**, and **St
 - CMake 3.16+
 - C++17 compiler (g++)
 - OpenGL / X11 (Desktop pane or local display)
-- Uses `Assets/Models/HumanFigure_game.glb` (~23k verts, welded/simplified from `HumanFigure.glb`). Raylib only supports 16-bit mesh indices, so the full 135k-vertex model must not be loaded directly.
+- Uses `Assets/Models/HumanFigure_walk.glb` (rigged walk cycle baked from `HumanFigure_game.glb`). Falls back to `HumanFigure_game.glb` if missing. Raylib only supports 16-bit mesh indices, so the full 135k-vertex `HumanFigure.glb` must not be loaded directly.
 - The player model keeps Raylib's built-in glTF PBR shader (textures + normals). Do not replace it with the custom terrain lighting shader.
 - Falls back to a capsule if no model is found
