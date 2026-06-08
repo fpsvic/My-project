@@ -67,6 +67,14 @@ struct StormState {
     float flashTimer = 0.0f;
 };
 
+struct ComboCooldowns {
+    float stonestep = 0.0f;
+    float apexParry = 0.0f;
+    float velocityStrike = 0.0f;
+    float shatterStep = 0.0f;
+    float dashSever = 0.0f;
+};
+
 struct PlayerState {
     Vector3 position{0.0f, 0.0f, 0.0f};
     float yaw = 0.0f;
@@ -76,6 +84,17 @@ struct PlayerState {
     int health = kMaxHealth;
     WeaponStats weapon{"Rusty Blade", 1.0f, 2.2f, 0.45f, {140, 140, 153, 255}};
     float attackCooldown = 0.0f;
+    ComboCooldowns comboCd;
+    float parryWindow = 0.0f;
+    float stonestepShield = 0.0f;
+    bool isDashing = false;
+    Vector3 dashDirection{0.0f, 0.0f, 0.0f};
+    float dashRemaining = 0.0f;
+    float dashSpeed = 0.0f;
+    float comboFxTimer = 0.0f;
+    float comboFxRadius = 0.0f;
+    Color comboFxColor{255, 255, 255, 180};
+    bool shatterSlamPending = false;
 };
 
 struct WorldMap {
@@ -107,6 +126,9 @@ struct GameState {
     bool characterShaderLoaded = false;
     Light sunLight{};
 };
+
+void ClampToMap(Vector3& pos);
+void KillEnemy(GameState& game, int index, bool awardScore);
 
 Font gHudFont{};
 bool gHudFontReady = false;
@@ -363,6 +385,181 @@ void NotifyWeapon(GameState& game, const char* name) {
     game.weaponMessageTimer = 3.0f;
 }
 
+void NotifyCombo(GameState& game, const char* name, Color fxColor, float fxRadius) {
+    std::snprintf(game.weaponMessage, sizeof(game.weaponMessage), "%s", name);
+    game.weaponMessageTimer = 2.2f;
+    game.player.comboFxTimer = 0.35f;
+    game.player.comboFxColor = fxColor;
+    game.player.comboFxRadius = fxRadius;
+}
+
+Vector3 PlayerForward(const PlayerState& p) {
+    return {std::sin(p.yaw * DEG2RAD), 0.0f, std::cos(p.yaw * DEG2RAD)};
+}
+
+void StartDash(PlayerState& p, Vector3 direction, float distance, float speed) {
+    float len = Vector3Length(direction);
+    if (len < 0.01f)
+        direction = PlayerForward(p);
+    else
+        direction = Vector3Scale(direction, 1.0f / len);
+    p.isDashing = true;
+    p.dashDirection = direction;
+    p.dashRemaining = distance;
+    p.dashSpeed = speed;
+    p.hasDestination = false;
+}
+
+void TickComboCooldowns(PlayerState& p, float dt) {
+    p.comboCd.stonestep = std::max(0.0f, p.comboCd.stonestep - dt);
+    p.comboCd.apexParry = std::max(0.0f, p.comboCd.apexParry - dt);
+    p.comboCd.velocityStrike = std::max(0.0f, p.comboCd.velocityStrike - dt);
+    p.comboCd.shatterStep = std::max(0.0f, p.comboCd.shatterStep - dt);
+    p.comboCd.dashSever = std::max(0.0f, p.comboCd.dashSever - dt);
+    p.parryWindow = std::max(0.0f, p.parryWindow - dt);
+    p.stonestepShield = std::max(0.0f, p.stonestepShield - dt);
+    p.comboFxTimer = std::max(0.0f, p.comboFxTimer - dt);
+}
+
+void DealDamageInRadius(GameState& game, Vector3 center, float radius, float damage, bool awardScore) {
+    for (int i = 0; i < static_cast<int>(game.enemies.size()); ++i) {
+        if (!game.enemies[i].alive)
+            continue;
+        if (Vector3Distance(center, game.enemies[i].position) <= radius) {
+            game.enemies[i].health -= damage;
+            if (game.enemies[i].health <= 0.0f)
+                KillEnemy(game, i, awardScore);
+        }
+    }
+}
+
+void DealDamageAlongPath(GameState& game, Vector3 from, Vector3 to, float width, float damage, bool awardScore) {
+    Vector3 delta = FlatTo(from, to);
+    float length = Vector3Length(delta);
+    if (length < 0.01f)
+        return;
+    Vector3 dir = Vector3Scale(delta, 1.0f / length);
+    int steps = static_cast<int>(length / 0.6f) + 1;
+    for (int s = 0; s <= steps; ++s) {
+        float t = static_cast<float>(s) / static_cast<float>(steps);
+        Vector3 sample{from.x + dir.x * length * t, from.y, from.z + dir.z * length * t};
+        DealDamageInRadius(game, sample, width, damage, awardScore);
+    }
+}
+
+void CounterAfterParry(GameState& game) {
+    Vector3 forward = PlayerForward(game.player);
+    Vector3 center{game.player.position.x + forward.x * 1.5f, game.player.position.y + 1.0f,
+                   game.player.position.z + forward.z * 1.5f};
+    DealDamageInRadius(game, center, 2.2f, game.player.weapon.damage * 2.5f, true);
+}
+
+void PlayerAttackScaled(GameState& game, float damageScale, float rangeScale) {
+    Vector3 forward = PlayerForward(game.player);
+    float range = game.player.weapon.range * rangeScale;
+    Vector3 center{game.player.position.x + forward.x * range * 0.5f, game.player.position.y + 1.0f,
+                   game.player.position.z + forward.z * range * 0.5f};
+    DealDamageInRadius(game, center, range * 0.55f, game.player.weapon.damage * damageScale, true);
+}
+
+void ComboStonestep(GameState& game) {
+    auto& p = game.player;
+    if (p.comboCd.stonestep > 0.0f)
+        return;
+    p.comboCd.stonestep = 4.0f;
+    p.stonestepShield = 0.45f;
+    Vector3 back = Vector3Scale(PlayerForward(p), -1.0f);
+    StartDash(p, back, 2.8f, 16.0f);
+    NotifyCombo(game, "Stonestep", {160, 165, 175, 200}, 1.6f);
+}
+
+void ComboApexParry(GameState& game) {
+    auto& p = game.player;
+    if (p.comboCd.apexParry > 0.0f)
+        return;
+    p.comboCd.apexParry = 5.0f;
+    p.parryWindow = 0.5f;
+    p.hasDestination = false;
+    NotifyCombo(game, "Apex Parry", {120, 200, 255, 220}, 2.0f);
+}
+
+void ComboVelocityStrike(GameState& game) {
+    auto& p = game.player;
+    if (p.comboCd.velocityStrike > 0.0f)
+        return;
+    p.comboCd.velocityStrike = 3.0f;
+    StartDash(p, PlayerForward(p), 4.5f, 22.0f);
+    PlayerAttackScaled(game, 2.2f, 1.35f);
+    NotifyCombo(game, "Velocity Strike", {255, 210, 80, 220}, 2.8f);
+}
+
+void ComboShatterStep(GameState& game) {
+    auto& p = game.player;
+    if (p.comboCd.shatterStep > 0.0f)
+        return;
+    p.comboCd.shatterStep = 5.0f;
+    p.shatterSlamPending = true;
+    StartDash(p, PlayerForward(p), 3.2f, 20.0f);
+    NotifyCombo(game, "Shatter-Step", {180, 130, 255, 220}, 3.2f);
+}
+
+void ComboDashAndSever(GameState& game) {
+    auto& p = game.player;
+    if (p.comboCd.dashSever > 0.0f)
+        return;
+    p.comboCd.dashSever = 4.0f;
+    Vector3 start = p.position;
+    Vector3 forward = PlayerForward(p);
+    StartDash(p, forward, 5.5f, 24.0f);
+    Vector3 end{start.x + forward.x * 5.5f, start.y, start.z + forward.z * 5.5f};
+    DealDamageAlongPath(game, start, end, 1.1f, p.weapon.damage * 1.7f, true);
+    NotifyCombo(game, "Dash & Sever", {255, 90, 90, 220}, 2.4f);
+}
+
+void ResolveShatterSlam(GameState& game) {
+    auto& p = game.player;
+    if (!p.shatterSlamPending)
+        return;
+    p.shatterSlamPending = false;
+    Vector3 slam{p.position.x, p.position.y + 0.5f, p.position.z};
+    DealDamageInRadius(game, slam, 2.8f, p.weapon.damage * 1.6f, true);
+    p.comboFxTimer = 0.45f;
+    p.comboFxColor = {180, 130, 255, 220};
+    p.comboFxRadius = 3.2f;
+}
+
+void UpdateDashMovement(GameState& game, float dt) {
+    auto& p = game.player;
+    if (!p.isDashing || p.dashRemaining <= 0.0f)
+        return;
+    float step = p.dashSpeed * dt;
+    if (step > p.dashRemaining)
+        step = p.dashRemaining;
+    p.position.x += p.dashDirection.x * step;
+    p.position.z += p.dashDirection.z * step;
+    p.dashRemaining -= step;
+    if (p.dashRemaining <= 0.01f) {
+        p.isDashing = false;
+        ResolveShatterSlam(game);
+    }
+    ClampToMap(p.position);
+}
+
+void TryComboInput(GameState& game) {
+    if (game.gameOver)
+        return;
+    if (IsKeyPressed(KEY_Q))
+        ComboStonestep(game);
+    if (IsKeyPressed(KEY_E))
+        ComboApexParry(game);
+    if (IsKeyPressed(KEY_F))
+        ComboVelocityStrike(game);
+    if (IsKeyPressed(KEY_V))
+        ComboShatterStep(game);
+    if (IsKeyPressed(KEY_C))
+        ComboDashAndSever(game);
+}
+
 void SpawnEnemies(GameState& game) {
     game.enemies.clear();
     game.enemies.resize(kEnemyCount);
@@ -545,9 +742,18 @@ Vector3 TargetPosition(const Enemy& enemy, const GameState& game) {
 void DamagePlayer(GameState& game, int amount) {
     if (game.gameOver)
         return;
-    game.player.health -= amount;
-    if (game.player.health <= 0) {
-        game.player.health = 0;
+    auto& p = game.player;
+    if (p.parryWindow > 0.0f) {
+        p.parryWindow = 0.0f;
+        NotifyCombo(game, "Apex Parry — counter!", {120, 200, 255, 255}, 2.5f);
+        CounterAfterParry(game);
+        return;
+    }
+    if (p.stonestepShield > 0.0f)
+        return;
+    p.health -= amount;
+    if (p.health <= 0) {
+        p.health = 0;
         game.gameOver = true;
     }
 }
@@ -561,19 +767,7 @@ void KillEnemy(GameState& game, int index, bool awardScore) {
 }
 
 void PlayerAttack(GameState& game) {
-    Vector3 forward{std::sin(game.player.yaw * DEG2RAD), 0.0f, std::cos(game.player.yaw * DEG2RAD)};
-    Vector3 center{game.player.position.x + forward.x * game.player.weapon.range * 0.5f,
-                   game.player.position.y + 1.0f, game.player.position.z + forward.z * game.player.weapon.range * 0.5f};
-
-    for (int i = 0; i < static_cast<int>(game.enemies.size()); ++i) {
-        if (!game.enemies[i].alive)
-            continue;
-        if (Vector3Distance(center, game.enemies[i].position) <= game.player.weapon.range * 0.55f) {
-            game.enemies[i].health -= game.player.weapon.damage;
-            if (game.enemies[i].health <= 0.0f)
-                KillEnemy(game, i, true);
-        }
-    }
+    PlayerAttackScaled(game, 1.0f, 1.0f);
 }
 
 void TryPickupLoot(GameState& game) {
@@ -594,6 +788,9 @@ void UpdatePlayer(GameState& game, Camera3D camera, float dt) {
     auto& p = game.player;
     if (game.gameOver)
         return;
+
+    TickComboCooldowns(p, dt);
+    TryComboInput(game);
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
         Vector3 hit{};
@@ -616,6 +813,12 @@ void UpdatePlayer(GameState& game, Camera3D camera, float dt) {
     if (p.position.y < groundY) {
         p.position.y = groundY;
         p.verticalVelocity = 0.0f;
+    }
+
+    if (p.isDashing) {
+        UpdateDashMovement(game, dt);
+        TryPickupLoot(game);
+        return;
     }
 
     float moveSpeed = IsInRiver(p.position.x, p.position.z) ? 3.2f : 5.5f;
@@ -859,6 +1062,19 @@ void DrawWorld(const GameState& game, Camera3D camera) {
     Vector3 playerFeet{playerPos.x, TerrainHeight(playerPos.x, playerPos.z), playerPos.z};
     DrawGroundShadow(playerFeet, 0.5f, 0.38f);
     DrawPlayerCharacter(game, camera);
+    if (game.player.comboFxTimer > 0.0f) {
+        float t = game.player.comboFxTimer / 0.35f;
+        float r = game.player.comboFxRadius * (1.0f - t * 0.5f);
+        Color fx = game.player.comboFxColor;
+        fx.a = static_cast<unsigned char>(fx.a * t);
+        DrawSphere({playerFeet.x, playerFeet.y + 0.6f, playerFeet.z}, r, fx);
+    }
+    if (game.player.parryWindow > 0.0f) {
+        DrawSphere({playerFeet.x, playerFeet.y + 1.0f, playerFeet.z}, 1.3f, {100, 180, 255, 90});
+    }
+    if (game.player.stonestepShield > 0.0f) {
+        DrawSphere({playerFeet.x, playerFeet.y + 0.9f, playerFeet.z}, 1.1f, {180, 185, 195, 70});
+    }
     EndSceneLighting(game);
 }
 
@@ -872,6 +1088,7 @@ void DrawHud(const GameState& game) {
 
     line("Blade Arena");
     line("Right-click move | Space jump | A attack | R restart");
+    line("Q Stonestep | E Apex Parry | F Velocity Strike | V Shatter-Step | C Dash & Sever");
     char buf[160];
     std::snprintf(buf, sizeof(buf), "Health: %d", game.player.health);
     line(buf);
