@@ -359,7 +359,7 @@ void SetupPlayerModel(GameState& game, const char* path) {
     if (game.playerModel.meshCount <= 0)
         return;
 
-    DownscaleModelTextures(game.playerModel, 1024);
+    DownscaleModelTextures(game.playerModel, 512);
 
     game.playerModelLoaded = true;
     BoundingBox bounds = GetModelBoundingBox(game.playerModel);
@@ -1146,17 +1146,33 @@ std::string ResolveModelPath(int argc, char** argv) {
 
 } // namespace
 
+static void DrawLoadingScreen(const char* status) {
+    BeginDrawing();
+    ClearBackground({24, 28, 36, 255});
+    DrawText("Blade Arena", 40, 40, 28, {220, 225, 235, 255});
+    DrawText(status, 40, 84, 20, {170, 180, 195, 255});
+    DrawText("The game window will appear here when loading finishes.", 40, 116, 16, {120, 130, 145, 255});
+    EndDrawing();
+}
+
 int main(int argc, char** argv) {
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(1280, 720, "Blade Arena");
     SetTargetFPS(60);
     LoadHudFont();
 
+    for (int i = 0; i < 8; ++i)
+        DrawLoadingScreen("Starting...");
+
     GameState game;
     GenerateWorld(game.world);
     SetupCharacterShader(game);
+
+    DrawLoadingScreen("Loading character model...");
     SetupPlayerModel(game, ResolveModelPath(argc, argv).c_str());
     ResetGameplay(game);
+
+    DrawLoadingScreen("Ready!");
 
     Camera3D camera{};
     camera.up = {0.0f, 1.0f, 0.0f};

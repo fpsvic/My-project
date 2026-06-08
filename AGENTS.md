@@ -96,11 +96,11 @@ The VM desktop (`DISPLAY=:1`) can run while the **Cursor Desktop tab** stays bla
 
 Full gameplay on the Desktop pane without Unity:
 
-- **Desktop (most reliable):** open Desktop pane → double-click **`START-BLADE-ARENA.sh`** (install shortcuts: `/workspace/scripts/install-desktop-shortcuts.sh`)
-- **Desktop icon:** double-click **Play Blade Arena** (`.desktop` icons may not work in all Cursor Desktop setups — use the `.sh` file instead)
+- **Desktop (most reliable):** open Desktop pane → double-click **`DOUBLE-CLICK-TO-PLAY.sh`** (install: `/workspace/scripts/install-desktop-shortcuts.sh`)
+- Alternates: `START-BLADE-ARENA.sh`, **Play Blade Arena** icon
 - **Terminal on Desktop:** `/workspace/scripts/run-blade-arena-desktop.sh`
 
-Requires branch `cursor/blade-arena-cpp-5aaf`, `DISPLAY=:1`, and a pre-built or buildable binary in `cpp/BladeArena/build/`. Errors: `/tmp/blade-arena-launch.log`. This is **not** the Unity Editor — Unity still needs a license.
+Requires branch `cursor/blade-arena-cpp-5aaf`, `DISPLAY=:1`, and binary in `cpp/BladeArena/build/`. The launcher shows a zenity notice, starts the game in the background, and focuses the **Blade Arena** window (1280×720). A loading screen appears while the model loads. Errors: `/tmp/blade-arena-launch.log`. Not the Unity Editor.
 
 ### Desktop preview (no Unity license required)
 

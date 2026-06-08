@@ -7,19 +7,37 @@ DESKTOP_DIR="${DESKTOP_DIR:-$HOME/Desktop}"
 
 mkdir -p "$DESKTOP_DIR"
 
+trust_desktop() {
+  local path="$1"
+  chmod +x "$path"
+  if command -v gio >/dev/null 2>&1; then
+    gio set "$path" metadata::trusted true 2>/dev/null || true
+  fi
+}
+
 install_desktop() {
   local src="$1"
   local name
   name="$(basename "$src")"
   cp "$src" "$DESKTOP_DIR/$name"
-  chmod +x "$DESKTOP_DIR/$name"
+  trust_desktop "$DESKTOP_DIR/$name"
   echo "Installed $DESKTOP_DIR/$name"
 }
 
 install_desktop "$WORKSPACE/scripts/desktop/Play-Blade-Arena.desktop"
 cp "$WORKSPACE/scripts/desktop/START-BLADE-ARENA.sh" "$DESKTOP_DIR/START-BLADE-ARENA.sh"
-chmod +x "$DESKTOP_DIR/START-BLADE-ARENA.sh"
+trust_desktop "$DESKTOP_DIR/START-BLADE-ARENA.sh"
 echo "Installed $DESKTOP_DIR/START-BLADE-ARENA.sh"
+
+# Large obvious launcher for users who miss the .desktop icon.
+cat >"$DESKTOP_DIR/DOUBLE-CLICK-TO-PLAY.sh" <<'LAUNCHER'
+#!/usr/bin/env bash
+export DISPLAY="${DISPLAY:-:1}"
+export WORKSPACE="${WORKSPACE:-/workspace}"
+exec /workspace/scripts/run-blade-arena-desktop.sh
+LAUNCHER
+trust_desktop "$DESKTOP_DIR/DOUBLE-CLICK-TO-PLAY.sh"
+echo "Installed $DESKTOP_DIR/DOUBLE-CLICK-TO-PLAY.sh"
 
 if [[ -f "$WORKSPACE/scripts/desktop/Preview-Human-Figure.desktop" ]]; then
   install_desktop "$WORKSPACE/scripts/desktop/Preview-Human-Figure.desktop"
@@ -38,8 +56,9 @@ Desktop shortcuts installed.
 
 HOW TO PLAY:
   1. Open the Desktop pane in Cursor (DISPLAY must be :1).
-  2. Double-click START-BLADE-ARENA.sh  (most reliable)
-     OR double-click Play Blade Arena.
+  2. Double-click DOUBLE-CLICK-TO-PLAY.sh  (most reliable)
+     OR Play Blade Arena / START-BLADE-ARENA.sh
+  3. Wait for the "Blade Arena" window (1280x720) — it pops on top briefly.
 
 If nothing happens, open a terminal on Desktop and run:
   /workspace/scripts/run-blade-arena-desktop.sh
