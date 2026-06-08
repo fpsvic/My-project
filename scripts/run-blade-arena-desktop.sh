@@ -3,113 +3,142 @@
 set -euo pipefail
 
 WORKSPACE="${WORKSPACE:-/workspace}"
-DISPLAY="${DISPLAY:-:1}"
-LOG="/tmp/blade-arena-launch.log"
-export DISPLAY=:1
+export DISPLAY="${DISPLAY:-:1}"
 export WORKSPACE
+LOG="/tmp/blade-arena-launch.log"
+BUILD_DIR="$WORKSPACE/cpp/BladeArena/build"
+BINARY="$BUILD_DIR/blade_arena"
+MODEL_WALK="$WORKSPACE/Assets/Models/HumanFigure_walk.glb"
+MODEL_GAME="$WORKSPACE/Assets/Models/HumanFigure_game.glb"
+MODEL_FULL="$WORKSPACE/Assets/Models/HumanFigure.glb"
 
 log() {
-  echo "[$(date '+%H:%M:%S')] $*" >>"$LOG"
+  echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"
 }
 
 notify_error() {
   local msg="$1"
   log "ERROR: $msg"
-  if command -v zenity >/dev/null 2>&1 && [[ -n "${DISPLAY:-}" ]]; then
+  if command -v zenity >/dev/null 2>&1; then
     zenity --error --title="Blade Arena" --text="${msg}
 
-Log: ${LOG}" --width=480 2>/dev/null || true
+Log: ${LOG}" --width=520 2>/dev/null || true
   fi
-  echo "ERROR: $msg" >&2
-  echo "See $LOG" >&2
+  if command -v xfce4-terminal >/dev/null 2>&1; then
+    xfce4-terminal --title="Blade Arena — launch error" --hold -e "bash -lc 'echo \"$msg\"; echo; tail -40 \"$LOG\"; echo; read -p \"Press Enter to close...\" _'" \
+      >/dev/null 2>&1 &
+  fi
 }
 
 notify_starting() {
-  if command -v zenity >/dev/null 2>&1 && [[ -n "${DISPLAY:-}" ]]; then
-    zenity --info --timeout=5 --title="Blade Arena" --text="Starting Blade Arena...
+  if command -v zenity >/dev/null 2>&1; then
+    zenity --info --timeout=6 --title="Blade Arena" --text="Starting Blade Arena on the desktop...
 
-Look for a window titled \"Blade Arena\" on the desktop (1280x720).
-It stays on top for a few seconds after load.
+A window titled \"Blade Arena\" (1280×720) will appear while the model loads (~10–20 seconds).
 
-If nothing appears after ~15 seconds, open:
-  /tmp/blade-arena-launch.log" --width=460 2>/dev/null &
+If nothing shows, double-click \"Blade Arena (Terminal)\" on the desktop." \
+      --width=480 2>/dev/null &
   fi
 }
 
 focus_game_window() {
-  (
-    if ! command -v xdotool >/dev/null 2>&1; then
-      return
+  if ! command -v xdotool >/dev/null 2>&1; then
+    return 1
+  fi
+  local win=""
+  for _ in $(seq 1 30); do
+    win=$(xdotool search --name "Blade Arena" 2>/dev/null | head -1 || true)
+    if [[ -n "$win" ]]; then
+      xdotool windowactivate --sync "$win" 2>/dev/null || true
+      xdotool windowraise "$win" 2>/dev/null || true
+      xdotool windowmove "$win" 80 60 2>/dev/null || true
+      log "Focused game window id=$win"
+      return 0
     fi
-    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-      WIN=$(xdotool search --name "Blade Arena" 2>/dev/null | head -1 || true)
-      if [[ -n "$WIN" ]]; then
-        xdotool windowactivate --sync "$WIN" 2>/dev/null || true
-        xdotool windowraise "$WIN" 2>/dev/null || true
-        xdotool windowmove "$WIN" 60 50 2>/dev/null || true
-        log "Focused game window id=$WIN"
-        break
-      fi
-      sleep 1
-    done
-  ) &
+    sleep 1
+  done
+  return 1
 }
 
-log "Launcher started (DISPLAY=$DISPLAY)"
+resolve_model() {
+  if [[ -f "$MODEL_WALK" ]]; then
+    echo "$MODEL_WALK"
+  elif [[ -f "$MODEL_GAME" ]]; then
+    echo "$MODEL_GAME"
+  elif [[ -f "$MODEL_FULL" ]]; then
+    echo "$MODEL_FULL"
+  fi
+}
+
+log "=== Launcher started (DISPLAY=$DISPLAY) ==="
 
 if [[ ! -d "$WORKSPACE/cpp/BladeArena" ]]; then
-  notify_error "Blade Arena not found in $WORKSPACE. Use branch cursor/blade-arena-cpp-5aaf."
+  notify_error "Blade Arena not found. Use branch cursor/blade-arena-cpp-5aaf."
   exit 1
 fi
 
-if ! command -v g++ >/dev/null 2>&1 || ! command -v cmake >/dev/null 2>&1; then
-  notify_error "Missing g++ or cmake. Install build-essential and cmake."
+if ! xdpyinfo >/dev/null 2>&1; then
+  notify_error "Desktop display $DISPLAY is not ready.
+
+Run: /workspace/scripts/fix-desktop.sh
+Then reload Cursor (Ctrl+Shift+P → Developer: Reload Window) and open the Desktop tab."
   exit 1
 fi
 
-BINARY="$WORKSPACE/cpp/BladeArena/build/blade_arena"
 if [[ ! -x "$BINARY" ]]; then
-  log "Building game..."
+  log "Building game (first run)..."
   if ! "$WORKSPACE/scripts/run-blade-arena-cpp.sh" --build-only >>"$LOG" 2>&1; then
-    notify_error "Build failed. Open the log file for details."
+    notify_error "Build failed. See log: $LOG"
     exit 1
   fi
 fi
 
 if [[ ! -x "$BINARY" ]]; then
-  notify_error "Game binary missing after build."
+  notify_error "Game binary missing: $BINARY"
   exit 1
 fi
 
-if [[ -z "${DISPLAY:-}" ]]; then
-  notify_error "No DISPLAY set. Open the Desktop pane first, then try again."
-  exit 1
-fi
-
-if ! xdpyinfo >/dev/null 2>&1; then
-  notify_error "Desktop display $DISPLAY is not ready. Wait 30s and run /workspace/scripts/check-desktop.sh"
-  exit 1
-fi
-
-# Avoid duplicate instances stealing focus from a working game.
 if pgrep -f "$BINARY" >/dev/null 2>&1; then
-  log "Game already running — focusing existing window"
-  focus_game_window
+  log "Game already running — focusing window"
+  focus_game_window || notify_error "Game is running but window not found. Try Alt+Tab or check /tmp/blade-arena-launch.log"
   exit 0
 fi
 
+MODEL_ARG="$(resolve_model)"
 notify_starting
-focus_game_window
-log "Starting blade_arena in background..."
 
-nohup "$WORKSPACE/scripts/run-blade-arena-cpp.sh" >>"$LOG" 2>&1 &
+cd "$BUILD_DIR"
+if [[ -n "$MODEL_ARG" ]]; then
+  log "Launching: $BINARY $MODEL_ARG"
+  nohup "$BINARY" "$MODEL_ARG" >>"$LOG" 2>&1 &
+else
+  log "Launching: $BINARY (no model — placeholder capsule)"
+  nohup "$BINARY" >>"$LOG" 2>&1 &
+fi
 GAME_PID=$!
 log "blade_arena pid=$GAME_PID"
 
-sleep 2
-if ! kill -0 "$GAME_PID" 2>/dev/null; then
-  notify_error "Game exited immediately. See log: $LOG"
-  exit 1
+# Wait until process is alive through initial load (model + Lua can take ~15s).
+for _ in $(seq 1 25); do
+  if ! kill -0 "$GAME_PID" 2>/dev/null; then
+    notify_error "Game exited during startup. See log: $LOG"
+    exit 1
+  fi
+  if focus_game_window; then
+    log "=== Launch OK ==="
+    exit 0
+  fi
+  sleep 1
+done
+
+if kill -0 "$GAME_PID" 2>/dev/null; then
+  log "Game running (pid=$GAME_PID) but window not focused yet — check Alt+Tab"
+  if command -v zenity >/dev/null 2>&1; then
+    zenity --info --timeout=8 --title="Blade Arena" \
+      --text="Game is running (pid $GAME_PID) but may be behind other windows.\n\nUse Alt+Tab or look for \"Blade Arena\"." 2>/dev/null &
+  fi
+  exit 0
 fi
 
-exit 0
+notify_error "Game stopped unexpectedly. See log: $LOG"
+exit 1

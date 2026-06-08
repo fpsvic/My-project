@@ -33,6 +33,9 @@ fi
 
 install_desktop "$WORKSPACE/scripts/desktop/Blade-Arena.desktop"
 install_desktop "$WORKSPACE/scripts/desktop/Play-Blade-Arena.desktop"
+if [[ -f "$WORKSPACE/scripts/desktop/Blade-Arena-Terminal.desktop" ]]; then
+  install_desktop "$WORKSPACE/scripts/desktop/Blade-Arena-Terminal.desktop"
+fi
 
 cp "$WORKSPACE/scripts/desktop/START-BLADE-ARENA.sh" "$DESKTOP_DIR/START-BLADE-ARENA.sh"
 trust_desktop "$DESKTOP_DIR/START-BLADE-ARENA.sh"
@@ -53,7 +56,7 @@ if [[ -f "$WORKSPACE/scripts/desktop/Preview-Human-Figure.desktop" ]]; then
 fi
 
 chmod +x "$WORKSPACE/PLAY-BLADE-ARENA.sh" "$WORKSPACE/scripts/run-blade-arena-desktop.sh" \
-  "$WORKSPACE/scripts/run-blade-arena-cpp.sh"
+  "$WORKSPACE/scripts/run-blade-arena-cpp.sh" "$WORKSPACE/scripts/play-on-desktop.sh"
 
 echo "Pre-building game (first launch is faster)..."
 DISPLAY=:1 WORKSPACE="$WORKSPACE" \
@@ -70,10 +73,13 @@ cat <<EOF
 === Blade Arena — Desktop ready ===
 
 On the Desktop, double-click ANY of these:
-  • Blade Arena          (icon, recommended)
+  • Blade Arena              (icon, recommended)
+  • Blade Arena (Terminal)   (shows errors if launch fails)
   • PLAY-BLADE-ARENA.sh
   • DOUBLE-CLICK-TO-PLAY.sh
-  • START-BLADE-ARENA.sh
+
+One command (repair + launch):
+  /workspace/scripts/play-on-desktop.sh
 
 From a terminal on Desktop:
   /workspace/PLAY-BLADE-ARENA.sh

@@ -88,11 +88,13 @@ The VM desktop (`DISPLAY=:1`) can run while the **Cursor Desktop tab** stays bla
 
 **Fix (run in agent terminal):**
 ```bash
-/workspace/scripts/fix-desktop.sh
+/workspace/scripts/play-on-desktop.sh
 ```
+This repairs the desktop, installs shortcuts, and launches the game. Or step-by-step: `/workspace/scripts/fix-desktop.sh` then `/workspace/PLAY-BLADE-ARENA.sh`.
+
 Then reload Cursor (`Cmd/Ctrl+Shift+P` → **Developer: Reload Window**) and open the **Desktop** tab or [cursor.com/agents](https://cursor.com/agents) → **Desktop**.
 
-Check: `/workspace/scripts/check-desktop.sh`
+Check: `/workspace/scripts/check-desktop.sh`. If double-click fails, use **Blade Arena (Terminal)** on the VM desktop to see errors.
 
 If still blank: remove `.cursor/environment.json` if present; try `/workspace/scripts/restart-desktop-session.sh`.
 
