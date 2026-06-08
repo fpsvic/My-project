@@ -1230,19 +1230,32 @@ void DrawHud(const GameState& game) {
 }
 
 void UpdateCamera(Camera3D& camera, const GameState& game, float dt) {
-    Vector3 playerCenter = game.player.position;
-    playerCenter.y = TerrainHeight(playerCenter.x, playerCenter.z) + 1.4f;
+    Vector3 playerPos = game.player.position;
+    float groundY = TerrainSurfaceY(playerPos.x, playerPos.z, playerPos);
+    float baseY = std::max(playerPos.y, groundY);
 
     float yawRad = game.player.yaw * DEG2RAD;
-    const float camDistance = 9.0f;
-    const float camHeight = 3.8f;
-    Vector3 desired{
-        playerCenter.x - std::sin(yawRad) * camDistance,
-        playerCenter.y + camHeight,
-        playerCenter.z - std::cos(yawRad) * camDistance};
+    Vector3 forward{std::sin(yawRad), 0.0f, std::cos(yawRad)};
+    Vector3 right{-forward.z, 0.0f, forward.x};
 
-    camera.position = Vector3Lerp(camera.position, desired, 6.0f * dt);
-    camera.target = Vector3Lerp(camera.target, playerCenter, 8.0f * dt);
+    // Fortnite-style over-the-right-shoulder anchor.
+    Vector3 shoulder{playerPos.x, baseY + 1.38f, playerPos.z};
+
+    constexpr float kCamDistance = 2.2f;
+    constexpr float kCamSide = 0.62f;
+    constexpr float kCamLift = 0.28f;
+    Vector3 desired{
+        shoulder.x - forward.x * kCamDistance + right.x * kCamSide,
+        shoulder.y + kCamLift,
+        shoulder.z - forward.z * kCamDistance + right.z * kCamSide};
+
+    Vector3 lookTarget{
+        shoulder.x + forward.x * 3.5f,
+        shoulder.y + 0.12f,
+        shoulder.z + forward.z * 3.5f};
+
+    camera.position = Vector3Lerp(camera.position, desired, 14.0f * dt);
+    camera.target = Vector3Lerp(camera.target, lookTarget, 16.0f * dt);
 }
 
 std::string ResolveModelPath(int argc, char** argv) {
@@ -1297,7 +1310,7 @@ int main(int argc, char** argv) {
 
     Camera3D camera{};
     camera.up = {0.0f, 1.0f, 0.0f};
-    camera.fovy = 55.0f;
+    camera.fovy = 72.0f;
     camera.projection = CAMERA_PERSPECTIVE;
     UpdateCamera(camera, game, 1.0f);
 
