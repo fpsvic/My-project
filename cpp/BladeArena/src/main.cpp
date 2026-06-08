@@ -41,6 +41,13 @@ struct Cabin {
 struct Tree {
     Vector3 position;
     float scale;
+    bool backdrop = false;
+};
+
+struct Mountain {
+    Vector3 position;
+    float radius;
+    float height;
 };
 
 struct Enemy {
@@ -73,6 +80,8 @@ struct PlayerState {
 
 struct WorldMap {
     std::vector<Tree> trees;
+    std::vector<Tree> backdropForest;
+    std::vector<Mountain> mountains;
     std::vector<Vector3> riverTiles;
 };
 
@@ -175,7 +184,30 @@ void GenerateWorld(WorldMap& world) {
 
         float scale = 0.75f + Hash01(x + 3.1f, z - 1.7f) * 0.9f;
         float y = TerrainHeight(x, z);
-        world.trees.push_back({{x, y, z}, scale});
+        world.trees.push_back({{x, y, z}, scale, false});
+    }
+
+    for (int i = 0; i < 36; ++i) {
+        float angle = (2.0f * kPi / 36.0f) * static_cast<float>(i);
+        float jitter = Hash01(static_cast<float>(i) * 1.7f, static_cast<float>(i) * 0.9f) * 0.35f;
+        float dist = 235.0f + jitter * 55.0f;
+        float x = std::cos(angle + jitter) * dist;
+        float z = std::sin(angle + jitter) * dist;
+        float height = 38.0f + Hash01(x, z) * 52.0f;
+        float radius = 22.0f + Hash01(z, x) * 28.0f;
+        world.mountains.push_back({{x, 0.0f, z}, radius, height});
+    }
+
+    for (int i = 0; i < 820; ++i) {
+        unsigned h = WorldSeed(static_cast<unsigned>(i * 3344921057U + 777U));
+        float angle = static_cast<float>(h % 6283) / 1000.0f;
+        float dist = 165.0f + static_cast<float>((h / 6283U) % 70U);
+        float x = std::cos(angle) * dist;
+        float z = std::sin(angle) * dist;
+        if (IsInRiver(x, z))
+            continue;
+        float scale = 1.1f + Hash01(x * 0.3f, z * 0.3f) * 1.4f;
+        world.backdropForest.push_back({{x, 0.0f, z}, scale, true});
     }
 }
 
@@ -188,6 +220,29 @@ std::string ResolveAssetPath(const char* relative) {
             return path;
     }
     return std::string(relative);
+}
+
+void BeginSceneLighting(const GameState& game, Camera3D camera) {
+    if (!game.characterShaderLoaded)
+        return;
+    float cameraPos[3] = {camera.position.x, camera.position.y, camera.position.z};
+    SetShaderValue(game.characterShader, game.characterShader.locs[SHADER_LOC_VECTOR_VIEW], cameraPos, SHADER_UNIFORM_VEC3);
+    UpdateLightValues(game.characterShader, game.sunLight);
+    BeginShaderMode(game.characterShader);
+}
+
+void EndSceneLighting(const GameState& game) {
+    if (game.characterShaderLoaded)
+        EndShaderMode();
+}
+
+Color TerrainGrassColor(float x, float z) {
+    if (IsInRiver(x, z))
+        return {48, 92, 58, 255};
+    Color grass{56, 112, 46, 255};
+    if (Hash01(x, z) > 0.82f)
+        grass = {68, 98, 40, 255};
+    return grass;
 }
 
 bool SetupCharacterShader(GameState& game) {
@@ -559,16 +614,39 @@ void UpdateEnemies(GameState& game, float dt) {
     }
 }
 
-void DrawTree(const Tree& tree) {
-    float trunkH = 2.6f * tree.scale;
-    Color trunk{92, 58, 32, 255};
-    Color leaves{38, 118, 52, 255};
-    Color leavesDark{28, 88, 40, 255};
+void DrawGroundShadow(Vector3 feet, float radius, float alpha) {
+    Color shadow{0, 0, 0, static_cast<unsigned char>(std::clamp(alpha, 0.0f, 1.0f) * 255.0f)};
+    DrawCylinder({feet.x, feet.y + 0.04f, feet.z}, radius, radius, 0.03f, 14, shadow);
+}
 
-    DrawCylinder(tree.position, 0.22f * tree.scale, 0.28f * tree.scale, trunkH, 8, trunk);
-    Vector3 crown{tree.position.x, tree.position.y + trunkH + 0.7f * tree.scale, tree.position.z};
-    DrawSphere(crown, 1.25f * tree.scale, leaves);
-    DrawSphere(crown + Vector3{0.4f * tree.scale, 0.2f, 0.2f * tree.scale}, 0.9f * tree.scale, leavesDark);
+void DrawTree(const Tree& tree, bool darkBackdrop) {
+    float y = tree.backdrop ? 0.0f : TerrainHeight(tree.position.x, tree.position.z);
+    Vector3 base{tree.position.x, y, tree.position.z};
+    float trunkH = (darkBackdrop ? 3.4f : 2.6f) * tree.scale;
+    Color trunk{darkBackdrop ? 72 : 92, darkBackdrop ? 48 : 58, 32, 255};
+    Color leaves{darkBackdrop ? 24 : 38, darkBackdrop ? 88 : 118, darkBackdrop ? 38 : 52, 255};
+    Color leavesDark{darkBackdrop ? 18 : 28, darkBackdrop ? 68 : 88, darkBackdrop ? 30 : 40, 255};
+
+    DrawCylinder(base, 0.22f * tree.scale, 0.28f * tree.scale, trunkH, 8, trunk);
+    Vector3 crown{base.x, base.y + trunkH + 0.7f * tree.scale, base.z};
+    float crownR = (darkBackdrop ? 1.55f : 1.25f) * tree.scale;
+    DrawSphere(crown, crownR, leaves);
+    DrawSphere(crown + Vector3{0.35f * tree.scale, 0.15f, 0.25f * tree.scale}, crownR * 0.72f, leavesDark);
+}
+
+void DrawMountain(const Mountain& mountain) {
+    Vector3 base = mountain.position;
+    float h = mountain.height;
+    float r = mountain.radius;
+    Color rockBase{72, 68, 62, 255};
+    Color rockMid{92, 86, 78, 255};
+    Color rockPeak{108, 104, 98, 255};
+    Color snow{228, 236, 244, 255};
+
+    DrawCylinder(base, r * 0.95f, r * 0.35f, h * 0.55f, 12, rockBase);
+    DrawCylinder({base.x, base.y + h * 0.45f, base.z}, r * 0.55f, r * 0.12f, h * 0.38f, 12, rockMid);
+    DrawSphere({base.x, base.y + h * 0.78f, base.z}, r * 0.38f, rockPeak);
+    DrawSphere({base.x, base.y + h * 0.9f, base.z}, r * 0.22f, snow);
 }
 
 void DrawCabin(const Cabin& cabin) {
@@ -588,22 +666,38 @@ void DrawCabin(const Cabin& cabin) {
 }
 
 void DrawTerrain(Vector3 playerPos) {
-    DrawPlane({0.0f, 0.0f, 0.0f}, {kMapHalfSize * 2.0f, kMapHalfSize * 2.0f}, {52, 108, 44, 255});
+    DrawPlane({0.0f, -0.05f, 0.0f}, {kMapHalfSize * 2.0f, kMapHalfSize * 2.0f}, {48, 102, 42, 255});
 
-    const int steps = 10;
-    const float cell = 28.0f;
+    const int steps = 12;
+    const float cell = 24.0f;
     for (int ix = -steps; ix <= steps; ++ix) {
         for (int iz = -steps; iz <= steps; ++iz) {
             float x = playerPos.x + static_cast<float>(ix) * cell;
             float z = playerPos.z + static_cast<float>(iz) * cell;
             if (std::fabs(x) > kMapHalfSize || std::fabs(z) > kMapHalfSize)
                 continue;
-            float y = TerrainHeight(x, z);
-            if (std::fabs(y) < 0.08f)
-                continue;
-            Color grass = IsInRiver(x, z) ? Color{52, 95, 62, 255} : Color{58, 118, 48, 255};
-            DrawCube({x, y * 0.5f, z}, cell * 0.96f, std::max(y, 0.2f), cell * 0.96f, grass);
+
+            float yCenter = TerrainHeight(x, z);
+            float yNorth = TerrainHeight(x, z + cell * 0.5f);
+            float ySouth = TerrainHeight(x, z - cell * 0.5f);
+            float yEast = TerrainHeight(x + cell * 0.5f, z);
+            float yWest = TerrainHeight(x - cell * 0.5f, z);
+            float blockH = std::max({yNorth, ySouth, yEast, yWest, yCenter, 0.15f});
+            Color grass = TerrainGrassColor(x, z);
+            DrawCube({x, blockH * 0.5f - 0.05f, z}, cell * 0.98f, blockH, cell * 0.98f, grass);
         }
+    }
+}
+
+void DrawBackdropScenery(const WorldMap& world, Vector3 playerPos) {
+    for (const Mountain& mountain : world.mountains)
+        DrawMountain(mountain);
+
+    constexpr float kBackdropForestDist = 260.0f;
+    for (const Tree& tree : world.backdropForest) {
+        if (Vector2Distance({tree.position.x, tree.position.z}, {playerPos.x, playerPos.z}) > kBackdropForestDist)
+            continue;
+        DrawTree(tree, true);
     }
 }
 
@@ -632,18 +726,7 @@ void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
             feet.y - game.playerModelFeetOffset,
             feet.z - game.playerModelCenterOffset.z * s};
 
-        if (game.characterShaderLoaded) {
-            float cameraPos[3] = {camera.position.x, camera.position.y, camera.position.z};
-            SetShaderValue(game.characterShader, game.characterShader.locs[SHADER_LOC_VECTOR_VIEW], cameraPos,
-                           SHADER_UNIFORM_VEC3);
-            UpdateLightValues(game.characterShader, game.sunLight);
-            BeginShaderMode(game.characterShader);
-        }
-
         DrawModelEx(game.playerModel, drawPos, {0.0f, 1.0f, 0.0f}, yaw, {s, s, s}, WHITE);
-
-        if (game.characterShaderLoaded)
-            EndShaderMode();
     } else {
         DrawCapsule(feet, feet + Vector3{0.0f, 1.8f, 0.0f}, 0.35f, 10, 10, {90, 150, 220, 255});
     }
@@ -657,18 +740,35 @@ void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
 }
 
 void DrawWorld(const GameState& game, Camera3D camera) {
-    DrawTerrain(game.player.position);
-    DrawRivers();
+    Vector3 playerPos = game.player.position;
 
-    for (const Cabin& cabin : game.cabins)
-        DrawCabin(cabin);
+    BeginSceneLighting(game, camera);
+    DrawBackdropScenery(game.world, playerPos);
+    DrawTerrain(playerPos);
+    DrawRivers();
+    EndSceneLighting(game);
 
     constexpr float kTreeDrawDistance = 110.0f;
     for (const Tree& tree : game.world.trees) {
-        if (Vector2Distance({tree.position.x, tree.position.z}, {game.player.position.x, game.player.position.z}) >
-            kTreeDrawDistance)
+        if (Vector2Distance({tree.position.x, tree.position.z}, {playerPos.x, playerPos.z}) > kTreeDrawDistance)
             continue;
-        DrawTree(tree);
+        Vector3 base{tree.position.x, TerrainHeight(tree.position.x, tree.position.z), tree.position.z};
+        DrawGroundShadow(base, 0.55f * tree.scale, 0.28f);
+    }
+    for (const Tree& tree : game.world.backdropForest) {
+        if (Vector2Distance({tree.position.x, tree.position.z}, {playerPos.x, playerPos.z}) > 260.0f)
+            continue;
+        DrawGroundShadow({tree.position.x, 0.0f, tree.position.z}, 0.7f * tree.scale, 0.18f);
+    }
+
+    BeginSceneLighting(game, camera);
+    for (const Cabin& cabin : game.cabins)
+        DrawCabin(cabin);
+
+    for (const Tree& tree : game.world.trees) {
+        if (Vector2Distance({tree.position.x, tree.position.z}, {playerPos.x, playerPos.z}) > kTreeDrawDistance)
+            continue;
+        DrawTree(tree, false);
     }
 
     for (const Enemy& enemy : game.enemies) {
@@ -676,10 +776,14 @@ void DrawWorld(const GameState& game, Camera3D camera) {
             continue;
         float y = TerrainHeight(enemy.position.x, enemy.position.z);
         Vector3 base{enemy.position.x, y, enemy.position.z};
+        DrawGroundShadow(base, 0.42f, 0.32f);
         DrawCapsule(base, base + Vector3{0.0f, 1.6f, 0.0f}, 0.45f, 8, 8, {180, 60, 60, 255});
     }
 
+    Vector3 playerFeet{playerPos.x, TerrainHeight(playerPos.x, playerPos.z), playerPos.z};
+    DrawGroundShadow(playerFeet, 0.5f, 0.38f);
     DrawPlayerCharacter(game, camera);
+    EndSceneLighting(game);
 }
 
 void DrawHud(const GameState& game) {
@@ -761,6 +865,7 @@ int main(int argc, char** argv) {
 
     GameState game;
     GenerateWorld(game.world);
+    SetupCharacterShader(game);
     SetupPlayerModel(game, ResolveModelPath(argc, argv).c_str());
     ResetGameplay(game);
 
