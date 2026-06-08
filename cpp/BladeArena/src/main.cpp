@@ -95,6 +95,8 @@ struct PlayerState {
     float comboFxRadius = 0.0f;
     Color comboFxColor{255, 255, 255, 180};
     bool shatterSlamPending = false;
+    float walkPhase = 0.0f;
+    float walkAnimBlend = 0.0f;
 };
 
 struct WorldMap {
@@ -410,6 +412,49 @@ void SetupPlayerModel(GameState& game, const char* path) {
 
     if (!game.characterShaderLoaded)
         SetupCharacterShader(game);
+}
+
+void UpdateWalkAnimation(PlayerState& p, float horizontalSpeed, bool grounded, float dt) {
+    float targetBlend = 0.0f;
+    float phaseSpeed = 0.0f;
+
+    if (grounded && p.isDashing) {
+        targetBlend = 1.15f;
+        phaseSpeed = 13.5f;
+    } else if (grounded && horizontalSpeed > 0.12f) {
+        targetBlend = std::clamp(horizontalSpeed / 5.5f, 0.35f, 1.0f);
+        phaseSpeed = horizontalSpeed * 2.4f;
+    }
+
+    p.walkAnimBlend = Lerp(p.walkAnimBlend, targetBlend, 10.0f * dt);
+    if (p.walkAnimBlend > 0.02f)
+        p.walkPhase += phaseSpeed * dt;
+    else
+        p.walkPhase = Lerp(p.walkPhase, 0.0f, 8.0f * dt);
+}
+
+void DrawModelWithEuler(Model model, Vector3 position, Vector3 rotationDeg, Vector3 scale, Color tint) {
+    Matrix matScale = MatrixScale(scale.x, scale.y, scale.z);
+    Matrix matRotX = MatrixRotateX(rotationDeg.x * DEG2RAD);
+    Matrix matRotY = MatrixRotateY(rotationDeg.y * DEG2RAD);
+    Matrix matRotZ = MatrixRotateZ(rotationDeg.z * DEG2RAD);
+    Matrix matRot = MatrixMultiply(matRotY, MatrixMultiply(matRotX, matRotZ));
+    Matrix matTranslation = MatrixTranslate(position.x, position.y, position.z);
+    Matrix transform = MatrixMultiply(MatrixMultiply(matScale, matRot), matTranslation);
+    model.transform = MatrixMultiply(model.transform, transform);
+
+    for (int i = 0; i < model.meshCount; ++i) {
+        Color color = model.materials[model.meshMaterial[i]].maps[MATERIAL_MAP_DIFFUSE].color;
+        Color colorTint{
+            static_cast<unsigned char>((color.r * tint.r) / 255),
+            static_cast<unsigned char>((color.g * tint.g) / 255),
+            static_cast<unsigned char>((color.b * tint.b) / 255),
+            static_cast<unsigned char>((color.a * tint.a) / 255),
+        };
+        model.materials[model.meshMaterial[i]].maps[MATERIAL_MAP_DIFFUSE].color = colorTint;
+        DrawMesh(model.meshes[i], model.materials[model.meshMaterial[i]], model.transform);
+        model.materials[model.meshMaterial[i]].maps[MATERIAL_MAP_DIFFUSE].color = color;
+    }
 }
 
 void NotifyWeapon(GameState& game, const char* name) {
@@ -849,6 +894,7 @@ void UpdatePlayer(GameState& game, Camera3D camera, float dt) {
 
     if (p.isDashing) {
         UpdateDashMovement(game, dt);
+        UpdateWalkAnimation(p, p.dashSpeed, grounded, dt);
         TryPickupLoot(game);
         return;
     }
@@ -870,6 +916,8 @@ void UpdatePlayer(GameState& game, Camera3D camera, float dt) {
     p.position.x += horizontal.x * dt;
     p.position.z += horizontal.z * dt;
     ClampToMap(p.position);
+
+    UpdateWalkAnimation(p, Vector3Length(horizontal), grounded, dt);
 
     p.attackCooldown -= dt;
     if (IsKeyPressed(KEY_A) && p.attackCooldown <= 0.0f) {
@@ -1031,14 +1079,25 @@ void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
     Vector3 forward{std::sin(game.player.yaw * DEG2RAD), 0.0f, std::cos(game.player.yaw * DEG2RAD)};
     Vector3 right{-forward.z, 0.0f, forward.x};
 
+    float walkBlend = game.player.walkAnimBlend;
+    float phase = game.player.walkPhase;
+    float bob = std::sin(phase * 2.0f) * 0.042f * walkBlend;
+    float pitch = std::sin(phase) * 6.0f * walkBlend;
+    float roll = std::cos(phase) * 4.5f * walkBlend;
+    float squash = 1.0f - 0.035f * std::fabs(std::sin(phase * 2.0f)) * walkBlend;
+
+    if (game.player.attackCooldown > game.player.weapon.cooldown * 0.65f) {
+        float t = game.player.attackCooldown / game.player.weapon.cooldown;
+        pitch += 14.0f * t;
+    }
+
     if (game.playerModelLoaded) {
         Vector3 drawPos{
             feet.x - game.playerModelCenterOffset.x * s,
-            feet.y - game.playerModelFeetOffset + game.playerModelGroundLift,
+            feet.y - game.playerModelFeetOffset + game.playerModelGroundLift + bob,
             feet.z - game.playerModelCenterOffset.z * s};
 
-        // Raylib's built-in glTF PBR shader (do not override with custom lighting shader).
-        DrawModelEx(game.playerModel, drawPos, {0.0f, 1.0f, 0.0f}, yaw, {s, s, s}, WHITE);
+        DrawModelWithEuler(game.playerModel, drawPos, {pitch, yaw, roll}, {s, s * squash, s}, WHITE);
     } else {
         DrawCapsule(feet, feet + Vector3{0.0f, 1.8f, 0.0f}, 0.35f, 10, 10, {90, 150, 220, 255});
     }
@@ -1046,7 +1105,7 @@ void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
     float bladeLen = std::strstr(game.player.weapon.name, "Storm")   ? 1.2f
                      : std::strstr(game.player.weapon.name, "Steel") ? 1.05f
                                                                      : 0.95f;
-    float visualFootY = feet.y + (game.playerModelLoaded ? game.playerModelGroundLift : 0.0f);
+    float visualFootY = feet.y + (game.playerModelLoaded ? game.playerModelGroundLift + bob : 0.0f);
     Vector3 hand{feet.x + right.x * 0.28f + forward.x * 0.12f, visualFootY + 1.05f,
                  feet.z + right.z * 0.28f + forward.z * 0.12f};
     Vector3 tip = hand + Vector3{forward.x * bladeLen, 0.08f, forward.z * bladeLen};
