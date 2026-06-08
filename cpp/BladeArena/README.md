@@ -16,10 +16,16 @@ First build downloads Raylib via CMake and may take a few minutes.
 
 ## Run
 
-From the repo root (so the default model path resolves):
+**Desktop (recommended):** double-click **Play Blade Arena** on the VM desktop. If missing:
 
 ```bash
-/workspace/scripts/run-blade-arena-cpp.sh
+/workspace/scripts/install-desktop-shortcuts.sh
+```
+
+**Terminal:**
+
+```bash
+/workspace/scripts/run-blade-arena-desktop.sh
 ```
 
 Or manually:

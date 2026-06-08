@@ -86,11 +86,10 @@ The template scene (`Assets/Scenes/SampleScene.unity`) contains a Main Camera, D
 
 Full gameplay on the Desktop pane without Unity:
 
-```bash
-/workspace/scripts/run-blade-arena-cpp.sh
-```
+- **Desktop shortcut:** double-click **Play Blade Arena** (install with `/workspace/scripts/install-desktop-shortcuts.sh`)
+- **Terminal:** `/workspace/scripts/run-blade-arena-desktop.sh` or `/workspace/scripts/run-blade-arena-cpp.sh`
 
-First run builds with CMake + Raylib (`cpp/BladeArena/`). Requires `build-essential`, OpenGL/X11 libs, and `g++` (not Clang’s default `c++` linker). See `cpp/BladeArena/README.md`.
+First run builds with CMake + Raylib (`cpp/BladeArena/`). Requires `DISPLAY=:1`, `build-essential`, OpenGL/X11 libs, and `g++`. Build errors are logged to `/tmp/blade-arena-launch.log`. See `cpp/BladeArena/README.md`.
 
 ### Desktop preview (no Unity license required)
 
