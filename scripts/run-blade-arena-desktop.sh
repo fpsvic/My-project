@@ -5,7 +5,7 @@ set -euo pipefail
 WORKSPACE="${WORKSPACE:-/workspace}"
 DISPLAY="${DISPLAY:-:1}"
 LOG="/tmp/blade-arena-launch.log"
-export DISPLAY
+export DISPLAY=:1
 export WORKSPACE
 
 log() {
