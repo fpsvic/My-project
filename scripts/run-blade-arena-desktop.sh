@@ -6,68 +6,74 @@ WORKSPACE="${WORKSPACE:-/workspace}"
 DISPLAY="${DISPLAY:-:1}"
 LOG="/tmp/blade-arena-launch.log"
 export DISPLAY
+export WORKSPACE
 
-notify() {
-  if command -v zenity >/dev/null 2>&1; then
-    zenity --info --title="Blade Arena" --text="$1" --width=420 2>/dev/null || true
-  else
-    echo "$1"
-  fi
+log() {
+  echo "[$(date '+%H:%M:%S')] $*" >>"$LOG"
 }
 
 notify_error() {
-  if command -v zenity >/dev/null 2>&1; then
-    zenity --error --title="Blade Arena" --text="$1\n\nDetails: $LOG" --width=480 2>/dev/null || true
-  else
-    echo "ERROR: $1" >&2
-    echo "See $LOG" >&2
+  local msg="$1"
+  log "ERROR: $msg"
+  if command -v zenity >/dev/null 2>&1 && [[ -n "${DISPLAY:-}" ]]; then
+    zenity --error --title="Blade Arena" --text="${msg}
+
+Log: ${LOG}" --width=480 2>/dev/null || true
   fi
+  echo "ERROR: $msg" >&2
+  echo "See $LOG" >&2
 }
 
+focus_game_window() {
+  (
+    sleep 2
+    if ! command -v xdotool >/dev/null 2>&1; then
+      return
+    fi
+    for _ in 1 2 3 4 5; do
+      WIN=$(xdotool search --name "Blade Arena" 2>/dev/null | head -1 || true)
+      if [[ -n "$WIN" ]]; then
+        xdotool windowactivate --sync "$WIN" 2>/dev/null || true
+        xdotool windowraise "$WIN" 2>/dev/null || true
+        xdotool windowmove "$WIN" 80 60 2>/dev/null || true
+        break
+      fi
+      sleep 1
+    done
+  ) &
+}
+
+log "Launcher started (DISPLAY=$DISPLAY)"
+
 if [[ ! -d "$WORKSPACE/cpp/BladeArena" ]]; then
-  notify_error "Blade Arena is not in this workspace.\nCheckout branch cursor/blade-arena-cpp-5aaf and pull latest."
+  notify_error "Blade Arena not found in $WORKSPACE. Use branch cursor/blade-arena-cpp-5aaf."
   exit 1
 fi
 
 if ! command -v g++ >/dev/null 2>&1 || ! command -v cmake >/dev/null 2>&1; then
-  notify_error "Missing build tools (g++ / cmake).\nAsk the agent to install build-essential and cmake."
+  notify_error "Missing g++ or cmake. Install build-essential and cmake."
   exit 1
 fi
 
 BINARY="$WORKSPACE/cpp/BladeArena/build/blade_arena"
 if [[ ! -x "$BINARY" ]]; then
-  if command -v zenity >/dev/null 2>&1; then
-    (
-      echo "5"; echo "# Building Blade Arena (first launch)..."
-      sleep 0.5
-      if ! "$WORKSPACE/scripts/run-blade-arena-cpp.sh" --build-only >>"$LOG" 2>&1; then
-        echo "100"
-        exit 1
-      fi
-      echo "100"; echo "# Ready"
-    ) | zenity --progress --title="Blade Arena" --text="First launch builds the game..." --percentage=0 --auto-close 2>/dev/null || {
-      notify "Building Blade Arena (first launch). This can take a few minutes..."
-      "$WORKSPACE/scripts/run-blade-arena-cpp.sh" --build-only >>"$LOG" 2>&1 || {
-        notify_error "Build failed."
-        exit 1
-      }
-    }
-  else
-    notify "Building Blade Arena..."
-    "$WORKSPACE/scripts/run-blade-arena-cpp.sh" --build-only >>"$LOG" 2>&1 || {
-      notify_error "Build failed."
-      exit 1
-    }
+  log "Building game..."
+  if ! "$WORKSPACE/scripts/run-blade-arena-cpp.sh" --build-only >>"$LOG" 2>&1; then
+    notify_error "Build failed. Open the log file for details."
+    exit 1
   fi
 fi
 
 if [[ ! -x "$BINARY" ]]; then
-  notify_error "Game binary not found after build."
+  notify_error "Game binary missing after build."
   exit 1
 fi
 
-: >"$LOG"
-if ! "$WORKSPACE/scripts/run-blade-arena-cpp.sh" >>"$LOG" 2>&1; then
-  notify_error "Blade Arena exited with an error."
+if [[ -z "${DISPLAY:-}" ]]; then
+  notify_error "No DISPLAY set. Open the Desktop pane first, then try again."
   exit 1
 fi
+
+focus_game_window
+log "Starting blade_arena..."
+exec "$WORKSPACE/scripts/run-blade-arena-cpp.sh" >>"$LOG" 2>&1
