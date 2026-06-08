@@ -45,4 +45,5 @@ Walk into shelter buildings to pick up **Iron Sword**, **Steel Sword**, and **St
 - CMake 3.16+
 - C++17 compiler (g++)
 - OpenGL / X11 (Desktop pane or local display)
-- Optional: `Assets/Models/HumanFigure.glb` (falls back to a capsule if missing)
+- Uses `Assets/Models/HumanFigure_game.glb` (simplified mesh for Raylib; full `HumanFigure.glb` has too many vertices for 16-bit indices and renders as a broken thin line)
+- Falls back to a capsule if no model is found

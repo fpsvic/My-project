@@ -6,6 +6,7 @@ WORKSPACE="${WORKSPACE:-/workspace}"
 CPP_DIR="$WORKSPACE/cpp/BladeArena"
 BUILD_DIR="$CPP_DIR/build"
 BINARY="$BUILD_DIR/blade_arena"
+MODEL_GAME="$WORKSPACE/Assets/Models/HumanFigure_game.glb"
 MODEL="$WORKSPACE/Assets/Models/HumanFigure.glb"
 DISPLAY="${DISPLAY:-:1}"
 
@@ -17,9 +18,12 @@ if [[ ! -x "$BINARY" ]]; then
   cmake --build "$BUILD_DIR" -j"$(nproc)"
 fi
 
-if [[ -f "$MODEL" ]]; then
+if [[ -f "$MODEL_GAME" ]]; then
+  exec "$BINARY" "$MODEL_GAME"
+elif [[ -f "$MODEL" ]]; then
+  echo "Note: Using full HumanFigure.glb — run gltf-transform simplify for best results."
   exec "$BINARY" "$MODEL"
 else
-  echo "Note: HumanFigure.glb not found — using placeholder capsule."
+  echo "Note: HumanFigure model not found — using placeholder capsule."
   exec "$BINARY"
 fi

@@ -1,6 +1,9 @@
 #include "raylib.h"
 #include "raymath.h"
 
+#define RLIGHTS_IMPLEMENTATION
+#include "rlights.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -88,6 +91,11 @@ struct GameState {
     bool playerModelLoaded = false;
     float playerModelScale = 1.0f;
     float playerModelFeetOffset = 0.0f;
+    Vector3 playerModelCenterOffset{0.0f, 0.0f, 0.0f};
+    float playerModelYawOffset = 180.0f;
+    Shader characterShader{};
+    bool characterShaderLoaded = false;
+    Light sunLight{};
 };
 
 unsigned WorldSeed(unsigned x) {
@@ -153,7 +161,7 @@ void GenerateWorld(WorldMap& world) {
         (void)w;
     }
 
-    for (int i = 0; i < 1400; ++i) {
+    for (int i = 0; i < 650; ++i) {
         unsigned h = WorldSeed(static_cast<unsigned>(i * 2654435761U + 1013904223U));
         float rx = static_cast<float>(h % 10000) / 10000.0f;
         float rz = static_cast<float>((h / 10000U) % 10000U) / 10000.0f;
@@ -171,6 +179,42 @@ void GenerateWorld(WorldMap& world) {
     }
 }
 
+std::string ResolveAssetPath(const char* relative) {
+    const char* roots[] = {"/workspace/cpp/BladeArena/assets/", "../assets/", "../../cpp/BladeArena/assets/",
+                           "assets/"};
+    for (const char* root : roots) {
+        std::string path = std::string(root) + relative;
+        if (FileExists(path.c_str()))
+            return path;
+    }
+    return std::string(relative);
+}
+
+bool SetupCharacterShader(GameState& game) {
+    std::string vs = ResolveAssetPath("shaders/glsl330/lighting.vs");
+    std::string fs = ResolveAssetPath("shaders/glsl330/lighting.fs");
+    if (!FileExists(vs.c_str()) || !FileExists(fs.c_str()))
+        return false;
+
+    game.characterShader = LoadShader(vs.c_str(), fs.c_str());
+    if (game.characterShader.id == 0)
+        return false;
+
+    game.characterShader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(game.characterShader, "viewPos");
+    int ambientLoc = GetShaderLocation(game.characterShader, "ambient");
+    float ambient[4] = {0.35f, 0.38f, 0.42f, 1.0f};
+    SetShaderValue(game.characterShader, ambientLoc, ambient, SHADER_UNIFORM_VEC4);
+
+    game.sunLight = CreateLight(LIGHT_DIRECTIONAL, {40.0f, 90.0f, 35.0f}, {0.0f, 0.0f, 0.0f}, WHITE, game.characterShader);
+    game.characterShaderLoaded = true;
+    return true;
+}
+
+void ApplyShaderToModel(Model& model, Shader shader) {
+    for (int i = 0; i < model.materialCount; ++i)
+        model.materials[i].shader = shader;
+}
+
 void SetupPlayerModel(GameState& game, const char* path) {
     if (!FileExists(path))
         return;
@@ -184,6 +228,12 @@ void SetupPlayerModel(GameState& game, const char* path) {
     float height = bounds.max.y - bounds.min.y;
     game.playerModelScale = height > 0.01f ? 1.85f / height : 1.85f;
     game.playerModelFeetOffset = bounds.min.y * game.playerModelScale;
+    game.playerModelCenterOffset = {(bounds.min.x + bounds.max.x) * 0.5f, 0.0f, (bounds.min.z + bounds.max.z) * 0.5f};
+
+    if (!game.characterShaderLoaded)
+        SetupCharacterShader(game);
+    if (game.characterShaderLoaded)
+        ApplyShaderToModel(game.playerModel, game.characterShader);
 }
 
 void NotifyWeapon(GameState& game, const char* name) {
@@ -212,6 +262,11 @@ void ResetGameplay(GameState& game) {
     bool modelLoaded = game.playerModelLoaded;
     float modelScale = game.playerModelScale;
     float feetOffset = game.playerModelFeetOffset;
+    Vector3 centerOffset = game.playerModelCenterOffset;
+    float yawOffset = game.playerModelYawOffset;
+    Shader characterShader = game.characterShader;
+    bool characterShaderLoaded = game.characterShaderLoaded;
+    Light sunLight = game.sunLight;
     WorldMap world = game.world;
 
     game.player = PlayerState{};
@@ -223,6 +278,11 @@ void ResetGameplay(GameState& game) {
     game.playerModelLoaded = modelLoaded;
     game.playerModelScale = modelScale;
     game.playerModelFeetOffset = feetOffset;
+    game.playerModelCenterOffset = centerOffset;
+    game.playerModelYawOffset = yawOffset;
+    game.characterShader = characterShader;
+    game.characterShaderLoaded = characterShaderLoaded;
+    game.sunLight = sunLight;
     game.world = world;
 
     game.cabins = {
@@ -527,19 +587,22 @@ void DrawCabin(const Cabin& cabin) {
     }
 }
 
-void DrawTerrain() {
-    const int steps = 40;
-    const float cell = (kMapHalfSize * 2.0f) / steps;
-    for (int ix = 0; ix < steps; ++ix) {
-        for (int iz = 0; iz < steps; ++iz) {
-            float x = -kMapHalfSize + (ix + 0.5f) * cell;
-            float z = -kMapHalfSize + (iz + 0.5f) * cell;
+void DrawTerrain(Vector3 playerPos) {
+    DrawPlane({0.0f, 0.0f, 0.0f}, {kMapHalfSize * 2.0f, kMapHalfSize * 2.0f}, {52, 108, 44, 255});
+
+    const int steps = 10;
+    const float cell = 28.0f;
+    for (int ix = -steps; ix <= steps; ++ix) {
+        for (int iz = -steps; iz <= steps; ++iz) {
+            float x = playerPos.x + static_cast<float>(ix) * cell;
+            float z = playerPos.z + static_cast<float>(iz) * cell;
+            if (std::fabs(x) > kMapHalfSize || std::fabs(z) > kMapHalfSize)
+                continue;
             float y = TerrainHeight(x, z);
-            Color grass = IsInRiver(x, z) ? Color{52, 95, 62, 255}
-                                          : Color{58, 118, 48, 255};
-            if (!IsInRiver(x, z) && Hash01(x, z) > 0.82f)
-                grass = {72, 98, 42, 255};
-            DrawCube({x, y - 0.25f, z}, cell * 1.02f, 0.5f, cell * 1.02f, grass);
+            if (std::fabs(y) < 0.08f)
+                continue;
+            Color grass = IsInRiver(x, z) ? Color{52, 95, 62, 255} : Color{58, 118, 48, 255};
+            DrawCube({x, y * 0.5f, z}, cell * 0.96f, std::max(y, 0.2f), cell * 0.96f, grass);
         }
     }
 }
@@ -554,35 +617,59 @@ void DrawRivers() {
     }
 }
 
-void DrawPlayerCharacter(const GameState& game) {
+void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
     Vector3 feet = game.player.position;
     feet.y = TerrainHeight(feet.x, feet.z);
 
+    float yaw = game.player.yaw + game.playerModelYawOffset;
+    float s = game.playerModelScale;
+    Vector3 forward{std::sin(game.player.yaw * DEG2RAD), 0.0f, std::cos(game.player.yaw * DEG2RAD)};
+    Vector3 right{-forward.z, 0.0f, forward.x};
+
     if (game.playerModelLoaded) {
-        Vector3 drawPos{feet.x, feet.y - game.playerModelFeetOffset, feet.z};
-        DrawModelEx(game.playerModel, drawPos, {0.0f, 1.0f, 0.0f}, game.player.yaw, {game.playerModelScale, game.playerModelScale, game.playerModelScale},
-                    WHITE);
+        Vector3 drawPos{
+            feet.x - game.playerModelCenterOffset.x * s,
+            feet.y - game.playerModelFeetOffset,
+            feet.z - game.playerModelCenterOffset.z * s};
+
+        if (game.characterShaderLoaded) {
+            float cameraPos[3] = {camera.position.x, camera.position.y, camera.position.z};
+            SetShaderValue(game.characterShader, game.characterShader.locs[SHADER_LOC_VECTOR_VIEW], cameraPos,
+                           SHADER_UNIFORM_VEC3);
+            UpdateLightValues(game.characterShader, game.sunLight);
+            BeginShaderMode(game.characterShader);
+        }
+
+        DrawModelEx(game.playerModel, drawPos, {0.0f, 1.0f, 0.0f}, yaw, {s, s, s}, WHITE);
+
+        if (game.characterShaderLoaded)
+            EndShaderMode();
     } else {
         DrawCapsule(feet, feet + Vector3{0.0f, 1.8f, 0.0f}, 0.35f, 10, 10, {90, 150, 220, 255});
     }
 
-    Vector3 forward{std::sin(game.player.yaw * DEG2RAD), 0.0f, std::cos(game.player.yaw * DEG2RAD)};
     float bladeLen = std::strstr(game.player.weapon.name, "Storm")   ? 1.2f
                      : std::strstr(game.player.weapon.name, "Steel") ? 1.05f
                                                                      : 0.95f;
-    Vector3 swordPos = feet + Vector3{forward.x * 0.4f, 1.15f, forward.z * 0.4f};
-    DrawCube(swordPos, 0.1f, bladeLen, 0.07f, game.player.weapon.color);
+    Vector3 hand = feet + Vector3{right.x * 0.28f + forward.x * 0.12f, 1.05f, right.z * 0.28f + forward.z * 0.12f};
+    Vector3 tip = hand + Vector3{forward.x * bladeLen, 0.08f, forward.z * bladeLen};
+    DrawCylinderEx(hand, tip, 0.05f, 0.02f, 8, game.player.weapon.color);
 }
 
-void DrawWorld(const GameState& game) {
-    DrawTerrain();
+void DrawWorld(const GameState& game, Camera3D camera) {
+    DrawTerrain(game.player.position);
     DrawRivers();
 
     for (const Cabin& cabin : game.cabins)
         DrawCabin(cabin);
 
-    for (const Tree& tree : game.world.trees)
+    constexpr float kTreeDrawDistance = 110.0f;
+    for (const Tree& tree : game.world.trees) {
+        if (Vector2Distance({tree.position.x, tree.position.z}, {game.player.position.x, game.player.position.z}) >
+            kTreeDrawDistance)
+            continue;
         DrawTree(tree);
+    }
 
     for (const Enemy& enemy : game.enemies) {
         if (!enemy.alive)
@@ -592,7 +679,7 @@ void DrawWorld(const GameState& game) {
         DrawCapsule(base, base + Vector3{0.0f, 1.6f, 0.0f}, 0.45f, 8, 8, {180, 60, 60, 255});
     }
 
-    DrawPlayerCharacter(game);
+    DrawPlayerCharacter(game, camera);
 }
 
 void DrawHud(const GameState& game) {
@@ -651,7 +738,18 @@ std::string ResolveModelPath(int argc, char** argv) {
     const char* env = std::getenv("BLADE_ARENA_MODEL");
     if (env && env[0] != '\0')
         return env;
-    return "../../Assets/Models/HumanFigure.glb";
+
+    const char* candidates[] = {
+        "/workspace/Assets/Models/HumanFigure_game.glb",
+        "../../Assets/Models/HumanFigure_game.glb",
+        "/workspace/Assets/Models/HumanFigure.glb",
+        "../../Assets/Models/HumanFigure.glb",
+    };
+    for (const char* path : candidates) {
+        if (FileExists(path))
+            return path;
+    }
+    return candidates[1];
 }
 
 } // namespace
@@ -694,7 +792,7 @@ int main(int argc, char** argv) {
         ClearBackground(sky);
 
         BeginMode3D(camera);
-        DrawWorld(game);
+        DrawWorld(game, camera);
         EndMode3D();
 
         DrawHud(game);
@@ -703,6 +801,8 @@ int main(int argc, char** argv) {
 
     if (game.playerModelLoaded)
         UnloadModel(game.playerModel);
+    if (game.characterShaderLoaded)
+        UnloadShader(game.characterShader);
 
     CloseWindow();
     return 0;

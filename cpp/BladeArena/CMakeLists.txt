@@ -17,6 +17,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(raylib)
 
 add_executable(blade_arena src/main.cpp)
+target_include_directories(blade_arena PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/assets)
 target_link_libraries(blade_arena PRIVATE raylib)
 
 if(UNIX AND NOT APPLE)
