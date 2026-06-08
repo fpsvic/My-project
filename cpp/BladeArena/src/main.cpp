@@ -1,5 +1,6 @@
 #include "raylib.h"
 #include "raymath.h"
+#include "script_host.hpp"
 
 #define RLIGHTS_IMPLEMENTATION
 #include "rlights.h"
@@ -13,18 +14,10 @@
 
 namespace {
 
-constexpr int kMaxHealth = 5;
-constexpr int kEnemyCount = 10;
 constexpr float kMapHalfSize = 200.0f;
 constexpr float kPi = 3.14159265f;
 
-struct WeaponStats {
-    const char* name;
-    float damage;
-    float range;
-    float cooldown;
-    Color color;
-};
+ScriptHost gScripts;
 
 struct LootPickup {
     Vector3 position;
@@ -81,8 +74,8 @@ struct PlayerState {
     Vector3 destination{0.0f, 0.0f, 0.0f};
     bool hasDestination = false;
     float verticalVelocity = 0.0f;
-    int health = kMaxHealth;
-    WeaponStats weapon{"Rusty Blade", 1.0f, 2.2f, 0.45f, {140, 140, 153, 255}};
+    int health = 5;
+    WeaponStats weapon;
     float attackCooldown = 0.0f;
     ComboCooldowns comboCd;
     float parryWindow = 0.0f;
@@ -134,10 +127,38 @@ struct GameState {
     Shader characterShader{};
     bool characterShaderLoaded = false;
     Light sunLight{};
+    GameConfig config;
+    char scriptHudLine[128] = "";
 };
 
 void ClampToMap(Vector3& pos);
 void KillEnemy(GameState& game, int index, bool awardScore);
+
+std::string ResolveScriptsDir() {
+    const char* candidates[] = {
+        "/workspace/cpp/BladeArena/scripts/game",
+        "scripts/game",
+        "../scripts/game",
+        "../../scripts/game",
+    };
+    for (const char* dir : candidates) {
+        std::string path = std::string(dir) + "/config.lua";
+        if (FileExists(path.c_str()))
+            return dir;
+    }
+    return "/workspace/cpp/BladeArena/scripts/game";
+}
+
+const ComboConfig* ComboCfg(const GameConfig& config, const char* id) {
+    auto it = config.combos.find(id);
+    return it == config.combos.end() ? nullptr : &it->second;
+}
+
+void ApplyLiveConfig(GameState& game) {
+    if (const WeaponStats* weapon = game.config.FindWeapon(game.player.weapon.id))
+        game.player.weapon = *weapon;
+    std::snprintf(game.scriptHudLine, sizeof(game.scriptHudLine), "Lua: %s", gScripts.LastStatus().c_str());
+}
 
 Font gHudFont{};
 bool gHudFontReady = false;
@@ -566,8 +587,8 @@ void DrawModelWithFootAt(Model model, Vector3 footWorld, Vector3 footModelPoint,
     DrawModelWithTint(model, transform, tint);
 }
 
-void NotifyWeapon(GameState& game, const char* name) {
-    std::snprintf(game.weaponMessage, sizeof(game.weaponMessage), "Weapon: %s", name);
+void NotifyWeapon(GameState& game, const std::string& name) {
+    std::snprintf(game.weaponMessage, sizeof(game.weaponMessage), "Weapon: %s", name.c_str());
     game.weaponMessageTimer = 3.0f;
 }
 
@@ -634,10 +655,13 @@ void DealDamageAlongPath(GameState& game, Vector3 from, Vector3 to, float width,
 }
 
 void CounterAfterParry(GameState& game) {
+    const ComboConfig* cfg = ComboCfg(game.config, "apex_parry");
+    float damageScale = cfg ? cfg->damageScale : 2.5f;
+    float radius = cfg ? cfg->aoeRadius : 2.2f;
     Vector3 forward = PlayerForward(game.player);
     Vector3 center{game.player.position.x + forward.x * 1.5f, game.player.position.y + 1.0f,
                    game.player.position.z + forward.z * 1.5f};
-    DealDamageInRadius(game, center, 2.2f, game.player.weapon.damage * 2.5f, true);
+    DealDamageInRadius(game, center, radius, game.player.weapon.damage * damageScale, true);
 }
 
 void PlayerAttackScaled(GameState& game, float damageScale, float rangeScale) {
@@ -649,66 +673,73 @@ void PlayerAttackScaled(GameState& game, float damageScale, float rangeScale) {
 }
 
 void ComboStonestep(GameState& game) {
+    const ComboConfig* cfg = ComboCfg(game.config, "stonestep");
     auto& p = game.player;
     if (p.comboCd.stonestep > 0.0f)
         return;
-    p.comboCd.stonestep = 4.0f;
-    p.stonestepShield = 0.45f;
+    p.comboCd.stonestep = cfg ? cfg->cooldown : 4.0f;
+    p.stonestepShield = cfg ? cfg->shieldDuration : 0.45f;
     Vector3 back = Vector3Scale(PlayerForward(p), -1.0f);
-    StartDash(p, back, 2.8f, 16.0f);
+    StartDash(p, back, cfg ? cfg->dashDistance : 2.8f, cfg ? cfg->dashSpeed : 16.0f);
     NotifyCombo(game, "Stonestep", {160, 165, 175, 200}, 1.6f);
 }
 
 void ComboApexParry(GameState& game) {
+    const ComboConfig* cfg = ComboCfg(game.config, "apex_parry");
     auto& p = game.player;
     if (p.comboCd.apexParry > 0.0f)
         return;
-    p.comboCd.apexParry = 5.0f;
-    p.parryWindow = 0.5f;
+    p.comboCd.apexParry = cfg ? cfg->cooldown : 5.0f;
+    p.parryWindow = cfg ? cfg->parryWindow : 0.5f;
     p.hasDestination = false;
     NotifyCombo(game, "Apex Parry", {120, 200, 255, 220}, 2.0f);
 }
 
 void ComboVelocityStrike(GameState& game) {
+    const ComboConfig* cfg = ComboCfg(game.config, "velocity_strike");
     auto& p = game.player;
     if (p.comboCd.velocityStrike > 0.0f)
         return;
-    p.comboCd.velocityStrike = 3.0f;
-    StartDash(p, PlayerForward(p), 4.5f, 22.0f);
-    PlayerAttackScaled(game, 2.2f, 1.35f);
+    p.comboCd.velocityStrike = cfg ? cfg->cooldown : 3.0f;
+    StartDash(p, PlayerForward(p), cfg ? cfg->dashDistance : 4.5f, cfg ? cfg->dashSpeed : 22.0f);
+    PlayerAttackScaled(game, cfg ? cfg->damageScale : 2.2f, cfg ? cfg->rangeScale : 1.35f);
     NotifyCombo(game, "Velocity Strike", {255, 210, 80, 220}, 2.8f);
 }
 
 void ComboShatterStep(GameState& game) {
+    const ComboConfig* cfg = ComboCfg(game.config, "shatter_step");
     auto& p = game.player;
     if (p.comboCd.shatterStep > 0.0f)
         return;
-    p.comboCd.shatterStep = 5.0f;
+    p.comboCd.shatterStep = cfg ? cfg->cooldown : 5.0f;
     p.shatterSlamPending = true;
-    StartDash(p, PlayerForward(p), 3.2f, 20.0f);
+    StartDash(p, PlayerForward(p), cfg ? cfg->dashDistance : 3.2f, cfg ? cfg->dashSpeed : 20.0f);
     NotifyCombo(game, "Shatter-Step", {180, 130, 255, 220}, 3.2f);
 }
 
 void ComboDashAndSever(GameState& game) {
+    const ComboConfig* cfg = ComboCfg(game.config, "dash_sever");
     auto& p = game.player;
     if (p.comboCd.dashSever > 0.0f)
         return;
-    p.comboCd.dashSever = 4.0f;
+    float dashDistance = cfg ? cfg->dashDistance : 5.5f;
+    p.comboCd.dashSever = cfg ? cfg->cooldown : 4.0f;
     Vector3 start = p.position;
     Vector3 forward = PlayerForward(p);
-    StartDash(p, forward, 5.5f, 24.0f);
-    Vector3 end{start.x + forward.x * 5.5f, start.y, start.z + forward.z * 5.5f};
-    DealDamageAlongPath(game, start, end, 1.1f, p.weapon.damage * 1.7f, true);
+    StartDash(p, forward, dashDistance, cfg ? cfg->dashSpeed : 24.0f);
+    Vector3 end{start.x + forward.x * dashDistance, start.y, start.z + forward.z * dashDistance};
+    DealDamageAlongPath(game, start, end, 1.1f, p.weapon.damage * (cfg ? cfg->damageScale : 1.7f), true);
     NotifyCombo(game, "Dash & Sever", {255, 90, 90, 220}, 2.4f);
 }
 
 void ResolveShatterSlam(GameState& game) {
+    const ComboConfig* cfg = ComboCfg(game.config, "shatter_step");
     auto& p = game.player;
     if (!p.shatterSlamPending)
         return;
     p.shatterSlamPending = false;
     Vector3 slam{p.position.x, p.position.y + 0.5f, p.position.z};
-    DealDamageInRadius(game, slam, 2.8f, p.weapon.damage * 1.6f, true);
+    DealDamageInRadius(game, slam, cfg ? cfg->aoeRadius : 2.8f, p.weapon.damage * (cfg ? cfg->damageScale : 1.6f), true);
     p.comboFxTimer = 0.45f;
     p.comboFxColor = {180, 130, 255, 220};
     p.comboFxRadius = 3.2f;
@@ -746,10 +777,28 @@ void TryComboInput(GameState& game) {
         ComboDashAndSever(game);
 }
 
+void BuildCabinsFromConfig(GameState& game) {
+    game.cabins.clear();
+    for (const GameConfig::LootCabinConfig& loot : game.config.lootCabins) {
+        const WeaponStats* weapon = game.config.FindWeapon(loot.weaponId);
+        if (!weapon)
+            continue;
+        float y = TerrainHeight(loot.x, loot.z);
+        Cabin cabin{};
+        cabin.position = {loot.x, y, loot.z};
+        cabin.color = loot.cabinColor;
+        cabin.loot.position = {loot.x, y + 1.35f, loot.z};
+        cabin.loot.stats = *weapon;
+        cabin.loot.active = true;
+        game.cabins.push_back(cabin);
+    }
+}
+
 void SpawnEnemies(GameState& game) {
+    const int count = std::max(1, game.config.enemies.count);
     game.enemies.clear();
-    game.enemies.resize(kEnemyCount);
-    for (int i = 0; i < kEnemyCount; ++i) {
+    game.enemies.resize(static_cast<size_t>(count));
+    for (int i = 0; i < count; ++i) {
         unsigned h = WorldSeed(static_cast<unsigned>(i * 1597334677U + 42U));
         float angle = static_cast<float>(h % 6283) / 1000.0f;
         float radius = 45.0f + static_cast<float>((h / 6283U) % 80U);
@@ -757,7 +806,7 @@ void SpawnEnemies(GameState& game) {
         float z = std::sin(angle) * radius;
         float y = TerrainHeight(x, z);
         game.enemies[i].position = {x, y + 0.9f, z};
-        game.enemies[i].health = 2.0f;
+        game.enemies[i].health = game.config.enemies.health;
         game.enemies[i].alive = true;
     }
 }
@@ -781,7 +830,8 @@ void ResetGameplay(GameState& game) {
     WorldMap world = game.world;
 
     game.player = PlayerState{};
-    game.player.health = kMaxHealth;
+    game.player.health = game.config.player.maxHealth;
+    game.player.weapon = game.config.GetStarterWeapon();
     Vector3 spawn{0.0f, 0.0f, 0.0f};
     game.player.position = {0.0f, TerrainSurfaceY(0.0f, 0.0f, spawn), 0.0f};
     game.player.destination = game.player.position;
@@ -805,27 +855,10 @@ void ResetGameplay(GameState& game) {
     game.sunLight = sunLight;
     game.world = world;
 
-    game.cabins = {
-        {{-70.0f, TerrainHeight(-70.0f, 55.0f), 55.0f},
-         {130, 105, 85, 255},
-         {{-70.0f, TerrainHeight(-70.0f, 55.0f) + 1.35f, 55.0f},
-          {"Iron Sword", 2.0f, 2.5f, 0.38f, {184, 115, 51, 255}},
-          true}},
-        {{85.0f, TerrainHeight(85.0f, -60.0f), -60.0f},
-         {105, 125, 100, 255},
-         {{85.0f, TerrainHeight(85.0f, -60.0f) + 1.35f, -60.0f},
-          {"Steel Sword", 3.0f, 2.8f, 0.32f, {199, 209, 230, 255}},
-          true}},
-        {{-45.0f, TerrainHeight(-45.0f, -95.0f), -95.0f},
-         {95, 105, 135, 255},
-         {{-45.0f, TerrainHeight(-45.0f, -95.0f) + 1.35f, -95.0f},
-          {"Storm Blade", 4.5f, 3.2f, 0.28f, {115, 191, 255, 255}},
-          true}},
-    };
-
+    BuildCabinsFromConfig(game);
     SpawnEnemies(game);
     game.storm = StormState{};
-    game.storm.checkTimer = 5.0f;
+    game.storm.checkTimer = game.config.storm.checkInterval;
     game.score = 0;
     game.gameOver = false;
     game.weaponMessage[0] = '\0';
@@ -856,17 +889,18 @@ void ClampToMap(Vector3& pos) {
 void TryStartStorm(GameState& game) {
     if (game.storm.active)
         return;
-    if (GetRandomValue(0, 999) < 100) {
+    if (GetRandomValue(0, 999) < game.config.storm.startChancePermille) {
         game.storm.active = true;
-        game.storm.stormTimer = 40.0f;
+        game.storm.stormTimer = game.config.storm.duration;
         game.storm.lightningTimer = 1.0f;
     }
 }
 
 void StrikeLightning(GameState& game) {
     game.storm.flashTimer = 0.12f;
-    if (!PointInCabin(game.player.position, game.cabins) && GetRandomValue(0, 999) < 50) {
-        game.player.health -= 2;
+    if (!PointInCabin(game.player.position, game.cabins) &&
+        GetRandomValue(0, 999) < game.config.storm.strikeChancePermille) {
+        game.player.health -= game.config.storm.strikeDamage;
         if (game.player.health <= 0) {
             game.player.health = 0;
             game.gameOver = true;
@@ -875,8 +909,8 @@ void StrikeLightning(GameState& game) {
     for (auto& enemy : game.enemies) {
         if (!enemy.alive || PointInCabin(enemy.position, game.cabins))
             continue;
-        if (GetRandomValue(0, 999) < 50)
-            enemy.health -= 2.0f;
+        if (GetRandomValue(0, 999) < game.config.storm.strikeChancePermille)
+            enemy.health -= static_cast<float>(game.config.storm.strikeDamage);
         if (enemy.health <= 0.0f)
             enemy.alive = false;
     }
@@ -890,19 +924,19 @@ void UpdateStorm(GameState& game, float dt) {
         game.storm.stormTimer -= dt;
         game.storm.lightningTimer -= dt;
         if (game.storm.lightningTimer <= 0.0f) {
-            game.storm.lightningTimer = 2.5f;
+            game.storm.lightningTimer = game.config.storm.lightningInterval;
             StrikeLightning(game);
         }
         if (game.storm.stormTimer <= 0.0f) {
             game.storm.active = false;
-            game.storm.checkTimer = 60.0f;
+            game.storm.checkTimer = game.config.storm.checkInterval;
         }
         return;
     }
 
     game.storm.checkTimer -= dt;
     if (game.storm.checkTimer <= 0.0f) {
-        game.storm.checkTimer = 60.0f;
+        game.storm.checkTimer = game.config.storm.checkInterval;
         TryStartStorm(game);
     }
 }
@@ -913,7 +947,8 @@ void PickEnemyTarget(Enemy& enemy, const GameState& game, int selfIndex) {
     float bestScore = 1e9f;
 
     float playerDist = Vector3Distance(enemy.position, game.player.position);
-    if (playerDist <= 45.0f) {
+    float aggro = game.config.enemies.aggroRange;
+    if (playerDist <= aggro) {
         bestScore = playerDist / 1.15f;
         enemy.targetKind = 1;
     }
@@ -922,7 +957,7 @@ void PickEnemyTarget(Enemy& enemy, const GameState& game, int selfIndex) {
         if (i == selfIndex || !game.enemies[i].alive)
             continue;
         float dist = Vector3Distance(enemy.position, game.enemies[i].position);
-        if (dist > 45.0f || dist >= bestScore)
+        if (dist > aggro || dist >= bestScore)
             continue;
         bestScore = dist;
         enemy.targetKind = 2;
@@ -1004,9 +1039,9 @@ void UpdatePlayer(GameState& game, Camera3D camera, float dt) {
     if (grounded && p.verticalVelocity < 0.0f)
         p.verticalVelocity = 0.0f;
     if (IsKeyPressed(KEY_SPACE) && grounded)
-        p.verticalVelocity = 6.5f;
+        p.verticalVelocity = game.config.player.jumpVelocity;
 
-    p.verticalVelocity += -22.0f * dt;
+    p.verticalVelocity += -game.config.player.gravity * dt;
     p.position.y += p.verticalVelocity * dt;
     groundY = TerrainSurfaceY(p.position.x, p.position.z, p.position);
     if (p.position.y < groundY) {
@@ -1023,7 +1058,8 @@ void UpdatePlayer(GameState& game, Camera3D camera, float dt) {
         return;
     }
 
-    float moveSpeed = IsInRiver(p.position.x, p.position.z) ? 3.2f : 5.5f;
+    float moveSpeed = IsInRiver(p.position.x, p.position.z) ? game.config.player.riverMoveSpeed
+                                                            : game.config.player.moveSpeed;
     Vector3 horizontal{0.0f, 0.0f, 0.0f};
     if (p.hasDestination) {
         Vector3 toDest = FlatTo(p.position, p.destination);
@@ -1067,8 +1103,8 @@ void UpdateEnemies(GameState& game, float dt) {
         Vector3 toTarget = FlatTo(enemy.position, targetPos);
         float distance = Vector3Length(toTarget);
 
-        if (distance > 1.4f) {
-            Vector3 step = Vector3Scale(Vector3Normalize(toTarget), 2.5f * dt);
+        if (distance > game.config.enemies.attackRange) {
+            Vector3 step = Vector3Scale(Vector3Normalize(toTarget), game.config.enemies.speed * dt);
             enemy.position.x += step.x;
             enemy.position.z += step.z;
             enemy.position.y = TerrainHeight(enemy.position.x, enemy.position.z) + 0.9f;
@@ -1078,13 +1114,13 @@ void UpdateEnemies(GameState& game, float dt) {
         enemy.attackTimer -= dt;
         if (enemy.attackTimer > 0.0f)
             continue;
-        enemy.attackTimer = 1.2f;
+        enemy.attackTimer = game.config.enemies.attackCooldown;
 
         if (enemy.targetKind == 1)
-            DamagePlayer(game, 1);
+            DamagePlayer(game, static_cast<int>(game.config.enemies.attackDamage));
         else if (enemy.targetKind == 2 && enemy.targetEnemy >= 0) {
             Enemy& other = game.enemies[enemy.targetEnemy];
-            other.health -= 1.0f;
+            other.health -= game.config.enemies.attackDamage;
             if (other.health <= 0.0f)
                 KillEnemy(game, enemy.targetEnemy, false);
         }
@@ -1235,9 +1271,9 @@ void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
         DrawCapsule(feet, feet + Vector3{0.0f, 1.8f, 0.0f}, 0.35f, 10, 10, {90, 150, 220, 255});
     }
 
-    float bladeLen = std::strstr(game.player.weapon.name, "Storm")   ? 1.2f
-                     : std::strstr(game.player.weapon.name, "Steel") ? 1.05f
-                                                                     : 0.95f;
+    float bladeLen = game.player.weapon.id == "storm_blade"   ? 1.2f
+                     : game.player.weapon.id == "steel_sword" ? 1.05f
+                                                              : 0.95f;
     float armSwing = std::sin(game.player.walkPhase) * 0.14f * walkBlend;
     Vector3 hand{
         feet.x + right.x * (0.28f - armSwing) + forward.x * 0.12f,
@@ -1319,10 +1355,14 @@ void DrawHud(const GameState& game) {
     line("Blade Arena");
     line("Right-click move | Space jump | A attack | R restart");
     line("Q Stonestep | E Apex Parry | F Velocity Strike | V Shatter-Step | C Dash & Sever");
+    line("Lua: edit scripts/game/config.lua, save = live reload | F5 = force reload");
+    if (game.scriptHudLine[0] != '\0')
+        line(game.scriptHudLine);
     char buf[160];
     std::snprintf(buf, sizeof(buf), "Health: %d", game.player.health);
     line(buf);
-    std::snprintf(buf, sizeof(buf), "Equipped: %s (%.1f dmg)", game.player.weapon.name, game.player.weapon.damage);
+    std::snprintf(buf, sizeof(buf), "Equipped: %s (%.1f dmg)", game.player.weapon.name.c_str(),
+                  game.player.weapon.damage);
     line(buf);
 
     int enemiesLeft = 0;
@@ -1419,6 +1459,14 @@ int main(int argc, char** argv) {
     GenerateWorld(game.world);
     SetupCharacterShader(game);
 
+    DrawLoadingScreen("Loading Lua scripts...");
+    if (!gScripts.Init(ResolveScriptsDir())) {
+        TraceLog(LOG_WARNING, "SCRIPT: failed to init Lua VM");
+    } else if (!gScripts.Reload(game.config)) {
+        TraceLog(LOG_WARNING, "SCRIPT: %s", gScripts.LastStatus().c_str());
+    }
+    ApplyLiveConfig(game);
+
     DrawLoadingScreen("Loading character model...");
     SetupPlayerModel(game, ResolveModelPath(argc, argv).c_str());
     ResetGameplay(game);
@@ -1439,6 +1487,11 @@ int main(int argc, char** argv) {
 
         if (IsKeyPressed(KEY_R))
             ResetGameplay(game);
+
+        if (IsKeyPressed(KEY_F5) && gScripts.Reload(game.config))
+            ApplyLiveConfig(game);
+        if (gScripts.PollHotReload(game.config))
+            ApplyLiveConfig(game);
 
         UpdateStorm(game, dt);
         UpdatePlayer(game, camera, dt);
@@ -1468,6 +1521,7 @@ int main(int argc, char** argv) {
         UnloadShader(game.characterShader);
     if (gHudFontReady)
         UnloadFont(gHudFont);
+    gScripts.Shutdown();
 
     CloseWindow();
     return 0;

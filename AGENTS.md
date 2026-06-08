@@ -106,6 +106,8 @@ Full gameplay on the Desktop pane without Unity:
 
 Requires branch `cursor/blade-arena-cpp-5aaf`, `DISPLAY=:1`, and binary in `cpp/BladeArena/build/`. The launcher shows a zenity notice, starts the game in the background, and focuses the **Blade Arena** window (1280×720). A loading screen appears while the model loads. Errors: `/tmp/blade-arena-launch.log`. Not the Unity Editor.
 
+**Lua hot-reload:** edit `/workspace/cpp/BladeArena/scripts/game/config.lua` while the game runs; save to apply weapon damage, enemy stats, combos, etc. without recompiling. **F5** forces reload.
+
 ### Desktop preview (no Unity license required)
 
 To preview the **Human Figure** model on the Desktop pane (`DISPLAY=:1`):

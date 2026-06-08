@@ -46,6 +46,17 @@ cd /workspace/cpp/BladeArena/build
 
 Walk into shelter buildings to pick up **Iron Sword**, **Steel Sword**, and **Storm Blade** loot. FPS is shown top-right.
 
+## Live Lua scripting (hot reload)
+
+Gameplay tuning lives in **`scripts/game/config.lua`** — weapons, enemies, combos, storm, player movement.
+
+1. Run the game (keep it open).
+2. Edit `config.lua` in another window (e.g. change `storm_blade.damage = 4.5` to `45`).
+3. **Save** — changes apply in ~0.35 seconds without recompiling.
+4. Press **F5** in-game to force a reload.
+
+No C++ rebuild needed for balance tweaks. Rebuild only when changing engine code.
+
 ## Requirements
 
 - CMake 3.16+
