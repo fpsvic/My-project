@@ -453,8 +453,9 @@ void UpdatePlayerSkeleton(GameState& game, bool grounded, float dt) {
 
     bool playWalk = grounded && game.player.walkAnimBlend > 0.12f;
     if (playWalk) {
-        float speed = 1.1f + game.player.walkAnimBlend * 0.45f;
-        game.playerAnimAccum += dt * 24.0f * speed;
+        float moveSpeed = std::clamp(game.player.walkAnimBlend * 5.5f, 0.5f, 5.5f);
+        float cycleSeconds = std::clamp(5.8f / moveSpeed, 0.72f, 1.05f);
+        game.playerAnimAccum += dt * static_cast<float>(anim.frameCount) / cycleSeconds;
         while (game.playerAnimAccum >= 1.0f) {
             game.playerAnimAccum -= 1.0f;
             game.playerAnimFrame = (game.playerAnimFrame + 1) % anim.frameCount;
@@ -1206,8 +1207,13 @@ void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
     Vector3 right{-forward.z, 0.0f, forward.x};
 
     float walkBlend = airborne ? 0.0f : game.player.walkAnimBlend;
-    float proceduralBlend = game.playerSkeletonAnim ? walkBlend * 0.2f : walkBlend;
-    WalkPose walk = ComputeWalkPose(proceduralBlend, game.player.walkPhase, forward, right);
+    WalkPose walk{};
+    if (!game.playerSkeletonAnim) {
+        walk = ComputeWalkPose(walkBlend, game.player.walkPhase, forward, right);
+    } else if (walkBlend > 0.02f) {
+        walk.bobY =
+            (1.0f - std::cos(game.player.walkPhase * 2.0f)) * 0.5f * 0.012f * walkBlend;
+    }
 
     float footBaseY = airborne ? game.player.position.y : groundY;
     Vector3 footWorld{
@@ -1345,23 +1351,23 @@ void UpdateCamera(Camera3D& camera, const GameState& game, float dt) {
 
     float yawRad = game.player.yaw * DEG2RAD;
     Vector3 forward{std::sin(yawRad), 0.0f, std::cos(yawRad)};
-    Vector3 right{-forward.z, 0.0f, forward.x};
 
-    // Fortnite-style over-the-right-shoulder anchor.
-    Vector3 shoulder{playerPos.x, baseY + 1.38f, playerPos.z};
+    // Classic third-person: centered behind the character, looking forward over their back.
+    constexpr float kCamDistance = 3.6f;
+    constexpr float kCamHeight = 1.62f;
+    constexpr float kCamLift = 0.22f;
+    constexpr float kLookAhead = 5.0f;
 
-    constexpr float kCamDistance = 2.2f;
-    constexpr float kCamSide = 0.62f;
-    constexpr float kCamLift = 0.28f;
+    Vector3 pivot{playerPos.x, baseY + kCamHeight, playerPos.z};
     Vector3 desired{
-        shoulder.x - forward.x * kCamDistance + right.x * kCamSide,
-        shoulder.y + kCamLift,
-        shoulder.z - forward.z * kCamDistance + right.z * kCamSide};
+        pivot.x - forward.x * kCamDistance,
+        pivot.y + kCamLift,
+        pivot.z - forward.z * kCamDistance};
 
     Vector3 lookTarget{
-        shoulder.x + forward.x * 3.5f,
-        shoulder.y + 0.12f,
-        shoulder.z + forward.z * 3.5f};
+        pivot.x + forward.x * kLookAhead,
+        pivot.y - 0.08f,
+        pivot.z + forward.z * kLookAhead};
 
     camera.position = Vector3Lerp(camera.position, desired, 14.0f * dt);
     camera.target = Vector3Lerp(camera.target, lookTarget, 16.0f * dt);

@@ -1,4 +1,4 @@
-"""Bake a simple walk cycle onto HumanFigure_game.glb for Raylib."""
+"""Bake a natural walk cycle onto HumanFigure_game.glb for Raylib."""
 import math
 import bpy
 import mathutils
@@ -55,7 +55,7 @@ def leg(name, side):
     foot = eb.new(f"{name}_foot")
     foot.parent = shin
     foot.head = shin.tail
-    foot.tail = (hip_x, foot_y + 0.01, center.z + side * 0.05)
+    foot.tail = (hip_x, foot_y + 0.01, center.z + side * 0.04)
     return thigh, shin, foot
 
 
@@ -63,8 +63,7 @@ leg("L", -1)
 leg("R", 1)
 bpy.ops.object.mode_set(mode="OBJECT")
 
-bone_names = [b.name for b in arm.data.bones]
-for name in bone_names:
+for name in [b.name for b in arm.data.bones]:
     mesh.vertex_groups.new(name=name)
 
 
@@ -120,14 +119,15 @@ pb = arm.pose.bones
 
 
 def pose_leg(prefix, phase):
+    """Forward/back leg swing only — no side roll (that caused the waddle)."""
     thigh = pb[f"{prefix}_thigh"]
     shin = pb[f"{prefix}_shin"]
     foot = pb[f"{prefix}_foot"]
     for bone in (thigh, shin, foot):
         bone.rotation_mode = "XYZ"
-    thigh.rotation_euler = (math.radians(42) * phase, 0.0, math.radians(8) * phase)
-    shin.rotation_euler = (math.radians(-58) * max(0.0, phase), 0.0, 0.0)
-    foot.rotation_euler = (math.radians(22) * max(0.0, -phase), 0.0, 0.0)
+    thigh.rotation_euler = (math.radians(24.0) * phase, 0.0, 0.0)
+    shin.rotation_euler = (math.radians(-36.0) * max(0.0, phase), 0.0, 0.0)
+    foot.rotation_euler = (math.radians(6.0) * max(0.0, -phase), 0.0, 0.0)
     thigh.keyframe_insert("rotation_euler")
     shin.keyframe_insert("rotation_euler")
     foot.keyframe_insert("rotation_euler")
@@ -136,9 +136,9 @@ def pose_leg(prefix, phase):
 for f in range(1, FRAMES + 1):
     bpy.context.scene.frame_set(f)
     t = (f - 1) / FRAMES * math.pi * 2.0
-    pb["hips"].location = (0.0, abs(math.sin(t * 2.0)) * height * 0.02, 0.0)
+    pb["hips"].location = (0.0, abs(math.sin(t * 2.0)) * height * 0.006, 0.0)
     pb["hips"].keyframe_insert("location")
-    pb["spine"].rotation_euler = (math.radians(8) * math.sin(t), 0.0, math.radians(5) * math.cos(t))
+    pb["spine"].rotation_euler = (math.radians(2.5) * math.sin(t), 0.0, 0.0)
     pb["spine"].keyframe_insert("rotation_euler")
     pose_leg("L", math.sin(t))
     pose_leg("R", math.sin(t + math.pi))
