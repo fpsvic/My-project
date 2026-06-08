@@ -107,6 +107,11 @@ struct GameState {
     Light sunLight{};
 };
 
+Font gHudFont{};
+bool gHudFontReady = false;
+constexpr float kHudFontSize = 18.0f;
+constexpr float kHudLineSpacing = 2.0f;
+
 unsigned WorldSeed(unsigned x) {
     x = ((x >> 16) ^ x) * 0x45d9f3bU;
     x = ((x >> 16) ^ x) * 0x45d9f3bU;
@@ -209,6 +214,46 @@ void GenerateWorld(WorldMap& world) {
         float scale = 1.1f + Hash01(x * 0.3f, z * 0.3f) * 1.4f;
         world.backdropForest.push_back({{x, 0.0f, z}, scale, true});
     }
+}
+
+const char* ResolveHudFontPath() {
+    const char* candidates[] = {
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+    };
+    for (const char* path : candidates) {
+        if (FileExists(path))
+            return path;
+    }
+    return nullptr;
+}
+
+void LoadHudFont() {
+    const char* path = ResolveHudFontPath();
+    if (path == nullptr)
+        return;
+    gHudFont = LoadFontEx(path, 48, nullptr, 0);
+    if (gHudFont.glyphs != nullptr)
+        gHudFontReady = true;
+}
+
+void DrawHudText(int x, int y, const char* text, Color color = RAYWHITE) {
+    if (gHudFontReady) {
+        DrawTextEx(gHudFont, text, {static_cast<float>(x), static_cast<float>(y)}, kHudFontSize, kHudLineSpacing,
+                   color);
+        return;
+    }
+    DrawText(text, x, y, static_cast<int>(kHudFontSize), color);
+}
+
+int HudTextWidth(const char* text) {
+    if (gHudFontReady) {
+        Vector2 size = MeasureTextEx(gHudFont, text, kHudFontSize, kHudLineSpacing);
+        return static_cast<int>(size.x + 0.5f);
+    }
+    return MeasureText(text, static_cast<int>(kHudFontSize));
 }
 
 std::string ResolveAssetPath(const char* relative) {
@@ -787,13 +832,14 @@ void DrawWorld(const GameState& game, Camera3D camera) {
 }
 
 void DrawHud(const GameState& game) {
+    const int lineHeight = gHudFontReady ? 24 : 22;
     int y = 12;
     auto line = [&](const char* text) {
-        DrawText(text, 12, y, 18, RAYWHITE);
-        y += 22;
+        DrawHudText(12, y, text);
+        y += lineHeight;
     };
 
-    line("Blade Arena Wilds (C++)");
+    line("Blade Arena");
     line("Right-click move | Space jump | A attack | R restart");
     char buf[160];
     std::snprintf(buf, sizeof(buf), "Health: %d", game.player.health);
@@ -817,7 +863,7 @@ void DrawHud(const GameState& game) {
 
     int fps = static_cast<int>(1.0f / std::max(game.smoothedFpsDelta, 0.0001f) + 0.5f);
     const char* fpsText = TextFormat("%d FPS", fps);
-    DrawText(fpsText, GetScreenWidth() - MeasureText(fpsText, 18) - 12, 10, 18, RAYWHITE);
+    DrawHudText(GetScreenWidth() - HudTextWidth(fpsText) - 12, 10, fpsText);
 }
 
 void UpdateCamera(Camera3D& camera, const GameState& game, float dt) {
@@ -860,8 +906,9 @@ std::string ResolveModelPath(int argc, char** argv) {
 
 int main(int argc, char** argv) {
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE);
-    InitWindow(1280, 720, "Blade Arena Wilds (C++)");
+    InitWindow(1280, 720, "Blade Arena");
     SetTargetFPS(60);
+    LoadHudFont();
 
     GameState game;
     GenerateWorld(game.world);
@@ -908,6 +955,8 @@ int main(int argc, char** argv) {
         UnloadModel(game.playerModel);
     if (game.characterShaderLoaded)
         UnloadShader(game.characterShader);
+    if (gHudFontReady)
+        UnloadFont(gHudFont);
 
     CloseWindow();
     return 0;

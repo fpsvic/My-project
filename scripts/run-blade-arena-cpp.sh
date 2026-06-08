@@ -29,7 +29,7 @@ build_game() {
     echo "cmake not found." >&2
     return 1
   fi
-  echo "Building Blade Arena (C++)..."
+  echo "Building Blade Arena..."
   cmake -S "$CPP_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
   cmake --build "$BUILD_DIR" -j"$(nproc)"
 }
