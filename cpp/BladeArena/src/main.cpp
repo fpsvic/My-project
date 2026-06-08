@@ -119,7 +119,7 @@ struct GameState {
     bool playerModelLoaded = false;
     float playerModelScale = 1.0f;
     float playerModelFeetOffset = 0.0f;
-    float playerModelGroundLift = 0.14f;
+    float playerModelGroundLift = 0.03f;
     Vector3 playerModelCenterOffset{0.0f, 0.0f, 0.0f};
     float playerModelYawOffset = 180.0f;
     Shader characterShader{};
@@ -333,11 +333,6 @@ bool SetupCharacterShader(GameState& game) {
     return true;
 }
 
-void ApplyShaderToModel(Model& model, Shader shader) {
-    for (int i = 0; i < model.materialCount; ++i)
-        model.materials[i].shader = shader;
-}
-
 void DownscaleModelTextures(Model& model, int maxSize) {
     static const int kTextureMaps[] = {MATERIAL_MAP_ALBEDO, MATERIAL_MAP_NORMAL, MATERIAL_MAP_ROUGHNESS,
                                        MATERIAL_MAP_OCCLUSION};
@@ -364,20 +359,18 @@ void SetupPlayerModel(GameState& game, const char* path) {
     if (game.playerModel.meshCount <= 0)
         return;
 
-    DownscaleModelTextures(game.playerModel, 512);
+    DownscaleModelTextures(game.playerModel, 1024);
 
     game.playerModelLoaded = true;
     BoundingBox bounds = GetModelBoundingBox(game.playerModel);
     float height = bounds.max.y - bounds.min.y;
     game.playerModelScale = height > 0.01f ? 1.85f / height : 1.85f;
     game.playerModelFeetOffset = bounds.min.y * game.playerModelScale;
-    game.playerModelGroundLift = 0.14f;
+    game.playerModelGroundLift = 0.03f;
     game.playerModelCenterOffset = {(bounds.min.x + bounds.max.x) * 0.5f, 0.0f, (bounds.min.z + bounds.max.z) * 0.5f};
 
     if (!game.characterShaderLoaded)
         SetupCharacterShader(game);
-    if (game.characterShaderLoaded)
-        ApplyShaderToModel(game.playerModel, game.characterShader);
 }
 
 void NotifyWeapon(GameState& game, const char* name) {
@@ -991,7 +984,6 @@ void DrawRivers(Vector3 playerPos) {
 }
 
 void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
-    (void)camera;
     Vector3 feet = game.player.position;
     feet.y = TerrainHeight(feet.x, feet.z);
 
@@ -1006,6 +998,7 @@ void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
             feet.y - game.playerModelFeetOffset + game.playerModelGroundLift,
             feet.z - game.playerModelCenterOffset.z * s};
 
+        // Raylib's built-in glTF PBR shader (do not override with custom lighting shader).
         DrawModelEx(game.playerModel, drawPos, {0.0f, 1.0f, 0.0f}, yaw, {s, s, s}, WHITE);
     } else {
         DrawCapsule(feet, feet + Vector3{0.0f, 1.8f, 0.0f}, 0.35f, 10, 10, {90, 150, 220, 255});
@@ -1059,6 +1052,8 @@ void DrawWorld(const GameState& game, Camera3D camera) {
         DrawCapsule(base, base + Vector3{0.0f, 1.6f, 0.0f}, 0.45f, 8, 8, {180, 60, 60, 255});
     }
 
+    EndSceneLighting(game);
+
     Vector3 playerFeet{playerPos.x, TerrainHeight(playerPos.x, playerPos.z), playerPos.z};
     DrawGroundShadow(playerFeet, 0.5f, 0.38f);
     DrawPlayerCharacter(game, camera);
@@ -1075,7 +1070,6 @@ void DrawWorld(const GameState& game, Camera3D camera) {
     if (game.player.stonestepShield > 0.0f) {
         DrawSphere({playerFeet.x, playerFeet.y + 0.9f, playerFeet.z}, 1.1f, {180, 185, 195, 70});
     }
-    EndSceneLighting(game);
 }
 
 void DrawHud(const GameState& game) {
