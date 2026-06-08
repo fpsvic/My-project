@@ -82,6 +82,16 @@ The template scene (`Assets/Scenes/SampleScene.unity`) contains a Main Camera, D
 - No ESLint, dotnet format, or repo CI config is present.
 - `com.unity.test-framework` is installed but **no tests are authored**; there is nothing to run until Edit Mode / Play Mode tests are added.
 
+### Native C++ Blade Arena (no Unity license required)
+
+Full gameplay on the Desktop pane without Unity:
+
+```bash
+/workspace/scripts/run-blade-arena-cpp.sh
+```
+
+First run builds with CMake + Raylib (`cpp/BladeArena/`). Requires `build-essential`, OpenGL/X11 libs, and `g++` (not Clang’s default `c++` linker). See `cpp/BladeArena/README.md`.
+
 ### Desktop preview (no Unity license required)
 
 To preview the **Human Figure** model on the Desktop pane (`DISPLAY=:1`):
