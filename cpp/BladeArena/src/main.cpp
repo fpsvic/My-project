@@ -11,8 +11,8 @@
 namespace {
 
 constexpr int kMaxHealth = 5;
-constexpr int kEnemyCount = 6;
-constexpr float kEnemySpawnRadius = 12.0f;
+constexpr int kEnemyCount = 10;
+constexpr float kMapHalfSize = 200.0f;
 constexpr float kPi = 3.14159265f;
 
 struct WeaponStats {
@@ -29,10 +29,15 @@ struct LootPickup {
     bool active = true;
 };
 
-struct Building {
+struct Cabin {
     Vector3 position;
     Color color;
     LootPickup loot;
+};
+
+struct Tree {
+    Vector3 position;
+    float scale;
 };
 
 struct Enemy {
@@ -40,7 +45,7 @@ struct Enemy {
     float health = 2.0f;
     float attackTimer = 0.0f;
     bool alive = true;
-    int targetKind = 0; // 0 none, 1 player, 2 enemy index
+    int targetKind = 0;
     int targetEnemy = -1;
 };
 
@@ -63,10 +68,16 @@ struct PlayerState {
     float attackCooldown = 0.0f;
 };
 
+struct WorldMap {
+    std::vector<Tree> trees;
+    std::vector<Vector3> riverTiles;
+};
+
 struct GameState {
     PlayerState player;
     std::vector<Enemy> enemies;
-    std::vector<Building> buildings;
+    std::vector<Cabin> cabins;
+    WorldMap world;
     StormState storm;
     int score = 0;
     bool gameOver = false;
@@ -75,39 +86,104 @@ struct GameState {
     float smoothedFpsDelta = 1.0f / 60.0f;
     Model playerModel{};
     bool playerModelLoaded = false;
+    float playerModelScale = 1.0f;
+    float playerModelFeetOffset = 0.0f;
 };
 
-float LengthXZ(Vector3 v) { return std::sqrt(v.x * v.x + v.z * v.z); }
-
-Vector3 FlatTo(Vector3 from, Vector3 to) {
-    Vector3 d{to.x - from.x, 0.0f, to.z - from.z};
-    return d;
+unsigned WorldSeed(unsigned x) {
+    x = ((x >> 16) ^ x) * 0x45d9f3bU;
+    x = ((x >> 16) ^ x) * 0x45d9f3bU;
+    x = (x >> 16) ^ x;
+    return x;
 }
 
-bool PointInShelter(Vector3 worldPos, const std::vector<Building>& buildings) {
+float Hash01(float x, float z) {
+    int ix = static_cast<int>(std::floor(x * 0.17f));
+    int iz = static_cast<int>(std::floor(z * 0.17f));
+    unsigned h = WorldSeed(static_cast<unsigned>(ix * 73856093 ^ iz * 19349663));
+    return static_cast<float>(h % 10000) / 10000.0f;
+}
+
+float RiverCenterX(float z) {
+    return 35.0f * std::sin(z * 0.028f) + 18.0f * std::sin(z * 0.071f + 1.2f);
+}
+
+float RiverWidth(float z) {
+    return 10.0f + 3.0f * std::sin(z * 0.04f);
+}
+
+bool IsInRiver(float x, float z) {
+    float center = RiverCenterX(z);
+    float halfWidth = RiverWidth(z) * 0.5f;
+    return std::fabs(x - center) <= halfWidth;
+}
+
+float TerrainHeight(float x, float z) {
+    float hills = 2.2f * std::sin(x * 0.018f) * std::cos(z * 0.014f);
+    hills += 1.4f * std::sin(x * 0.007f + z * 0.009f);
+    hills += (Hash01(x, z) - 0.5f) * 0.35f;
+    if (IsInRiver(x, z))
+        hills -= 1.35f;
+    return hills;
+}
+
+Vector3 FlatTo(Vector3 from, Vector3 to) {
+    return {to.x - from.x, 0.0f, to.z - from.z};
+}
+
+bool PointInCabin(Vector3 worldPos, const std::vector<Cabin>& cabins) {
     Vector3 sample{worldPos.x, worldPos.y + 0.75f, worldPos.z};
-    for (const Building& b : buildings) {
-        Vector3 center{b.position.x, b.position.y + 1.9f, b.position.z};
-        if (std::fabs(sample.x - center.x) <= 2.5f &&
-            std::fabs(sample.y - center.y) <= 2.0f &&
-            std::fabs(sample.z - center.z) <= 2.5f) {
+    for (const Cabin& c : cabins) {
+        Vector3 center{c.position.x, c.position.y + 1.9f, c.position.z};
+        if (std::fabs(sample.x - center.x) <= 2.8f && std::fabs(sample.y - center.y) <= 2.2f &&
+            std::fabs(sample.z - center.z) <= 2.8f)
             return true;
-        }
     }
     return false;
 }
 
-bool RayHitGround(Vector2 mouse, Camera3D camera, Vector3* hit) {
-    Ray ray = GetMouseRay(mouse, camera);
-    if (std::fabs(ray.direction.y) < 1e-5f)
-        return false;
-    float t = -ray.position.y / ray.direction.y;
-    if (t < 0.0f)
-        return false;
-    hit->x = ray.position.x + ray.direction.x * t;
-    hit->y = 0.0f;
-    hit->z = ray.position.z + ray.direction.z * t;
-    return true;
+void GenerateWorld(WorldMap& world) {
+    world.trees.clear();
+    world.riverTiles.clear();
+
+    for (float z = -kMapHalfSize; z <= kMapHalfSize; z += 11.0f) {
+        float x = RiverCenterX(z);
+        float w = RiverWidth(z);
+        world.riverTiles.push_back({x, TerrainHeight(x, z) - 0.2f, z});
+        (void)w;
+    }
+
+    for (int i = 0; i < 1400; ++i) {
+        unsigned h = WorldSeed(static_cast<unsigned>(i * 2654435761U + 1013904223U));
+        float rx = static_cast<float>(h % 10000) / 10000.0f;
+        float rz = static_cast<float>((h / 10000U) % 10000U) / 10000.0f;
+        float x = (rx * 2.0f - 1.0f) * (kMapHalfSize - 15.0f);
+        float z = (rz * 2.0f - 1.0f) * (kMapHalfSize - 15.0f);
+
+        if (IsInRiver(x, z))
+            continue;
+        if (Vector2Distance({x, z}, {0.0f, 0.0f}) < 18.0f)
+            continue;
+
+        float scale = 0.75f + Hash01(x + 3.1f, z - 1.7f) * 0.9f;
+        float y = TerrainHeight(x, z);
+        world.trees.push_back({{x, y, z}, scale});
+    }
+}
+
+void SetupPlayerModel(GameState& game, const char* path) {
+    if (!FileExists(path))
+        return;
+
+    game.playerModel = LoadModel(path);
+    if (game.playerModel.meshCount <= 0)
+        return;
+
+    game.playerModelLoaded = true;
+    BoundingBox bounds = GetModelBoundingBox(game.playerModel);
+    float height = bounds.max.y - bounds.min.y;
+    game.playerModelScale = height > 0.01f ? 1.85f / height : 1.85f;
+    game.playerModelFeetOffset = bounds.min.y * game.playerModelScale;
 }
 
 void NotifyWeapon(GameState& game, const char* name) {
@@ -115,43 +191,86 @@ void NotifyWeapon(GameState& game, const char* name) {
     game.weaponMessageTimer = 3.0f;
 }
 
-void ResetGame(GameState& game) {
-    game = GameState{};
+void SpawnEnemies(GameState& game) {
+    game.enemies.clear();
+    game.enemies.resize(kEnemyCount);
+    for (int i = 0; i < kEnemyCount; ++i) {
+        unsigned h = WorldSeed(static_cast<unsigned>(i * 1597334677U + 42U));
+        float angle = static_cast<float>(h % 6283) / 1000.0f;
+        float radius = 45.0f + static_cast<float>((h / 6283U) % 80U);
+        float x = std::cos(angle) * radius;
+        float z = std::sin(angle) * radius;
+        float y = TerrainHeight(x, z);
+        game.enemies[i].position = {x, y + 0.9f, z};
+        game.enemies[i].health = 2.0f;
+        game.enemies[i].alive = true;
+    }
+}
+
+void ResetGameplay(GameState& game) {
+    Model model = game.playerModel;
+    bool modelLoaded = game.playerModelLoaded;
+    float modelScale = game.playerModelScale;
+    float feetOffset = game.playerModelFeetOffset;
+    WorldMap world = game.world;
+
+    game.player = PlayerState{};
     game.player.health = kMaxHealth;
-    game.player.position = {0.0f, 0.0f, 0.0f};
+    game.player.position = {0.0f, TerrainHeight(0.0f, 0.0f), 0.0f};
     game.player.destination = game.player.position;
 
-    game.buildings = {
-        {{-8.0f, 0.0f, 6.0f},
-         {120, 110, 100, 255},
-         {{-8.0f, 1.35f, 6.0f},
+    game.playerModel = model;
+    game.playerModelLoaded = modelLoaded;
+    game.playerModelScale = modelScale;
+    game.playerModelFeetOffset = feetOffset;
+    game.world = world;
+
+    game.cabins = {
+        {{-70.0f, TerrainHeight(-70.0f, 55.0f), 55.0f},
+         {130, 105, 85, 255},
+         {{-70.0f, TerrainHeight(-70.0f, 55.0f) + 1.35f, 55.0f},
           {"Iron Sword", 2.0f, 2.5f, 0.38f, {184, 115, 51, 255}},
           true}},
-        {{7.0f, 0.0f, -5.0f},
-         {100, 120, 110, 255},
-         {{7.0f, 1.35f, -5.0f},
+        {{85.0f, TerrainHeight(85.0f, -60.0f), -60.0f},
+         {105, 125, 100, 255},
+         {{85.0f, TerrainHeight(85.0f, -60.0f) + 1.35f, -60.0f},
           {"Steel Sword", 3.0f, 2.8f, 0.32f, {199, 209, 230, 255}},
           true}},
-        {{0.0f, 0.0f, 9.0f},
-         {90, 100, 130, 255},
-         {{0.0f, 1.35f, 9.0f},
+        {{-45.0f, TerrainHeight(-45.0f, -95.0f), -95.0f},
+         {95, 105, 135, 255},
+         {{-45.0f, TerrainHeight(-45.0f, -95.0f) + 1.35f, -95.0f},
           {"Storm Blade", 4.5f, 3.2f, 0.28f, {115, 191, 255, 255}},
           true}},
     };
 
-    game.enemies.clear();
-    game.enemies.resize(kEnemyCount);
-    for (int i = 0; i < kEnemyCount; ++i) {
-        float angle = (2.0f * kPi / kEnemyCount) * static_cast<float>(i);
-        game.enemies[i].position = {std::cos(angle) * kEnemySpawnRadius, 0.9f, std::sin(angle) * kEnemySpawnRadius};
-        game.enemies[i].health = 2.0f;
-        game.enemies[i].alive = true;
-    }
-
+    SpawnEnemies(game);
     game.storm = StormState{};
     game.storm.checkTimer = 5.0f;
     game.score = 0;
     game.gameOver = false;
+    game.weaponMessage[0] = '\0';
+    game.weaponMessageTimer = 0.0f;
+}
+
+bool RayHitTerrain(Vector2 mouse, Camera3D camera, Vector3* hit) {
+    Ray ray = GetMouseRay(mouse, camera);
+    if (std::fabs(ray.direction.y) < 1e-5f)
+        return false;
+    float t = -ray.position.y / ray.direction.y;
+    if (t < 0.0f)
+        return false;
+    hit->x = ray.position.x + ray.direction.x * t;
+    hit->z = ray.position.z + ray.direction.z * t;
+    if (std::fabs(hit->x) > kMapHalfSize || std::fabs(hit->z) > kMapHalfSize)
+        return false;
+    hit->y = TerrainHeight(hit->x, hit->z);
+    return true;
+}
+
+void ClampToMap(Vector3& pos) {
+    pos.x = std::clamp(pos.x, -kMapHalfSize, kMapHalfSize);
+    pos.z = std::clamp(pos.z, -kMapHalfSize, kMapHalfSize);
+    pos.y = TerrainHeight(pos.x, pos.z);
 }
 
 void TryStartStorm(GameState& game) {
@@ -166,19 +285,15 @@ void TryStartStorm(GameState& game) {
 
 void StrikeLightning(GameState& game) {
     game.storm.flashTimer = 0.12f;
-
-    if (!PointInShelter(game.player.position, game.buildings) && GetRandomValue(0, 999) < 50) {
+    if (!PointInCabin(game.player.position, game.cabins) && GetRandomValue(0, 999) < 50) {
         game.player.health -= 2;
         if (game.player.health <= 0) {
             game.player.health = 0;
             game.gameOver = true;
         }
     }
-
     for (auto& enemy : game.enemies) {
-        if (!enemy.alive)
-            continue;
-        if (PointInShelter(enemy.position, game.buildings))
+        if (!enemy.alive || PointInCabin(enemy.position, game.cabins))
             continue;
         if (GetRandomValue(0, 999) < 50)
             enemy.health -= 2.0f;
@@ -217,9 +332,8 @@ void PickEnemyTarget(Enemy& enemy, const GameState& game, int selfIndex) {
     enemy.targetEnemy = -1;
     float bestScore = 1e9f;
 
-    Vector3 toPlayer = FlatTo(enemy.position, game.player.position);
-    float playerDist = Vector3Length(toPlayer);
-    if (playerDist <= 18.0f) {
+    float playerDist = Vector3Distance(enemy.position, game.player.position);
+    if (playerDist <= 45.0f) {
         bestScore = playerDist / 1.15f;
         enemy.targetKind = 1;
     }
@@ -228,7 +342,7 @@ void PickEnemyTarget(Enemy& enemy, const GameState& game, int selfIndex) {
         if (i == selfIndex || !game.enemies[i].alive)
             continue;
         float dist = Vector3Distance(enemy.position, game.enemies[i].position);
-        if (dist > 18.0f || dist >= bestScore)
+        if (dist > 45.0f || dist >= bestScore)
             continue;
         bestScore = dist;
         enemy.targetKind = 2;
@@ -263,14 +377,9 @@ void KillEnemy(GameState& game, int index, bool awardScore) {
 }
 
 void PlayerAttack(GameState& game) {
-    Vector3 forward{
-        std::sin(game.player.yaw * DEG2RAD),
-        0.0f,
-        std::cos(game.player.yaw * DEG2RAD)};
-    Vector3 center{
-        game.player.position.x + forward.x * game.player.weapon.range * 0.5f,
-        game.player.position.y + 1.0f,
-        game.player.position.z + forward.z * game.player.weapon.range * 0.5f};
+    Vector3 forward{std::sin(game.player.yaw * DEG2RAD), 0.0f, std::cos(game.player.yaw * DEG2RAD)};
+    Vector3 center{game.player.position.x + forward.x * game.player.weapon.range * 0.5f,
+                   game.player.position.y + 1.0f, game.player.position.z + forward.z * game.player.weapon.range * 0.5f};
 
     for (int i = 0; i < static_cast<int>(game.enemies.size()); ++i) {
         if (!game.enemies[i].alive)
@@ -284,15 +393,15 @@ void PlayerAttack(GameState& game) {
 }
 
 void TryPickupLoot(GameState& game) {
-    for (Building& building : game.buildings) {
-        if (!building.loot.active)
+    for (Cabin& cabin : game.cabins) {
+        if (!cabin.loot.active)
             continue;
-        if (Vector3Distance(game.player.position, building.loot.position) > 1.2f)
+        if (Vector3Distance(game.player.position, cabin.loot.position) > 1.5f)
             continue;
-        if (building.loot.stats.damage <= game.player.weapon.damage + 0.01f)
+        if (cabin.loot.stats.damage <= game.player.weapon.damage + 0.01f)
             continue;
-        game.player.weapon = building.loot.stats;
-        building.loot.active = false;
+        game.player.weapon = cabin.loot.stats;
+        cabin.loot.active = false;
         NotifyWeapon(game, game.player.weapon.name);
     }
 }
@@ -304,40 +413,44 @@ void UpdatePlayer(GameState& game, Camera3D camera, float dt) {
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
         Vector3 hit{};
-        if (RayHitGround(GetMousePosition(), camera, &hit)) {
+        if (RayHitTerrain(GetMousePosition(), camera, &hit)) {
             p.destination = hit;
             p.hasDestination = true;
         }
     }
 
-    bool grounded = p.position.y <= 0.001f;
+    float groundY = TerrainHeight(p.position.x, p.position.z);
+    bool grounded = p.position.y <= groundY + 0.05f;
     if (grounded && p.verticalVelocity < 0.0f)
         p.verticalVelocity = 0.0f;
     if (IsKeyPressed(KEY_SPACE) && grounded)
-        p.verticalVelocity = 6.0f;
+        p.verticalVelocity = 6.5f;
 
-    p.verticalVelocity += -20.0f * dt;
+    p.verticalVelocity += -22.0f * dt;
     p.position.y += p.verticalVelocity * dt;
-    if (p.position.y < 0.0f) {
-        p.position.y = 0.0f;
+    groundY = TerrainHeight(p.position.x, p.position.z);
+    if (p.position.y < groundY) {
+        p.position.y = groundY;
         p.verticalVelocity = 0.0f;
     }
 
+    float moveSpeed = IsInRiver(p.position.x, p.position.z) ? 3.2f : 5.5f;
     Vector3 horizontal{0.0f, 0.0f, 0.0f};
     if (p.hasDestination) {
         Vector3 toDest = FlatTo(p.position, p.destination);
         float dist = Vector3Length(toDest);
-        if (dist <= 0.2f) {
+        if (dist <= 0.35f) {
             p.hasDestination = false;
         } else {
-            horizontal = Vector3Scale(Vector3Normalize(toDest), 5.0f);
+            horizontal = Vector3Scale(Vector3Normalize(toDest), moveSpeed);
             float targetYaw = std::atan2(toDest.x, toDest.z) * RAD2DEG;
-            p.yaw = Lerp(p.yaw, targetYaw, 14.0f * dt);
+            p.yaw = Lerp(p.yaw, targetYaw, 12.0f * dt);
         }
     }
 
     p.position.x += horizontal.x * dt;
     p.position.z += horizontal.z * dt;
+    ClampToMap(p.position);
 
     p.attackCooldown -= dt;
     if (IsKeyPressed(KEY_A) && p.attackCooldown <= 0.0f) {
@@ -366,10 +479,7 @@ void UpdateEnemies(GameState& game, float dt) {
             Vector3 step = Vector3Scale(Vector3Normalize(toTarget), 2.5f * dt);
             enemy.position.x += step.x;
             enemy.position.z += step.z;
-            if (distance > 0.01f) {
-                float yaw = std::atan2(toTarget.x, toTarget.z) * RAD2DEG;
-                (void)yaw;
-            }
+            enemy.position.y = TerrainHeight(enemy.position.x, enemy.position.z) + 0.9f;
             continue;
         }
 
@@ -378,9 +488,9 @@ void UpdateEnemies(GameState& game, float dt) {
             continue;
         enemy.attackTimer = 1.2f;
 
-        if (enemy.targetKind == 1) {
+        if (enemy.targetKind == 1)
             DamagePlayer(game, 1);
-        } else if (enemy.targetKind == 2 && enemy.targetEnemy >= 0) {
+        else if (enemy.targetKind == 2 && enemy.targetEnemy >= 0) {
             Enemy& other = game.enemies[enemy.targetEnemy];
             other.health -= 1.0f;
             if (other.health <= 0.0f)
@@ -389,57 +499,100 @@ void UpdateEnemies(GameState& game, float dt) {
     }
 }
 
-void DrawBuilding(const Building& building) {
-    Vector3 center{building.position.x, building.position.y + 1.5f, building.position.z};
-    DrawCube(center, 4.0f, 3.0f, 4.0f, building.color);
-    DrawCubeWires(center, 4.0f, 3.0f, 4.0f, ColorAlpha(WHITE, 0.25f));
-    Vector3 roof{center.x, center.y + 1.8f, center.z};
-    DrawCube(roof, 4.8f, 0.6f, 4.8f, ColorBrightness(building.color, -0.15f));
+void DrawTree(const Tree& tree) {
+    float trunkH = 2.6f * tree.scale;
+    Color trunk{92, 58, 32, 255};
+    Color leaves{38, 118, 52, 255};
+    Color leavesDark{28, 88, 40, 255};
 
-    if (building.loot.active) {
-        DrawCylinder(building.loot.position + Vector3{0.0f, -0.35f, 0.0f}, 0.35f, 0.35f, 0.16f, 12,
-                     {64, 64, 72, 255});
-        DrawCube(building.loot.position, 0.22f, 0.9f, 0.12f, building.loot.stats.color);
+    DrawCylinder(tree.position, 0.22f * tree.scale, 0.28f * tree.scale, trunkH, 8, trunk);
+    Vector3 crown{tree.position.x, tree.position.y + trunkH + 0.7f * tree.scale, tree.position.z};
+    DrawSphere(crown, 1.25f * tree.scale, leaves);
+    DrawSphere(crown + Vector3{0.4f * tree.scale, 0.2f, 0.2f * tree.scale}, 0.9f * tree.scale, leavesDark);
+}
+
+void DrawCabin(const Cabin& cabin) {
+    float baseY = TerrainHeight(cabin.position.x, cabin.position.z);
+    Vector3 center{cabin.position.x, baseY + 1.5f, cabin.position.z};
+    DrawCube(center, 4.2f, 3.0f, 4.2f, cabin.color);
+    DrawCubeWires(center, 4.2f, 3.0f, 4.2f, ColorAlpha(BLACK, 0.2f));
+    Vector3 roof{center.x, center.y + 1.85f, center.z};
+    DrawCube(roof, 5.2f, 0.55f, 5.2f, ColorBrightness(cabin.color, -0.2f));
+
+    if (cabin.loot.active) {
+        Vector3 lootPos{cabin.loot.position.x, TerrainHeight(cabin.loot.position.x, cabin.loot.position.z) + 1.35f,
+                        cabin.loot.position.z};
+        DrawCylinder(lootPos + Vector3{0.0f, -0.35f, 0.0f}, 0.35f, 0.35f, 0.16f, 10, {64, 64, 72, 255});
+        DrawCube(lootPos, 0.22f, 0.9f, 0.12f, cabin.loot.stats.color);
     }
 }
 
+void DrawTerrain() {
+    const int steps = 40;
+    const float cell = (kMapHalfSize * 2.0f) / steps;
+    for (int ix = 0; ix < steps; ++ix) {
+        for (int iz = 0; iz < steps; ++iz) {
+            float x = -kMapHalfSize + (ix + 0.5f) * cell;
+            float z = -kMapHalfSize + (iz + 0.5f) * cell;
+            float y = TerrainHeight(x, z);
+            Color grass = IsInRiver(x, z) ? Color{52, 95, 62, 255}
+                                          : Color{58, 118, 48, 255};
+            if (!IsInRiver(x, z) && Hash01(x, z) > 0.82f)
+                grass = {72, 98, 42, 255};
+            DrawCube({x, y - 0.25f, z}, cell * 1.02f, 0.5f, cell * 1.02f, grass);
+        }
+    }
+}
+
+void DrawRivers() {
+    for (float z = -kMapHalfSize; z <= kMapHalfSize; z += 9.0f) {
+        float x = RiverCenterX(z);
+        float w = RiverWidth(z);
+        float y = TerrainHeight(x, z) - 0.15f;
+        DrawCube({x, y, z}, w, 0.12f, 10.0f, {45, 130, 195, 210});
+        DrawCube({x, y + 0.02f, z}, w * 0.92f, 0.04f, 9.0f, {90, 180, 230, 180});
+    }
+}
+
+void DrawPlayerCharacter(const GameState& game) {
+    Vector3 feet = game.player.position;
+    feet.y = TerrainHeight(feet.x, feet.z);
+
+    if (game.playerModelLoaded) {
+        Vector3 drawPos{feet.x, feet.y - game.playerModelFeetOffset, feet.z};
+        DrawModelEx(game.playerModel, drawPos, {0.0f, 1.0f, 0.0f}, game.player.yaw, {game.playerModelScale, game.playerModelScale, game.playerModelScale},
+                    WHITE);
+    } else {
+        DrawCapsule(feet, feet + Vector3{0.0f, 1.8f, 0.0f}, 0.35f, 10, 10, {90, 150, 220, 255});
+    }
+
+    Vector3 forward{std::sin(game.player.yaw * DEG2RAD), 0.0f, std::cos(game.player.yaw * DEG2RAD)};
+    float bladeLen = std::strstr(game.player.weapon.name, "Storm")   ? 1.2f
+                     : std::strstr(game.player.weapon.name, "Steel") ? 1.05f
+                                                                     : 0.95f;
+    Vector3 swordPos = feet + Vector3{forward.x * 0.4f, 1.15f, forward.z * 0.4f};
+    DrawCube(swordPos, 0.1f, bladeLen, 0.07f, game.player.weapon.color);
+}
+
 void DrawWorld(const GameState& game) {
-    DrawPlane({0.0f, 0.0f, 0.0f}, {36.0f, 36.0f}, {45, 55, 70, 255});
+    DrawTerrain();
+    DrawRivers();
 
-    DrawCube({0.0f, 1.5f, 15.0f}, 30.0f, 3.0f, 1.0f, {70, 75, 85, 255});
-    DrawCube({0.0f, 1.5f, -15.0f}, 30.0f, 3.0f, 1.0f, {70, 75, 85, 255});
-    DrawCube({15.0f, 1.5f, 0.0f}, 1.0f, 3.0f, 30.0f, {70, 75, 85, 255});
-    DrawCube({-15.0f, 1.5f, 0.0f}, 1.0f, 3.0f, 30.0f, {70, 75, 85, 255});
+    for (const Cabin& cabin : game.cabins)
+        DrawCabin(cabin);
 
-    for (const Building& b : game.buildings)
-        DrawBuilding(b);
+    for (const Tree& tree : game.world.trees)
+        DrawTree(tree);
 
     for (const Enemy& enemy : game.enemies) {
         if (!enemy.alive)
             continue;
-        DrawCapsule(enemy.position, enemy.position + Vector3{0.0f, 1.6f, 0.0f}, 0.45f, 8, 8, {180, 60, 60, 255});
+        float y = TerrainHeight(enemy.position.x, enemy.position.z);
+        Vector3 base{enemy.position.x, y, enemy.position.z};
+        DrawCapsule(base, base + Vector3{0.0f, 1.6f, 0.0f}, 0.45f, 8, 8, {180, 60, 60, 255});
     }
 
-    if (game.playerModelLoaded) {
-        BoundingBox bounds = GetModelBoundingBox(game.playerModel);
-        float height = bounds.max.y - bounds.min.y;
-        float scale = height > 0.01f ? 1.8f / height : 1.0f;
-        DrawModelEx(game.playerModel, game.player.position, {0.0f, 1.0f, 0.0f}, game.player.yaw, {scale, scale, scale},
-                    WHITE);
-    } else {
-        DrawCapsule(game.player.position, game.player.position + Vector3{0.0f, 1.8f, 0.0f}, 0.35f, 8, 8,
-                    {90, 150, 220, 255});
-    }
-
-    Vector3 forward{
-        std::sin(game.player.yaw * DEG2RAD),
-        0.0f,
-        std::cos(game.player.yaw * DEG2RAD)};
-    float bladeLen = std::strstr(game.player.weapon.name, "Storm")   ? 1.2f
-                     : std::strstr(game.player.weapon.name, "Steel") ? 1.05f
-                                                                     : 0.95f;
-    Vector3 swordPos = game.player.position + Vector3{forward.x * 0.35f + 0.1f, 1.1f, forward.z * 0.35f + 0.1f};
-    DrawCube(swordPos, 0.18f, bladeLen, 0.08f, game.player.weapon.color);
+    DrawPlayerCharacter(game);
 }
 
 void DrawHud(const GameState& game) {
@@ -449,9 +602,9 @@ void DrawHud(const GameState& game) {
         y += 22;
     };
 
-    line("Blade Arena (C++)");
+    line("Blade Arena Wilds (C++)");
     line("Right-click move | Space jump | A attack | R restart");
-    char buf[128];
+    char buf[160];
     std::snprintf(buf, sizeof(buf), "Health: %d", game.player.health);
     line(buf);
     std::snprintf(buf, sizeof(buf), "Equipped: %s (%.1f dmg)", game.player.weapon.name, game.player.weapon.damage);
@@ -465,7 +618,7 @@ void DrawHud(const GameState& game) {
     line(buf);
 
     if (game.storm.active)
-        line("STORM - hide in buildings for shelter and better swords!");
+        line("STORM - hide in cabins for shelter and better swords!");
     if (game.weaponMessageTimer > 0.0f)
         line(game.weaponMessage);
     if (game.gameOver)
@@ -473,8 +626,23 @@ void DrawHud(const GameState& game) {
 
     int fps = static_cast<int>(1.0f / std::max(game.smoothedFpsDelta, 0.0001f) + 0.5f);
     const char* fpsText = TextFormat("%d FPS", fps);
-    int fpsWidth = MeasureText(fpsText, 18);
-    DrawText(fpsText, GetScreenWidth() - fpsWidth - 12, 10, 18, RAYWHITE);
+    DrawText(fpsText, GetScreenWidth() - MeasureText(fpsText, 18) - 12, 10, 18, RAYWHITE);
+}
+
+void UpdateCamera(Camera3D& camera, const GameState& game, float dt) {
+    Vector3 playerCenter = game.player.position;
+    playerCenter.y = TerrainHeight(playerCenter.x, playerCenter.z) + 1.4f;
+
+    float yawRad = game.player.yaw * DEG2RAD;
+    const float camDistance = 9.0f;
+    const float camHeight = 3.8f;
+    Vector3 desired{
+        playerCenter.x - std::sin(yawRad) * camDistance,
+        playerCenter.y + camHeight,
+        playerCenter.z - std::cos(yawRad) * camDistance};
+
+    camera.position = Vector3Lerp(camera.position, desired, 6.0f * dt);
+    camera.target = Vector3Lerp(camera.target, playerCenter, 8.0f * dt);
 }
 
 std::string ResolveModelPath(int argc, char** argv) {
@@ -489,28 +657,20 @@ std::string ResolveModelPath(int argc, char** argv) {
 } // namespace
 
 int main(int argc, char** argv) {
-    const int screenWidth = 1280;
-    const int screenHeight = 720;
-
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE);
-    InitWindow(screenWidth, screenHeight, "Blade Arena (C++)");
+    InitWindow(1280, 720, "Blade Arena Wilds (C++)");
     SetTargetFPS(60);
 
     GameState game;
-    ResetGame(game);
-
-    std::string modelPath = ResolveModelPath(argc, argv);
-    if (FileExists(modelPath.c_str())) {
-        game.playerModel = LoadModel(modelPath.c_str());
-        game.playerModelLoaded = game.playerModel.meshCount > 0;
-    }
+    GenerateWorld(game.world);
+    SetupPlayerModel(game, ResolveModelPath(argc, argv).c_str());
+    ResetGameplay(game);
 
     Camera3D camera{};
-    camera.position = {0.0f, 2.5f, -5.0f};
-    camera.target = {0.0f, 1.2f, 0.0f};
     camera.up = {0.0f, 1.0f, 0.0f};
-    camera.fovy = 60.0f;
+    camera.fovy = 55.0f;
     camera.projection = CAMERA_PERSPECTIVE;
+    UpdateCamera(camera, game, 1.0f);
 
     while (!WindowShouldClose()) {
         float dt = GetFrameTime();
@@ -519,19 +679,16 @@ int main(int argc, char** argv) {
             game.weaponMessageTimer -= dt;
 
         if (IsKeyPressed(KEY_R))
-            ResetGame(game);
+            ResetGameplay(game);
 
         UpdateStorm(game, dt);
         UpdatePlayer(game, camera, dt);
         UpdateEnemies(game, dt);
+        UpdateCamera(camera, game, dt);
 
-        Vector3 desiredCam = game.player.position + Vector3{0.0f, 2.5f, -5.0f};
-        camera.position = Vector3Lerp(camera.position, desiredCam, 8.0f * dt);
-        camera.target = game.player.position + Vector3{0.0f, 1.2f, 0.0f};
-
-        Color sky = game.storm.active ? Color{12, 15, 28, 255} : Color{35, 45, 70, 255};
+        Color sky = game.storm.active ? Color{28, 34, 48, 255} : Color{95, 165, 220, 255};
         if (game.storm.flashTimer > 0.0f)
-            sky = Color{180, 190, 255, 255};
+            sky = Color{200, 210, 255, 255};
 
         BeginDrawing();
         ClearBackground(sky);

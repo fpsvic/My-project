@@ -2,6 +2,8 @@
 
 Native C++ port of Blade Arena using [Raylib](https://www.raylib.com/). Runs on the Desktop without a Unity license.
 
+**Outdoor open world:** ~400×400 map with rolling hills, winding rivers, ~1400 trees, scattered cabins with sword loot, and your **HumanFigure** GLB as the visible third-person character.
+
 ## Build
 
 ```bash
