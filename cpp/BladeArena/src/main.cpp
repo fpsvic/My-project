@@ -434,17 +434,47 @@ void UpdateWalkAnimation(PlayerState& p, float horizontalSpeed, bool grounded, f
 
     if (grounded && p.isDashing) {
         targetBlend = 1.15f;
-        phaseSpeed = 13.5f;
-    } else if (grounded && horizontalSpeed > 0.12f) {
-        targetBlend = std::clamp(horizontalSpeed / 5.5f, 0.35f, 1.0f);
-        phaseSpeed = horizontalSpeed * 2.4f;
+        phaseSpeed = 14.5f;
+    } else if (grounded && horizontalSpeed > 0.05f) {
+        targetBlend = std::clamp(horizontalSpeed / 4.5f, 0.55f, 1.0f);
+        phaseSpeed = 8.5f + horizontalSpeed * 1.35f;
     }
 
-    p.walkAnimBlend = Lerp(p.walkAnimBlend, targetBlend, 10.0f * dt);
+    p.walkAnimBlend = Lerp(p.walkAnimBlend, targetBlend, 12.0f * dt);
     if (p.walkAnimBlend > 0.02f)
         p.walkPhase += phaseSpeed * dt;
     else
         p.walkPhase = Lerp(p.walkPhase, 0.0f, 8.0f * dt);
+}
+
+struct WalkPose {
+    float bobY = 0.0f;
+    float squashY = 1.0f;
+    float pitchDeg = 0.0f;
+    float rollDeg = 0.0f;
+    Vector3 footShift{0.0f, 0.0f, 0.0f};
+};
+
+WalkPose ComputeWalkPose(float blend, float phase, Vector3 forward, Vector3 right) {
+    WalkPose pose;
+    if (blend <= 0.001f)
+        return pose;
+
+    float sinP = std::sin(phase);
+    float cosP = std::cos(phase);
+    float sin2P = std::sin(phase * 2.0f);
+    float cos2P = std::cos(phase * 2.0f);
+
+    pose.bobY = (1.0f - cos2P) * 0.5f * 0.07f * blend;
+    pose.squashY = 1.0f - 0.04f * (1.0f - cos2P) * 0.5f * blend;
+    pose.pitchDeg = sinP * 8.0f * blend;
+    pose.rollDeg = cosP * 7.0f * blend;
+
+    float lateral = sinP * 0.05f * blend;
+    float stride = cosP * 0.03f * blend;
+    pose.footShift.x = right.x * lateral + forward.x * stride;
+    pose.footShift.z = right.z * lateral + forward.z * stride;
+    return pose;
 }
 
 void DrawModelWithTint(Model model, Matrix transform, Color tint) {
@@ -470,6 +500,27 @@ void DrawModelWithEuler(Model model, Vector3 position, Vector3 rotationDeg, Vect
     Matrix matRotZ = MatrixRotateZ(rotationDeg.z * DEG2RAD);
     Matrix matRot = MatrixMultiply(matRotY, MatrixMultiply(matRotX, matRotZ));
     Matrix matTranslation = MatrixTranslate(position.x, position.y, position.z);
+    Matrix transform = MatrixMultiply(MatrixMultiply(matScale, matRot), matTranslation);
+    DrawModelWithTint(model, transform, tint);
+}
+
+void DrawModelWithFootAt(Model model, Vector3 footWorld, Vector3 footModelPoint, Vector3 rotationDeg,
+                         Vector3 scale, Color tint) {
+    Matrix matScale = MatrixScale(scale.x, scale.y, scale.z);
+    Matrix matRotX = MatrixRotateX(rotationDeg.x * DEG2RAD);
+    Matrix matRotY = MatrixRotateY(rotationDeg.y * DEG2RAD);
+    Matrix matRotZ = MatrixRotateZ(rotationDeg.z * DEG2RAD);
+    Matrix matRot = MatrixMultiply(matRotY, MatrixMultiply(matRotX, matRotZ));
+
+    Vector3 scaledFoot{
+        footModelPoint.x * scale.x,
+        footModelPoint.y * scale.y,
+        footModelPoint.z * scale.z,
+    };
+    Vector3 rotatedFoot = Vector3Transform(scaledFoot, matRot);
+    Vector3 drawPos = Vector3Subtract(footWorld, rotatedFoot);
+
+    Matrix matTranslation = MatrixTranslate(drawPos.x, drawPos.y, drawPos.z);
     Matrix transform = MatrixMultiply(MatrixMultiply(matScale, matRot), matTranslation);
     DrawModelWithTint(model, transform, tint);
 }
@@ -1104,21 +1155,25 @@ void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
     Vector3 forward{std::sin(game.player.yaw * DEG2RAD), 0.0f, std::cos(game.player.yaw * DEG2RAD)};
     Vector3 right{-forward.z, 0.0f, forward.x};
 
-    float walkBlend = game.player.walkAnimBlend;
-    float phase = game.player.walkPhase;
-    float bob = (1.0f - std::cos(phase * 2.0f)) * 0.5f * 0.018f * walkBlend;
-    float squash = 1.0f - 0.015f * (1.0f - std::cos(phase * 2.0f)) * 0.5f * walkBlend;
+    float walkBlend = airborne ? 0.0f : game.player.walkAnimBlend;
+    WalkPose walk = ComputeWalkPose(walkBlend, game.player.walkPhase, forward, right);
 
     float footBaseY = airborne ? game.player.position.y : groundY;
-    float visualGroundY = footBaseY + game.playerModelGroundLift + bob;
+    Vector3 footWorld{
+        feet.x + walk.footShift.x,
+        footBaseY + game.playerModelGroundLift + walk.bobY,
+        feet.z + walk.footShift.z,
+    };
+
+    Vector3 footModelPoint{
+        game.playerModelCenterOffset.x,
+        game.playerModelPivotY,
+        game.playerModelCenterOffset.z,
+    };
 
     if (game.playerModelLoaded) {
-        Vector3 drawPos{
-            feet.x - game.playerModelCenterOffset.x * s,
-            visualGroundY - game.playerModelPivotY * s,
-            feet.z - game.playerModelCenterOffset.z * s};
-
-        DrawModelWithEuler(game.playerModel, drawPos, {0.0f, yaw, 0.0f}, {s, s * squash, s}, WHITE);
+        DrawModelWithFootAt(game.playerModel, footWorld, footModelPoint,
+                            {walk.pitchDeg, yaw, walk.rollDeg}, {s, s * walk.squashY, s}, WHITE);
     } else {
         DrawCapsule(feet, feet + Vector3{0.0f, 1.8f, 0.0f}, 0.35f, 10, 10, {90, 150, 220, 255});
     }
@@ -1126,9 +1181,12 @@ void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
     float bladeLen = std::strstr(game.player.weapon.name, "Storm")   ? 1.2f
                      : std::strstr(game.player.weapon.name, "Steel") ? 1.05f
                                                                      : 0.95f;
-    float visualFootY = visualGroundY;
-    Vector3 hand{feet.x + right.x * 0.28f + forward.x * 0.12f, visualFootY + 1.05f,
-                 feet.z + right.z * 0.28f + forward.z * 0.12f};
+    float armSwing = std::sin(game.player.walkPhase) * 0.14f * walkBlend;
+    Vector3 hand{
+        feet.x + right.x * (0.28f - armSwing) + forward.x * 0.12f,
+        footWorld.y + 1.05f + walk.bobY * 0.35f,
+        feet.z + right.z * (0.28f - armSwing) + forward.z * 0.12f,
+    };
     Vector3 tip = hand + Vector3{forward.x * bladeLen, 0.08f, forward.z * bladeLen};
     DrawCylinderEx(hand, tip, 0.05f, 0.02f, 8, game.player.weapon.color);
 }
