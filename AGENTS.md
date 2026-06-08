@@ -84,13 +84,17 @@ The template scene (`Assets/Scenes/SampleScene.unity`) contains a Main Camera, D
 
 ### Desktop pane not loading
 
-The VM desktop (`DISPLAY=:1`) can run while the **Cursor Desktop tab** stays blank. Check: `/workspace/scripts/check-desktop.sh`
+The VM desktop (`DISPLAY=:1`) can run while the **Cursor Desktop tab** stays blank.
 
-1. Open [cursor.com/agents](https://cursor.com/agents) → same agent → **Desktop** tab
-2. `Cmd/Ctrl+Shift+P` → **Developer: Reload Window**
-3. New cloud agent with a **non-Composer** model
-4. Remove `.cursor/environment.json` if present
-5. `/workspace/scripts/restart-desktop-session.sh`
+**Fix (run in agent terminal):**
+```bash
+/workspace/scripts/fix-desktop.sh
+```
+Then reload Cursor (`Cmd/Ctrl+Shift+P` → **Developer: Reload Window**) and open the **Desktop** tab or [cursor.com/agents](https://cursor.com/agents) → **Desktop**.
+
+Check: `/workspace/scripts/check-desktop.sh`
+
+If still blank: remove `.cursor/environment.json` if present; try `/workspace/scripts/restart-desktop-session.sh`.
 
 ### Native C++ Blade Arena (no Unity license required)
 

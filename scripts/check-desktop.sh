@@ -24,10 +24,18 @@ else
   echo "[WARN] XFCE session not found"
 fi
 
-if ss -tln 2>/dev/null | rg -q ':26058'; then
+novnc_ok=false
+if command -v ss >/dev/null 2>&1 && ss -tln 2>/dev/null | rg -q ':26058'; then
+  novnc_ok=true
+elif command -v netstat >/dev/null 2>&1 && netstat -tln 2>/dev/null | rg -q ':26058'; then
+  novnc_ok=true
+elif curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:26058/ 2>/dev/null | rg -q '^200$'; then
+  novnc_ok=true
+fi
+if $novnc_ok; then
   echo "[OK] noVNC proxy listening on 26058"
 else
-  echo "[WARN] noVNC port 26058 not listening"
+  echo "[FAIL] noVNC port 26058 not responding — run: /workspace/scripts/fix-desktop.sh"
 fi
 
 if DISPLAY=:1 xdpyinfo >/dev/null 2>&1; then
@@ -41,10 +49,10 @@ echo "Desktop shortcuts:"
 ls -1 "$HOME/Desktop/" 2>/dev/null || echo "(none)"
 echo
 echo "If the Desktop *pane* in Cursor is blank:"
-echo "  1. Open https://cursor.com/agents and use Desktop there"
-echo "  2. Cmd/Ctrl+Shift+P -> Developer: Reload Window"
-echo "  3. Remove .cursor/environment.json if it blocks computer use"
-echo "  4. Start a new cloud agent (Composer models may not show Desktop)"
+echo "  1. Run: /workspace/scripts/fix-desktop.sh"
+echo "  2. Open https://cursor.com/agents and use Desktop there"
+echo "  3. Cmd/Ctrl+Shift+P -> Developer: Reload Window"
+echo "  4. Remove .cursor/environment.json if it blocks computer use"
 echo
 echo "Play game without Desktop pane (logs only):"
 echo "  /workspace/scripts/run-blade-arena-cpp.sh --build-only"
