@@ -82,6 +82,16 @@ The template scene (`Assets/Scenes/SampleScene.unity`) contains a Main Camera, D
 - No ESLint, dotnet format, or repo CI config is present.
 - `com.unity.test-framework` is installed but **no tests are authored**; there is nothing to run until Edit Mode / Play Mode tests are added.
 
+### Desktop pane not loading
+
+The VM desktop (`DISPLAY=:1`) can run while the **Cursor Desktop tab** stays blank. Check: `/workspace/scripts/check-desktop.sh`
+
+1. Open [cursor.com/agents](https://cursor.com/agents) → same agent → **Desktop** tab
+2. `Cmd/Ctrl+Shift+P` → **Developer: Reload Window**
+3. New cloud agent with a **non-Composer** model
+4. Remove `.cursor/environment.json` if present
+5. `/workspace/scripts/restart-desktop-session.sh`
+
 ### Native C++ Blade Arena (no Unity license required)
 
 Full gameplay on the Desktop pane without Unity:
