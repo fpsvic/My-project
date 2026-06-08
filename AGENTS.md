@@ -82,6 +82,24 @@ The template scene (`Assets/Scenes/SampleScene.unity`) contains a Main Camera, D
 - No ESLint, dotnet format, or repo CI config is present.
 - `com.unity.test-framework` is installed but **no tests are authored**; there is nothing to run until Edit Mode / Play Mode tests are added.
 
+### Desktop pane not loading
+
+The cloud VM desktop (`DISPLAY=:1`, TigerVNC + XFCE) can be **running** while the **Cursor Desktop tab** stays blank.
+
+```bash
+/workspace/scripts/check-desktop.sh
+```
+
+**Fixes (try in order):**
+
+1. Open the same agent at [cursor.com/agents](https://cursor.com/agents) → **Desktop** tab (often works when the IDE pane does not).
+2. `Cmd/Ctrl+Shift+P` → **Developer: Reload Window**
+3. Start a **new** cloud agent with a **non-Composer** model.
+4. Remove `.cursor/environment.json` from the repo if it exists (can block Desktop).
+5. Soft-restart XFCE: `/workspace/scripts/restart-desktop-session.sh`
+
+**Play Blade Arena** (needs Desktop or `DISPLAY=:1`): double-click `START-BLADE-ARENA.sh` or run `/workspace/scripts/run-blade-arena-desktop.sh`.
+
 ### Gotchas
 
 - Unity Hub deb install may hang on an interactive `unityhub/add-apt-repo` debconf prompt; preset with `debconf-set-selections` and `DEBIAN_FRONTEND=noninteractive`.
