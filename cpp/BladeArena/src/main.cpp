@@ -122,6 +122,8 @@ struct GameState {
     float playerModelScale = 1.0f;
     float playerModelFeetOffset = 0.0f;
     float playerModelGroundLift = 0.03f;
+    float playerModelSoleY = 0.0f;
+    float playerModelPivotY = 0.0f;
     Vector3 playerModelCenterOffset{0.0f, 0.0f, 0.0f};
     float playerModelYawOffset = 180.0f;
     Shader characterShader{};
@@ -172,6 +174,16 @@ float TerrainHeight(float x, float z) {
     if (IsInRiver(x, z))
         hills -= 1.35f;
     return hills;
+}
+
+// Match the flat tops of the 30 m terrain tiles drawn around the player.
+float TerrainSurfaceY(float x, float z, Vector3 refPos) {
+    constexpr float kCell = 30.0f;
+    int ix = static_cast<int>(std::round((x - refPos.x) / kCell));
+    int iz = static_cast<int>(std::round((z - refPos.z) / kCell));
+    float cx = refPos.x + static_cast<float>(ix) * kCell;
+    float cz = refPos.z + static_cast<float>(iz) * kCell;
+    return TerrainHeight(cx, cz);
 }
 
 Vector3 FlatTo(Vector3 from, Vector3 to) {
@@ -405,9 +417,11 @@ void SetupPlayerModel(GameState& game, const char* path) {
     float meshMinY = ComputeMeshMinY(game.playerModel);
     float scaledHeight = height * game.playerModelScale;
     float soleY = ComputeVisualSoleY(game.playerModel, meshMinY, bounds.max.y);
-    // Anchor draw position to the visible sole, not the mesh bbox minimum.
-    game.playerModelFeetOffset = soleY * game.playerModelScale;
-    game.playerModelGroundLift = std::max(0.04f, scaledHeight * 0.025f);
+    game.playerModelSoleY = soleY;
+    game.playerModelPivotY = meshMinY;
+    game.playerModelFeetOffset = meshMinY * game.playerModelScale;
+    float soleGap = (soleY - meshMinY) * game.playerModelScale;
+    game.playerModelGroundLift = soleGap + std::max(0.14f, scaledHeight * 0.06f);
     game.playerModelCenterOffset = {(bounds.min.x + bounds.max.x) * 0.5f, 0.0f, (bounds.min.z + bounds.max.z) * 0.5f};
 
     if (!game.characterShaderLoaded)
@@ -433,16 +447,8 @@ void UpdateWalkAnimation(PlayerState& p, float horizontalSpeed, bool grounded, f
         p.walkPhase = Lerp(p.walkPhase, 0.0f, 8.0f * dt);
 }
 
-void DrawModelWithEuler(Model model, Vector3 position, Vector3 rotationDeg, Vector3 scale, Color tint) {
-    Matrix matScale = MatrixScale(scale.x, scale.y, scale.z);
-    Matrix matRotX = MatrixRotateX(rotationDeg.x * DEG2RAD);
-    Matrix matRotY = MatrixRotateY(rotationDeg.y * DEG2RAD);
-    Matrix matRotZ = MatrixRotateZ(rotationDeg.z * DEG2RAD);
-    Matrix matRot = MatrixMultiply(matRotY, MatrixMultiply(matRotX, matRotZ));
-    Matrix matTranslation = MatrixTranslate(position.x, position.y, position.z);
-    Matrix transform = MatrixMultiply(MatrixMultiply(matScale, matRot), matTranslation);
+void DrawModelWithTint(Model model, Matrix transform, Color tint) {
     model.transform = MatrixMultiply(model.transform, transform);
-
     for (int i = 0; i < model.meshCount; ++i) {
         Color color = model.materials[model.meshMaterial[i]].maps[MATERIAL_MAP_DIFFUSE].color;
         Color colorTint{
@@ -455,6 +461,17 @@ void DrawModelWithEuler(Model model, Vector3 position, Vector3 rotationDeg, Vect
         DrawMesh(model.meshes[i], model.materials[model.meshMaterial[i]], model.transform);
         model.materials[model.meshMaterial[i]].maps[MATERIAL_MAP_DIFFUSE].color = color;
     }
+}
+
+void DrawModelWithEuler(Model model, Vector3 position, Vector3 rotationDeg, Vector3 scale, Color tint) {
+    Matrix matScale = MatrixScale(scale.x, scale.y, scale.z);
+    Matrix matRotX = MatrixRotateX(rotationDeg.x * DEG2RAD);
+    Matrix matRotY = MatrixRotateY(rotationDeg.y * DEG2RAD);
+    Matrix matRotZ = MatrixRotateZ(rotationDeg.z * DEG2RAD);
+    Matrix matRot = MatrixMultiply(matRotY, MatrixMultiply(matRotX, matRotZ));
+    Matrix matTranslation = MatrixTranslate(position.x, position.y, position.z);
+    Matrix transform = MatrixMultiply(MatrixMultiply(matScale, matRot), matTranslation);
+    DrawModelWithTint(model, transform, tint);
 }
 
 void NotifyWeapon(GameState& game, const char* name) {
@@ -659,6 +676,8 @@ void ResetGameplay(GameState& game) {
     float modelScale = game.playerModelScale;
     float feetOffset = game.playerModelFeetOffset;
     float groundLift = game.playerModelGroundLift;
+    float soleY = game.playerModelSoleY;
+    float pivotY = game.playerModelPivotY;
     Vector3 centerOffset = game.playerModelCenterOffset;
     float yawOffset = game.playerModelYawOffset;
     Shader characterShader = game.characterShader;
@@ -668,7 +687,8 @@ void ResetGameplay(GameState& game) {
 
     game.player = PlayerState{};
     game.player.health = kMaxHealth;
-    game.player.position = {0.0f, TerrainHeight(0.0f, 0.0f), 0.0f};
+    Vector3 spawn{0.0f, 0.0f, 0.0f};
+    game.player.position = {0.0f, TerrainSurfaceY(0.0f, 0.0f, spawn), 0.0f};
     game.player.destination = game.player.position;
 
     game.playerModel = model;
@@ -676,6 +696,8 @@ void ResetGameplay(GameState& game) {
     game.playerModelScale = modelScale;
     game.playerModelFeetOffset = feetOffset;
     game.playerModelGroundLift = groundLift;
+    game.playerModelSoleY = soleY;
+    game.playerModelPivotY = pivotY;
     game.playerModelCenterOffset = centerOffset;
     game.playerModelYawOffset = yawOffset;
     game.characterShader = characterShader;
@@ -877,8 +899,8 @@ void UpdatePlayer(GameState& game, Camera3D camera, float dt) {
         }
     }
 
-    float groundY = TerrainHeight(p.position.x, p.position.z);
-    bool grounded = p.position.y <= groundY + 0.05f;
+    float groundY = TerrainSurfaceY(p.position.x, p.position.z, p.position);
+    bool grounded = p.position.y <= groundY + 0.02f && p.verticalVelocity <= 0.05f;
     if (grounded && p.verticalVelocity < 0.0f)
         p.verticalVelocity = 0.0f;
     if (IsKeyPressed(KEY_SPACE) && grounded)
@@ -886,10 +908,11 @@ void UpdatePlayer(GameState& game, Camera3D camera, float dt) {
 
     p.verticalVelocity += -22.0f * dt;
     p.position.y += p.verticalVelocity * dt;
-    groundY = TerrainHeight(p.position.x, p.position.z);
+    groundY = TerrainSurfaceY(p.position.x, p.position.z, p.position);
     if (p.position.y < groundY) {
         p.position.y = groundY;
         p.verticalVelocity = 0.0f;
+        grounded = true;
     }
 
     if (p.isDashing) {
@@ -1071,8 +1094,10 @@ void DrawRivers(Vector3 playerPos) {
 }
 
 void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
+    (void)camera;
     Vector3 feet = game.player.position;
-    feet.y = TerrainHeight(feet.x, feet.z);
+    float groundY = TerrainSurfaceY(feet.x, feet.z, feet);
+    bool airborne = game.player.position.y > groundY + 0.08f || game.player.verticalVelocity > 0.35f;
 
     float yaw = game.player.yaw + game.playerModelYawOffset;
     float s = game.playerModelScale;
@@ -1081,23 +1106,19 @@ void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
 
     float walkBlend = game.player.walkAnimBlend;
     float phase = game.player.walkPhase;
-    float bob = std::sin(phase * 2.0f) * 0.042f * walkBlend;
-    float pitch = std::sin(phase) * 6.0f * walkBlend;
-    float roll = std::cos(phase) * 4.5f * walkBlend;
-    float squash = 1.0f - 0.035f * std::fabs(std::sin(phase * 2.0f)) * walkBlend;
+    float bob = (1.0f - std::cos(phase * 2.0f)) * 0.5f * 0.018f * walkBlend;
+    float squash = 1.0f - 0.015f * (1.0f - std::cos(phase * 2.0f)) * 0.5f * walkBlend;
 
-    if (game.player.attackCooldown > game.player.weapon.cooldown * 0.65f) {
-        float t = game.player.attackCooldown / game.player.weapon.cooldown;
-        pitch += 14.0f * t;
-    }
+    float footBaseY = airborne ? game.player.position.y : groundY;
+    float visualGroundY = footBaseY + game.playerModelGroundLift + bob;
 
     if (game.playerModelLoaded) {
         Vector3 drawPos{
             feet.x - game.playerModelCenterOffset.x * s,
-            feet.y - game.playerModelFeetOffset + game.playerModelGroundLift + bob,
+            visualGroundY - game.playerModelPivotY * s,
             feet.z - game.playerModelCenterOffset.z * s};
 
-        DrawModelWithEuler(game.playerModel, drawPos, {pitch, yaw, roll}, {s, s * squash, s}, WHITE);
+        DrawModelWithEuler(game.playerModel, drawPos, {0.0f, yaw, 0.0f}, {s, s * squash, s}, WHITE);
     } else {
         DrawCapsule(feet, feet + Vector3{0.0f, 1.8f, 0.0f}, 0.35f, 10, 10, {90, 150, 220, 255});
     }
@@ -1105,7 +1126,7 @@ void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
     float bladeLen = std::strstr(game.player.weapon.name, "Storm")   ? 1.2f
                      : std::strstr(game.player.weapon.name, "Steel") ? 1.05f
                                                                      : 0.95f;
-    float visualFootY = feet.y + (game.playerModelLoaded ? game.playerModelGroundLift + bob : 0.0f);
+    float visualFootY = visualGroundY;
     Vector3 hand{feet.x + right.x * 0.28f + forward.x * 0.12f, visualFootY + 1.05f,
                  feet.z + right.z * 0.28f + forward.z * 0.12f};
     Vector3 tip = hand + Vector3{forward.x * bladeLen, 0.08f, forward.z * bladeLen};
@@ -1154,7 +1175,7 @@ void DrawWorld(const GameState& game, Camera3D camera) {
 
     EndSceneLighting(game);
 
-    Vector3 playerFeet{playerPos.x, TerrainHeight(playerPos.x, playerPos.z), playerPos.z};
+    Vector3 playerFeet{playerPos.x, TerrainSurfaceY(playerPos.x, playerPos.z, playerPos), playerPos.z};
     DrawGroundShadow(playerFeet, 0.5f, 0.38f);
     DrawPlayerCharacter(game, camera);
     if (game.player.comboFxTimer > 0.0f) {
