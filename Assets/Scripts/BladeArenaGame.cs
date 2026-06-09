@@ -238,7 +238,7 @@ public class BladeArenaGame : MonoBehaviour
         var storm = FindFirstObjectByType<StormSystem>();
 
         GUI.Label(new Rect(12f, 12f, 500f, 24f), "Blade Arena");
-        GUI.Label(new Rect(12f, 36f, 560f, 24f), "Right-click move · Space jump · A attack · R restart");
+        GUI.Label(new Rect(12f, 36f, 700f, 24f), "Mouse look · WASD move · Right-click move · Space jump · A attack · R restart");
         if (health != null)
             GUI.Label(new Rect(12f, 60f, 400f, 24f), "Health: " + health.CurrentHealth);
         if (weapon != null)

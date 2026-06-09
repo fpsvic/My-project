@@ -1,11 +1,14 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
+/// <summary>First-person camera: sits at the character's eyes, mouse controls look.</summary>
 public class CameraFollow : MonoBehaviour
 {
     [SerializeField] Transform target;
-    [SerializeField] Vector3 offset = new Vector3(0f, 2.5f, -5f);
-    [SerializeField] float smoothSpeed = 8f;
-    [SerializeField] Vector3 lookAtOffset = new Vector3(0f, 1.2f, 0f);
+    [SerializeField] float eyeHeight = 1.65f;
+    [SerializeField] float mouseSensitivity = 0.12f;
+
+    float pitch;
 
     void Start()
     {
@@ -17,6 +20,15 @@ public class CameraFollow : MonoBehaviour
             if (player != null)
                 target = player.transform;
         }
+
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+
+        if (target != null)
+        {
+            foreach (var renderer in target.GetComponentsInChildren<Renderer>())
+                renderer.enabled = false;
+        }
     }
 
     void LateUpdate()
@@ -24,12 +36,14 @@ public class CameraFollow : MonoBehaviour
         if (target == null)
             return;
 
-        Vector3 desiredPosition = target.position + offset;
-        transform.position = Vector3.Lerp(
-            transform.position,
-            desiredPosition,
-            smoothSpeed * Time.deltaTime);
+        if (Mouse.current != null)
+        {
+            Vector2 delta = Mouse.current.delta.ReadValue();
+            target.Rotate(0f, delta.x * mouseSensitivity, 0f, Space.World);
+            pitch = Mathf.Clamp(pitch - delta.y * mouseSensitivity, -85f, 85f);
+        }
 
-        transform.LookAt(target.position + lookAtOffset);
+        transform.position = target.position + Vector3.up * eyeHeight;
+        transform.rotation = Quaternion.Euler(pitch, target.eulerAngles.y, 0f);
     }
 }

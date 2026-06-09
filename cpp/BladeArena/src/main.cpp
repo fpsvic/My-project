@@ -625,6 +625,9 @@ void UpdatePlayerLook(PlayerState& p) {
     p.yaw += delta.x * kMouseSensitivity;
     p.pitch -= delta.y * kMouseSensitivity;
     p.pitch = std::clamp(p.pitch, -89.0f, 89.0f);
+
+    // Re-center cursor so mouse look never hits the screen edge.
+    SetMousePosition(GetScreenWidth() / 2, GetScreenHeight() / 2);
 }
 
 void StartDash(PlayerState& p, Vector3 direction, float distance, float speed) {
@@ -1401,7 +1404,7 @@ void DrawHud(const GameState& game) {
         y += lineHeight;
     };
 
-    line("Blade Arena");
+    line("Blade Arena — FIRST-PERSON");
     line("Mouse look | WASD move | Right-click move | Space jump | A attack | R restart");
     line("Q Stonestep | E Apex Parry | F Velocity Strike | V Shatter-Step | C Dash & Sever");
     line("Lua: edit scripts/game/config.lua, save = live reload | F5 = force reload");

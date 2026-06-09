@@ -85,12 +85,10 @@ Then reload Cursor (Ctrl+Shift+P → Developer: Reload Window) and open the Desk
   exit 1
 fi
 
-if [[ ! -x "$BINARY" ]]; then
-  log "Building game (first run)..."
-  if ! "$WORKSPACE/scripts/run-blade-arena-cpp.sh" --build-only >>"$LOG" 2>&1; then
-    notify_error "Build failed. See log: $LOG"
-    exit 1
-  fi
+log "Building latest game..."
+if ! "$WORKSPACE/scripts/run-blade-arena-cpp.sh" --build-only >>"$LOG" 2>&1; then
+  notify_error "Build failed. See log: $LOG"
+  exit 1
 fi
 
 if [[ ! -x "$BINARY" ]]; then

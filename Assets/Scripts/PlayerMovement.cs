@@ -5,7 +5,6 @@ using UnityEngine.InputSystem;
 public class PlayerMovement : MonoBehaviour
 {
     [SerializeField] float moveSpeed = 5f;
-    [SerializeField] float rotationSpeed = 14f;
     [SerializeField] float jumpForce = 6f;
     [SerializeField] float gravity = -20f;
     [SerializeField] float stopDistance = 0.2f;
@@ -67,6 +66,28 @@ public class PlayerMovement : MonoBehaviour
         verticalVelocity += gravity * Time.deltaTime;
 
         Vector3 horizontal = Vector3.zero;
+
+        if (Keyboard.current != null)
+        {
+            float mx = 0f;
+            float mz = 0f;
+            if (Keyboard.current.wKey.isPressed) mz += 1f;
+            if (Keyboard.current.sKey.isPressed) mz -= 1f;
+            if (Keyboard.current.aKey.isPressed) mx -= 1f;
+            if (Keyboard.current.dKey.isPressed) mx += 1f;
+            if (Mathf.Abs(mx) > 0.01f || Mathf.Abs(mz) > 0.01f)
+            {
+                hasDestination = false;
+                Vector3 forward = mainCamera.transform.forward;
+                forward.y = 0f;
+                forward.Normalize();
+                Vector3 right = mainCamera.transform.right;
+                right.y = 0f;
+                right.Normalize();
+                horizontal = (forward * mz + right * mx).normalized * moveSpeed;
+            }
+        }
+
         if (hasDestination)
         {
             Vector3 toDestination = destination - transform.position;
@@ -79,11 +100,6 @@ public class PlayerMovement : MonoBehaviour
             else
             {
                 horizontal = toDestination.normalized * moveSpeed;
-                Quaternion targetRotation = Quaternion.LookRotation(toDestination);
-                transform.rotation = Quaternion.Slerp(
-                    transform.rotation,
-                    targetRotation,
-                    rotationSpeed * Time.deltaTime);
             }
         }
 
