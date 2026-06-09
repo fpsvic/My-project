@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Preview Human Figure
+Comment=Open 3D model preview in browser (Desktop pane)
+Exec=/workspace/scripts/preview-desktop.sh browser
+Icon=applications-graphics
+Terminal=false
+Categories=Graphics;3D;

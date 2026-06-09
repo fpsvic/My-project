@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Play Blade Arena
+Comment=Launch the outdoor Blade Arena game (C++, no Unity needed)
+Exec=env DISPLAY=:1 WORKSPACE=/workspace /bin/bash /workspace/scripts/run-blade-arena-desktop.sh
+Path=/workspace
+Icon=applications-games
+Terminal=false
+Categories=Game;
+StartupNotify=true
+X-GNOME-Autostart-enabled=false
