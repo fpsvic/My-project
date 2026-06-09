@@ -71,6 +71,7 @@ struct ComboCooldowns {
 struct PlayerState {
     Vector3 position{0.0f, 0.0f, 0.0f};
     float yaw = 0.0f;
+    float pitch = 0.0f;
     Vector3 destination{0.0f, 0.0f, 0.0f};
     bool hasDestination = false;
     float verticalVelocity = 0.0f;
@@ -604,6 +605,28 @@ Vector3 PlayerForward(const PlayerState& p) {
     return {std::sin(p.yaw * DEG2RAD), 0.0f, std::cos(p.yaw * DEG2RAD)};
 }
 
+Vector3 PlayerLookForward(const PlayerState& p) {
+    float yawRad = p.yaw * DEG2RAD;
+    float pitchRad = p.pitch * DEG2RAD;
+    float cosPitch = std::cos(pitchRad);
+    return {cosPitch * std::sin(yawRad), std::sin(pitchRad), cosPitch * std::cos(yawRad)};
+}
+
+Vector3 PlayerMoveRight(const PlayerState& p) {
+    float yawRad = p.yaw * DEG2RAD;
+    return {std::cos(yawRad), 0.0f, -std::sin(yawRad)};
+}
+
+void UpdatePlayerLook(PlayerState& p) {
+    if (!IsWindowFocused())
+        return;
+    Vector2 delta = GetMouseDelta();
+    constexpr float kMouseSensitivity = 0.12f;
+    p.yaw += delta.x * kMouseSensitivity;
+    p.pitch -= delta.y * kMouseSensitivity;
+    p.pitch = std::clamp(p.pitch, -89.0f, 89.0f);
+}
+
 void StartDash(PlayerState& p, Vector3 direction, float distance, float speed) {
     float len = Vector3Length(direction);
     if (len < 0.01f)
@@ -865,8 +888,7 @@ void ResetGameplay(GameState& game) {
     game.weaponMessageTimer = 0.0f;
 }
 
-bool RayHitTerrain(Vector2 mouse, Camera3D camera, Vector3* hit) {
-    Ray ray = GetMouseRay(mouse, camera);
+bool RayHitTerrainRay(Ray ray, Vector3* hit) {
     if (std::fabs(ray.direction.y) < 1e-5f)
         return false;
     float t = -ray.position.y / ray.direction.y;
@@ -878,6 +900,15 @@ bool RayHitTerrain(Vector2 mouse, Camera3D camera, Vector3* hit) {
         return false;
     hit->y = TerrainHeight(hit->x, hit->z);
     return true;
+}
+
+bool RayHitTerrain(Vector2 screenPos, Camera3D camera, Vector3* hit) {
+    return RayHitTerrainRay(GetMouseRay(screenPos, camera), hit);
+}
+
+bool RayHitTerrainCrosshair(Camera3D camera, Vector3* hit) {
+    Vector2 center{GetScreenWidth() * 0.5f, GetScreenHeight() * 0.5f};
+    return RayHitTerrain(center, camera, hit);
 }
 
 void ClampToMap(Vector3& pos) {
@@ -1025,10 +1056,11 @@ void UpdatePlayer(GameState& game, Camera3D camera, float dt) {
 
     TickComboCooldowns(p, dt);
     TryComboInput(game);
+    UpdatePlayerLook(p);
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
         Vector3 hit{};
-        if (RayHitTerrain(GetMousePosition(), camera, &hit)) {
+        if (RayHitTerrainCrosshair(camera, &hit)) {
             p.destination = hit;
             p.hasDestination = true;
         }
@@ -1061,15 +1093,32 @@ void UpdatePlayer(GameState& game, Camera3D camera, float dt) {
     float moveSpeed = IsInRiver(p.position.x, p.position.z) ? game.config.player.riverMoveSpeed
                                                             : game.config.player.moveSpeed;
     Vector3 horizontal{0.0f, 0.0f, 0.0f};
-    if (p.hasDestination) {
+
+    float moveX = 0.0f;
+    float moveZ = 0.0f;
+    if (IsKeyDown(KEY_W))
+        moveZ += 1.0f;
+    if (IsKeyDown(KEY_S))
+        moveZ -= 1.0f;
+    if (IsKeyDown(KEY_A))
+        moveX -= 1.0f;
+    if (IsKeyDown(KEY_D))
+        moveX += 1.0f;
+
+    if (std::fabs(moveX) > 0.01f || std::fabs(moveZ) > 0.01f) {
+        p.hasDestination = false;
+        Vector3 forward = PlayerForward(p);
+        Vector3 right = PlayerMoveRight(p);
+        Vector3 wish = Vector3Add(Vector3Scale(forward, moveZ), Vector3Scale(right, moveX));
+        wish.y = 0.0f;
+        horizontal = Vector3Scale(Vector3Normalize(wish), moveSpeed);
+    } else if (p.hasDestination) {
         Vector3 toDest = FlatTo(p.position, p.destination);
         float dist = Vector3Length(toDest);
         if (dist <= 0.35f) {
             p.hasDestination = false;
         } else {
             horizontal = Vector3Scale(Vector3Normalize(toDest), moveSpeed);
-            float targetYaw = std::atan2(toDest.x, toDest.z) * RAD2DEG;
-            p.yaw = Lerp(p.yaw, targetYaw, 12.0f * dt);
         }
     }
 
@@ -1353,7 +1402,7 @@ void DrawHud(const GameState& game) {
     };
 
     line("Blade Arena");
-    line("Right-click move | Space jump | A attack | R restart");
+    line("Mouse look | WASD move | Right-click move | Space jump | A attack | R restart");
     line("Q Stonestep | E Apex Parry | F Velocity Strike | V Shatter-Step | C Dash & Sever");
     line("Lua: edit scripts/game/config.lua, save = live reload | F5 = force reload");
     if (game.scriptHudLine[0] != '\0')
@@ -1391,20 +1440,13 @@ void DrawHud(const GameState& game) {
 }
 
 void UpdateCamera(Camera3D& camera, const GameState& game, float dt) {
+    (void)dt;
     Vector3 eye = PlayerEyePosition(game);
+    Vector3 lookForward = PlayerLookForward(game.player);
 
-    float yawRad = game.player.yaw * DEG2RAD;
-    Vector3 forward{std::sin(yawRad), 0.0f, std::cos(yawRad)};
-
-    // First-person: camera at the character's eyes, looking where they face.
-    constexpr float kLookDistance = 8.0f;
-    Vector3 lookTarget{
-        eye.x + forward.x * kLookDistance,
-        eye.y - 0.04f,
-        eye.z + forward.z * kLookDistance};
-
-    camera.position = Vector3Lerp(camera.position, eye, 18.0f * dt);
-    camera.target = Vector3Lerp(camera.target, lookTarget, 20.0f * dt);
+    // True character POV: eyes are the camera, view matches mouse look exactly.
+    camera.position = eye;
+    camera.target = Vector3Add(eye, Vector3Scale(lookForward, 4.0f));
 }
 
 std::string ResolveModelPath(int argc, char** argv) {
@@ -1444,6 +1486,7 @@ int main(int argc, char** argv) {
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(1280, 720, "Blade Arena");
     SetTargetFPS(60);
+    DisableCursor();
     LoadHudFont();
 
     for (int i = 0; i < 8; ++i)
