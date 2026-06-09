@@ -1231,57 +1231,56 @@ void DrawRivers(Vector3 playerPos) {
     }
 }
 
-void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
-    (void)camera;
+Vector3 PlayerEyePosition(const GameState& game) {
     Vector3 feet = game.player.position;
     float groundY = TerrainSurfaceY(feet.x, feet.z, feet);
-    bool airborne = game.player.position.y > groundY + 0.08f || game.player.verticalVelocity > 0.35f;
-
-    float yaw = game.player.yaw + game.playerModelYawOffset;
-    float s = game.playerModelScale;
-    Vector3 forward{std::sin(game.player.yaw * DEG2RAD), 0.0f, std::cos(game.player.yaw * DEG2RAD)};
-    Vector3 right{-forward.z, 0.0f, forward.x};
-
+    float baseY = std::max(feet.y, groundY);
+    bool airborne = feet.y > groundY + 0.08f || game.player.verticalVelocity > 0.35f;
     float walkBlend = airborne ? 0.0f : game.player.walkAnimBlend;
-    WalkPose walk{};
-    if (!game.playerSkeletonAnim) {
-        walk = ComputeWalkPose(walkBlend, game.player.walkPhase, forward, right);
-    } else if (walkBlend > 0.02f) {
-        walk.bobY =
-            (1.0f - std::cos(game.player.walkPhase * 2.0f)) * 0.5f * 0.012f * walkBlend;
+
+    float bob = 0.0f;
+    if (walkBlend > 0.02f) {
+        float phase = game.player.walkPhase;
+        bob = (1.0f - std::cos(phase * 2.0f)) * 0.5f * 0.04f * walkBlend;
     }
 
-    float footBaseY = airborne ? game.player.position.y : groundY;
-    Vector3 footWorld{
-        feet.x + walk.footShift.x,
-        footBaseY + game.playerModelGroundLift + walk.bobY,
-        feet.z + walk.footShift.z,
-    };
+    constexpr float kEyeHeight = 1.68f;
+    return {feet.x, baseY + kEyeHeight + bob, feet.z};
+}
 
-    Vector3 footModelPoint{
-        game.playerModelCenterOffset.x,
-        game.playerModelPivotY,
-        game.playerModelCenterOffset.z,
-    };
+void DrawFirstPersonWeapon(const GameState& game, Camera3D camera) {
+    Vector3 eye = camera.position;
+    Vector3 look = Vector3Subtract(camera.target, camera.position);
+    float lookLen = Vector3Length(look);
+    if (lookLen < 0.01f)
+        return;
+    Vector3 forward = Vector3Scale(look, 1.0f / lookLen);
+    Vector3 right = Vector3Normalize(Vector3CrossProduct(forward, camera.up));
+    Vector3 up = Vector3Normalize(Vector3CrossProduct(right, forward));
 
-    if (game.playerModelLoaded) {
-        DrawModelWithFootAt(game.playerModel, footWorld, footModelPoint,
-                            {walk.pitchDeg, yaw, walk.rollDeg}, {s, s * walk.squashY, s}, WHITE);
-    } else {
-        DrawCapsule(feet, feet + Vector3{0.0f, 1.8f, 0.0f}, 0.35f, 10, 10, {90, 150, 220, 255});
-    }
+    float walkBlend = game.player.walkAnimBlend;
+    float sway = std::sin(game.player.walkPhase) * 0.03f * walkBlend;
+    float bob = (1.0f - std::cos(game.player.walkPhase * 2.0f)) * 0.5f * 0.02f * walkBlend;
 
-    float bladeLen = game.player.weapon.id == "storm_blade"   ? 1.2f
-                     : game.player.weapon.id == "steel_sword" ? 1.05f
-                                                              : 0.95f;
-    float armSwing = std::sin(game.player.walkPhase) * 0.14f * walkBlend;
-    Vector3 hand{
-        feet.x + right.x * (0.28f - armSwing) + forward.x * 0.12f,
-        footWorld.y + 1.05f + walk.bobY * 0.35f,
-        feet.z + right.z * (0.28f - armSwing) + forward.z * 0.12f,
-    };
-    Vector3 tip = hand + Vector3{forward.x * bladeLen, 0.08f, forward.z * bladeLen};
-    DrawCylinderEx(hand, tip, 0.05f, 0.02f, 8, game.player.weapon.color);
+    float bladeLen = game.player.weapon.id == "storm_blade"   ? 0.72f
+                     : game.player.weapon.id == "steel_sword" ? 0.62f
+                                                              : 0.55f;
+
+    Vector3 hand = Vector3Add(
+        eye,
+        Vector3Add(Vector3Scale(right, 0.26f + sway), Vector3Add(Vector3Scale(forward, 0.38f), Vector3Scale(up, -0.18f - bob))));
+
+    Vector3 tip = Vector3Add(hand, Vector3Add(Vector3Scale(forward, bladeLen), Vector3Scale(up, 0.03f)));
+    DrawCylinderEx(hand, tip, 0.045f, 0.018f, 8, game.player.weapon.color);
+
+    // Simple crosshair guard at blade base.
+    Vector3 guardL = Vector3Add(hand, Vector3Scale(right, -0.07f));
+    Vector3 guardR = Vector3Add(hand, Vector3Scale(right, 0.07f));
+    DrawCylinderEx(guardL, guardR, 0.02f, 0.02f, 6, game.player.weapon.color);
+}
+
+void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
+    DrawFirstPersonWeapon(game, camera);
 }
 
 void DrawWorld(const GameState& game, Camera3D camera) {
@@ -1326,21 +1325,22 @@ void DrawWorld(const GameState& game, Camera3D camera) {
 
     EndSceneLighting(game);
 
-    Vector3 playerFeet{playerPos.x, TerrainSurfaceY(playerPos.x, playerPos.z, playerPos), playerPos.z};
-    DrawGroundShadow(playerFeet, 0.5f, 0.38f);
     DrawPlayerCharacter(game, camera);
     if (game.player.comboFxTimer > 0.0f) {
         float t = game.player.comboFxTimer / 0.35f;
         float r = game.player.comboFxRadius * (1.0f - t * 0.5f);
         Color fx = game.player.comboFxColor;
         fx.a = static_cast<unsigned char>(fx.a * t);
-        DrawSphere({playerFeet.x, playerFeet.y + 0.6f, playerFeet.z}, r, fx);
+        Vector3 fxPos = PlayerEyePosition(game);
+        DrawSphere({fxPos.x, fxPos.y - 0.5f, fxPos.z}, r, fx);
     }
     if (game.player.parryWindow > 0.0f) {
-        DrawSphere({playerFeet.x, playerFeet.y + 1.0f, playerFeet.z}, 1.3f, {100, 180, 255, 90});
+        Vector3 eye = PlayerEyePosition(game);
+        DrawSphere(eye, 0.55f, {100, 180, 255, 90});
     }
     if (game.player.stonestepShield > 0.0f) {
-        DrawSphere({playerFeet.x, playerFeet.y + 0.9f, playerFeet.z}, 1.1f, {180, 185, 195, 70});
+        Vector3 eye = PlayerEyePosition(game);
+        DrawSphere({eye.x, eye.y - 0.35f, eye.z}, 0.45f, {180, 185, 195, 70});
     }
 }
 
@@ -1382,35 +1382,29 @@ void DrawHud(const GameState& game) {
     int fps = static_cast<int>(1.0f / std::max(game.smoothedFpsDelta, 0.0001f) + 0.5f);
     const char* fpsText = TextFormat("%d FPS", fps);
     DrawHudText(GetScreenWidth() - HudTextWidth(fpsText) - 12, 10, fpsText);
+
+    // First-person crosshair.
+    int cx = GetScreenWidth() / 2;
+    int cy = GetScreenHeight() / 2;
+    DrawLine(cx - 8, cy, cx + 8, cy, {235, 235, 235, 170});
+    DrawLine(cx, cy - 8, cx, cy + 8, {235, 235, 235, 170});
 }
 
 void UpdateCamera(Camera3D& camera, const GameState& game, float dt) {
-    Vector3 playerPos = game.player.position;
-    float groundY = TerrainSurfaceY(playerPos.x, playerPos.z, playerPos);
-    float baseY = std::max(playerPos.y, groundY);
+    Vector3 eye = PlayerEyePosition(game);
 
     float yawRad = game.player.yaw * DEG2RAD;
     Vector3 forward{std::sin(yawRad), 0.0f, std::cos(yawRad)};
 
-    // Classic third-person: centered behind the character, looking forward over their back.
-    constexpr float kCamDistance = 3.6f;
-    constexpr float kCamHeight = 1.62f;
-    constexpr float kCamLift = 0.22f;
-    constexpr float kLookAhead = 5.0f;
-
-    Vector3 pivot{playerPos.x, baseY + kCamHeight, playerPos.z};
-    Vector3 desired{
-        pivot.x - forward.x * kCamDistance,
-        pivot.y + kCamLift,
-        pivot.z - forward.z * kCamDistance};
-
+    // First-person: camera at the character's eyes, looking where they face.
+    constexpr float kLookDistance = 8.0f;
     Vector3 lookTarget{
-        pivot.x + forward.x * kLookAhead,
-        pivot.y - 0.08f,
-        pivot.z + forward.z * kLookAhead};
+        eye.x + forward.x * kLookDistance,
+        eye.y - 0.04f,
+        eye.z + forward.z * kLookDistance};
 
-    camera.position = Vector3Lerp(camera.position, desired, 14.0f * dt);
-    camera.target = Vector3Lerp(camera.target, lookTarget, 16.0f * dt);
+    camera.position = Vector3Lerp(camera.position, eye, 18.0f * dt);
+    camera.target = Vector3Lerp(camera.target, lookTarget, 20.0f * dt);
 }
 
 std::string ResolveModelPath(int argc, char** argv) {
@@ -1475,7 +1469,7 @@ int main(int argc, char** argv) {
 
     Camera3D camera{};
     camera.up = {0.0f, 1.0f, 0.0f};
-    camera.fovy = 72.0f;
+    camera.fovy = 82.0f;
     camera.projection = CAMERA_PERSPECTIVE;
     UpdateCamera(camera, game, 1.0f);
 
