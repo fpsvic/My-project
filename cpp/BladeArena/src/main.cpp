@@ -1184,22 +1184,42 @@ void DrawGroundShadow(Vector3 feet, float radius, float alpha) {
     DrawCylinder({feet.x, feet.y + 0.04f, feet.z}, radius, radius, 0.03f, 8, shadow);
 }
 
+void DrawEvergreenFoliage(Vector3 trunkTop, float scale, bool darkBackdrop, int sides, int layerCount,
+                          float variant) {
+    Color foliageDeep{darkBackdrop ? 18 : 28, darkBackdrop ? 72 : 96, darkBackdrop ? 32 : 44, 255};
+    Color foliageBright{darkBackdrop ? 34 : 48, darkBackdrop ? 108 : 138, darkBackdrop ? 48 : 62, 255};
+
+    const float spread = (darkBackdrop ? 1.3f : 1.05f) * scale;
+    float layerY = trunkTop.y - 0.12f * scale;
+    const int layers = std::max(1, layerCount);
+
+    for (int i = 0; i < layers; ++i) {
+        const float t = layers == 1 ? 0.0f : static_cast<float>(i) / static_cast<float>(layers - 1);
+        const float layerScale = 1.0f - t * 0.45f;
+        const float coneH = (0.9f + variant * 0.25f) * scale * (1.0f - t * 0.12f);
+        const float coneR = spread * layerScale * (0.82f + static_cast<float>(layers - 1 - i) * 0.11f);
+        const Color layerColor = ColorLerp(foliageDeep, foliageBright, 0.25f + t * 0.55f);
+
+        DrawCylinder({trunkTop.x, layerY, trunkTop.z}, 0.0f, coneR, coneH, sides, layerColor);
+        layerY += coneH * (layers == 1 ? 1.0f : 0.62f);
+    }
+}
+
 void DrawTree(const Tree& tree, bool darkBackdrop, bool simpleLod) {
     float y = tree.backdrop ? 0.0f : TerrainHeight(tree.position.x, tree.position.z);
     Vector3 base{tree.position.x, y, tree.position.z};
-    int sides = simpleLod ? 5 : 6;
-    float trunkH = (darkBackdrop ? 3.0f : 2.5f) * tree.scale;
-    unsigned char trunkR = darkBackdrop ? 72 : 92;
-    unsigned char trunkG = darkBackdrop ? 48 : 58;
-    Color trunk{trunkR, trunkG, 32, 255};
-    Color leaves{darkBackdrop ? 24 : 38, darkBackdrop ? 88 : 118, darkBackdrop ? 38 : 52, 255};
+    const int sides = simpleLod ? 5 : 8;
+    const float variant = Hash01(tree.position.x * 0.41f, tree.position.z * 0.29f);
+    const float trunkH = (darkBackdrop ? 3.4f : 2.9f) * tree.scale * (0.92f + variant * 0.16f);
+    const float trunkBottom = 0.17f * tree.scale;
+    const float trunkTop = 0.21f * tree.scale;
+    Color trunk{darkBackdrop ? 68 : 88, darkBackdrop ? 44 : 54, 28, 255};
 
-    DrawCylinder(base, 0.2f * tree.scale, 0.26f * tree.scale, trunkH, sides, trunk);
-    if (simpleLod)
-        return;
+    DrawCylinder(base, trunkTop, trunkBottom, trunkH, sides, trunk);
 
-    Vector3 crown{base.x, base.y + trunkH + 0.55f * tree.scale, base.z};
-    DrawSphere(crown, (darkBackdrop ? 1.35f : 1.15f) * tree.scale, leaves);
+    Vector3 trunkTopPos{base.x, base.y + trunkH, base.z};
+    const int layers = simpleLod ? 1 : (variant > 0.72f ? 4 : 3);
+    DrawEvergreenFoliage(trunkTopPos, tree.scale, darkBackdrop, sides, layers, variant);
 }
 
 void DrawMountain(const Mountain& mountain) {
