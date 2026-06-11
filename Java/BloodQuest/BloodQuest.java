@@ -32,12 +32,14 @@ import javax.swing.Timer;
 public final class BloodQuest {
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
+            GamePanel panel = new GamePanel();
             JFrame frame = new JFrame("Blood Quest: Gothic Platformer");
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            frame.setContentPane(new GamePanel());
+            frame.setContentPane(panel);
             frame.pack();
             frame.setLocationRelativeTo(null);
             frame.setVisible(true);
+            panel.requestFocusInWindow();
         });
     }
 
@@ -330,6 +332,10 @@ public final class BloodQuest {
             }
 
             player.update(platforms, springs, keys, audio, particles);
+            if (player.y > WORLD_HEIGHT) {
+                hurtPlayer();
+                return;
+            }
 
             for (Enemy enemy : enemies) {
                 if (enemy.dead) {

@@ -4,6 +4,22 @@ Standalone Java/Swing rewrite of the Blood Quest gothic platformer.
 
 ## Run
 
+Launch it as a desktop app:
+
+```bash
+cd Java/BloodQuest
+./run-desktop.sh
+```
+
+Optional Linux desktop/menu shortcut:
+
+```bash
+cd Java/BloodQuest
+./install-desktop-launcher.sh
+```
+
+Manual compile/run:
+
 ```bash
 cd Java/BloodQuest
 javac BloodQuest.java
