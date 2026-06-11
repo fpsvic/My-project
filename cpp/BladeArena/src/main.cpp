@@ -37,6 +37,13 @@ struct Tree {
     bool backdrop = false;
 };
 
+enum class TreeRenderMode { Deciduous, Evergreen };
+
+bool IsEvergreenTreeMode(const GameConfig& config) {
+    const std::string& mode = config.world.treeMode;
+    return mode != "deciduous" && mode != "round" && mode != "sphere";
+}
+
 struct Mountain {
     Vector3 position;
     float radius;
@@ -1184,22 +1191,84 @@ void DrawGroundShadow(Vector3 feet, float radius, float alpha) {
     DrawCylinder({feet.x, feet.y + 0.04f, feet.z}, radius, radius, 0.03f, 8, shadow);
 }
 
-void DrawTree(const Tree& tree, bool darkBackdrop, bool simpleLod) {
-    float y = tree.backdrop ? 0.0f : TerrainHeight(tree.position.x, tree.position.z);
-    Vector3 base{tree.position.x, y, tree.position.z};
-    int sides = simpleLod ? 5 : 6;
-    float trunkH = (darkBackdrop ? 3.0f : 2.5f) * tree.scale;
-    unsigned char trunkR = darkBackdrop ? 72 : 92;
-    unsigned char trunkG = darkBackdrop ? 48 : 58;
-    Color trunk{trunkR, trunkG, 32, 255};
-    Color leaves{darkBackdrop ? 24 : 38, darkBackdrop ? 88 : 118, darkBackdrop ? 38 : 52, 255};
+void DrawDeciduousTree(const Tree& tree, Vector3 base, bool darkBackdrop, bool simpleLod, int sides) {
+    const float trunkH = (darkBackdrop ? 3.0f : 2.5f) * tree.scale;
+    const unsigned char trunkR = darkBackdrop ? 72 : 92;
+    const unsigned char trunkG = darkBackdrop ? 48 : 58;
+    const Color trunk{trunkR, trunkG, 32, 255};
+    const Color leaves{darkBackdrop ? 24 : 38, darkBackdrop ? 88 : 118, darkBackdrop ? 38 : 52, 255};
 
     DrawCylinder(base, 0.2f * tree.scale, 0.26f * tree.scale, trunkH, sides, trunk);
     if (simpleLod)
         return;
 
-    Vector3 crown{base.x, base.y + trunkH + 0.55f * tree.scale, base.z};
+    const Vector3 crown{base.x, base.y + trunkH + 0.55f * tree.scale, base.z};
     DrawSphere(crown, (darkBackdrop ? 1.35f : 1.15f) * tree.scale, leaves);
+}
+
+void DrawEvergreenTreeMode(const Tree& tree, Vector3 base, bool darkBackdrop, bool simpleLod, int sides,
+                           float variant) {
+    const float trunkH = (darkBackdrop ? 3.6f : 3.1f) * tree.scale * (0.94f + variant * 0.12f);
+    const Color trunk{static_cast<unsigned char>(darkBackdrop ? 68 : 88),
+                    static_cast<unsigned char>(darkBackdrop ? 44 : 54), 28, 255};
+    const Color foliageDeep{static_cast<unsigned char>(darkBackdrop ? 20 : 30),
+                            static_cast<unsigned char>(darkBackdrop ? 78 : 102),
+                            static_cast<unsigned char>(darkBackdrop ? 34 : 46), 255};
+    const Color foliageBright{static_cast<unsigned char>(darkBackdrop ? 36 : 50),
+                              static_cast<unsigned char>(darkBackdrop ? 112 : 142),
+                              static_cast<unsigned char>(darkBackdrop ? 46 : 60), 255};
+
+    DrawCylinder(base, 0.16f * tree.scale, 0.22f * tree.scale, trunkH, sides, trunk);
+
+    if (simpleLod) {
+        const Vector3 tip{base.x, base.y + trunkH, base.z};
+        DrawCylinder(tip, 0.0f, 0.85f * tree.scale, 1.35f * tree.scale, sides, foliageBright);
+        return;
+    }
+
+    const int whorls = variant > 0.62f ? 4 : 3;
+    for (int w = 0; w < whorls; ++w) {
+        const float whorlT = static_cast<float>(w) / static_cast<float>(whorls - 1);
+        const float whorlY = base.y + trunkH * (0.32f + whorlT * 0.48f);
+        const float branchLen = tree.scale * (0.72f - whorlT * 0.22f);
+        const int branches = 5 + (w % 2);
+        const float pitch = 0.42f + variant * 0.12f - whorlT * 0.1f;
+        const float cosPitch = std::cos(pitch);
+        const float sinPitch = std::sin(pitch);
+
+        for (int b = 0; b < branches; ++b) {
+            const float angle = (2.0f * kPi / static_cast<float>(branches)) * static_cast<float>(b) +
+                                variant * 0.9f + static_cast<float>(w) * 0.55f;
+            const float bx = std::cos(angle) * branchLen * cosPitch;
+            const float by = branchLen * sinPitch;
+            const float bz = std::sin(angle) * branchLen * cosPitch;
+            const Vector3 branchStart{base.x, whorlY, base.z};
+            const Vector3 branchEnd{base.x + bx, whorlY + by, base.z + bz};
+            const float branchRadius = tree.scale * (0.07f - whorlT * 0.015f);
+            DrawCylinderEx(branchStart, branchEnd, branchRadius, branchRadius * 0.45f, sides, trunk);
+
+            const float coneR = tree.scale * (0.34f - whorlT * 0.08f);
+            const float coneH = tree.scale * (0.42f - whorlT * 0.06f);
+            const Color branchFoliage = ColorLerp(foliageDeep, foliageBright, 0.2f + whorlT * 0.55f);
+            DrawCylinder(branchEnd, 0.0f, coneR, coneH, sides, branchFoliage);
+        }
+    }
+
+    const Vector3 apex{base.x, base.y + trunkH - 0.08f * tree.scale, base.z};
+    const Color apexFoliage = ColorLerp(foliageDeep, foliageBright, 0.75f);
+    DrawCylinder(apex, 0.0f, 0.48f * tree.scale, 0.95f * tree.scale, sides, apexFoliage);
+}
+
+void DrawTree(const Tree& tree, bool darkBackdrop, bool simpleLod, TreeRenderMode mode) {
+    const float y = tree.backdrop ? 0.0f : TerrainHeight(tree.position.x, tree.position.z);
+    const Vector3 base{tree.position.x, y, tree.position.z};
+    const int sides = simpleLod ? 5 : 8;
+    const float variant = Hash01(tree.position.x * 0.41f, tree.position.z * 0.29f);
+
+    if (mode == TreeRenderMode::Evergreen)
+        DrawEvergreenTreeMode(tree, base, darkBackdrop, simpleLod, sides, variant);
+    else
+        DrawDeciduousTree(tree, base, darkBackdrop, simpleLod, sides);
 }
 
 void DrawMountain(const Mountain& mountain) {
@@ -1254,7 +1323,7 @@ void DrawTerrain(Vector3 playerPos) {
     }
 }
 
-void DrawBackdropScenery(const WorldMap& world, Vector3 playerPos) {
+void DrawBackdropScenery(const WorldMap& world, Vector3 playerPos, TreeRenderMode treeMode) {
     constexpr float kMountainDrawDist = 340.0f;
     for (const Mountain& mountain : world.mountains) {
         if (Vector2Distance({mountain.position.x, mountain.position.z}, {playerPos.x, playerPos.z}) >
@@ -1268,7 +1337,7 @@ void DrawBackdropScenery(const WorldMap& world, Vector3 playerPos) {
         float dist = Vector2Distance({tree.position.x, tree.position.z}, {playerPos.x, playerPos.z});
         if (dist > kBackdropForestDist)
             continue;
-        DrawTree(tree, true, dist > 150.0f);
+        DrawTree(tree, true, dist > 150.0f, treeMode);
     }
 }
 
@@ -1338,8 +1407,11 @@ void DrawPlayerCharacter(const GameState& game, Camera3D camera) {
 void DrawWorld(const GameState& game, Camera3D camera) {
     Vector3 playerPos = game.player.position;
 
+    const TreeRenderMode treeMode =
+        IsEvergreenTreeMode(game.config) ? TreeRenderMode::Evergreen : TreeRenderMode::Deciduous;
+
     BeginSceneLighting(game, camera);
-    DrawBackdropScenery(game.world, playerPos);
+    DrawBackdropScenery(game.world, playerPos, treeMode);
     DrawTerrain(playerPos);
     DrawRivers(playerPos);
     EndSceneLighting(game);
@@ -1363,7 +1435,7 @@ void DrawWorld(const GameState& game, Camera3D camera) {
         float dist = Vector2Distance({tree.position.x, tree.position.z}, {playerPos.x, playerPos.z});
         if (dist > kTreeDrawDistance)
             continue;
-        DrawTree(tree, false, dist > 55.0f);
+        DrawTree(tree, false, dist > 55.0f, treeMode);
     }
 
     for (const Enemy& enemy : game.enemies) {
@@ -1415,6 +1487,9 @@ void DrawHud(const GameState& game) {
     line(buf);
     std::snprintf(buf, sizeof(buf), "Equipped: %s (%.1f dmg)", game.player.weapon.name.c_str(),
                   game.player.weapon.damage);
+    line(buf);
+    std::snprintf(buf, sizeof(buf), "Trees: %s (world.tree_mode in config.lua)",
+                  IsEvergreenTreeMode(game.config) ? "evergreen mode" : "deciduous mode");
     line(buf);
 
     int enemiesLeft = 0;

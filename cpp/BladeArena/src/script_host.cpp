@@ -171,6 +171,12 @@ bool ParseConfigTable(lua_State* L, int index, GameConfig& config) {
         lua_pop(L, 1);
     }
 
+    if (ReadTable(L, index, "world")) {
+        int t = lua_gettop(L);
+        config.world.treeMode = ReadString(L, t, "tree_mode", config.world.treeMode);
+        lua_pop(L, 1);
+    }
+
     if (ReadTable(L, index, "weapons"))
         ParseWeapons(L, lua_gettop(L), config);
     lua_pop(L, 1);
