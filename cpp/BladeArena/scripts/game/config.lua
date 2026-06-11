@@ -31,6 +31,11 @@ return {
     strike_damage = 2,
   },
 
+  -- tree_mode: "evergreen" (pine/spruce whorls) or "deciduous" (round crowns)
+  world = {
+    tree_mode = "evergreen",
+  },
+
   -- Tweak any value below, save the file, and the running game updates in ~0.35s.
   -- Example: change storm_blade damage from 4.5 to 45 — no recompile needed.
   weapons = {

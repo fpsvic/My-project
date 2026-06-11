@@ -56,6 +56,11 @@ struct GameConfig {
         int strikeDamage = 2;
     } storm;
 
+    struct WorldConfig {
+        // "evergreen" = pine/spruce whorl branches; "deciduous" = round leafy crowns
+        std::string treeMode = "evergreen";
+    } world;
+
     std::unordered_map<std::string, WeaponStats> weapons;
     std::unordered_map<std::string, ComboConfig> combos;
 
