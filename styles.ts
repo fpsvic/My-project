@@ -93,11 +93,11 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .modal-btn.cancel:hover { background-color: #232d2a; color: #ffffff; }
 .modal-btn.confirm { background-color: #4b7a69; color: #ffffff; }
 .modal-btn.confirm:hover { background-color: #385c4f; }
-#template-panel { position: absolute; bottom: 0; left: 0; right: 0; z-index: 10; display: flex; flex-direction: column; }
+#template-panel { display: flex; flex-direction: column; flex-shrink: 0; border-bottom: 1px solid #1c2321; }
 #template-panel-toggle { background-color: #111a17; border-top: 1px solid #1c2321; padding: 6px 16px; font-size: 0.75rem; color: #528b74; cursor: pointer; display: flex; justify-content: space-between; align-items: center; letter-spacing: 1px; text-transform: uppercase; font-weight: 700; transition: background 0.15s, color 0.15s; user-select: none; }
 #template-panel-toggle:hover { background-color: #1c2522; color: #74a896; }
-#template-panel-body { display: flex; gap: 12px; padding: 14px 16px; background-color: #0d1210; border-top: 1px solid #1c2321; overflow-x: auto; max-height: 0; overflow: hidden; transition: max-height 0.3s cubic-bezier(0.4,0,0.2,1), padding 0.3s; padding-top: 0; padding-bottom: 0; }
-#template-panel-body.open { max-height: 160px; padding-top: 14px; padding-bottom: 14px; }
+#template-panel-body { display: flex; gap: 12px; background-color: #0d1210; overflow-x: auto; max-height: 0; overflow: hidden; transition: max-height 0.3s cubic-bezier(0.4,0,0.2,1), padding 0.3s; padding: 0 16px; }
+#template-panel-body.open { max-height: 160px; padding: 14px 16px; }
 .template-card { flex: 0 0 180px; background-color: #111a17; border: 1px solid #1c2321; border-radius: 10px; padding: 14px; cursor: pointer; transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s; }
 .template-card:hover { border-color: #528b74; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(82,139,116,0.2); }
 .template-card-icon { font-size: 1.5rem; margin-bottom: 6px; }

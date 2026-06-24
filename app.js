@@ -1762,7 +1762,7 @@ main();
 };
 templatePanelToggle.onclick = () => {
     const open = templatePanelBody.classList.toggle('open');
-    templateToggleArrow.textContent = open ? '▼' : '▲';
+    templateToggleArrow.textContent = open ? '▲' : '▼';
 };
 document.querySelectorAll('.template-card').forEach(card => {
     card.onclick = () => {
@@ -1779,7 +1779,7 @@ document.querySelectorAll('.template-card').forEach(card => {
         JungleUI.renderFilesList();
         JungleUI.switchToFile(t.currentFile);
         templatePanelBody.classList.remove('open');
-        templateToggleArrow.textContent = '▲';
+        templateToggleArrow.textContent = '▼';
         JungleUI.showToast(`Loaded ${card.querySelector('.template-card-name').textContent} template.`);
     };
 });
