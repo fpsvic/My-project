@@ -13,6 +13,7 @@ from services.earth_engine import generate_earth_response
 from services.science_engine import generate_science_response
 from services.history_engine import generate_history_response
 from services.game_compiler import compile_game
+from services.fallback_apis import call_fallback_apis
 
 _GREETINGS = {
     "hello", "hi", "hey", "sup", "greetings", "how are you",
@@ -125,5 +126,10 @@ def generate_response(query: str, mode: str, history: list) -> str:
     # Advanced science
     if any(kw in q for kw in ADVANCED_SCIENCE_KEYWORDS):
         return generate_science_response(query, mode)
+
+    # Try external API fallback chain before the generic response
+    fallback = call_fallback_apis(query, history)
+    if fallback:
+        return fallback
 
     return generate_general_response(query, mode)
