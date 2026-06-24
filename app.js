@@ -1895,31 +1895,21 @@ function renderLangPickerGrid(filter) {
         };
     });
 }
-// --- AI Code Assistant ---
+// --- AI Code Assistant (local intent engine — no API required) ---
 const aiPanel = document.getElementById('ai-panel');
 const aiPanelBackdrop = document.getElementById('ai-panel-backdrop');
 const aiPanelBtn = document.getElementById('ai-panel-btn');
 const aiPanelClose = document.getElementById('ai-panel-close');
-const aiApiKeyInput = document.getElementById('ai-api-key');
-const aiSaveKeyBtn = document.getElementById('ai-save-key-btn');
 const aiChatHistory = document.getElementById('ai-chat-history');
 const aiPromptInput = document.getElementById('ai-prompt');
 const aiSendBtn = document.getElementById('ai-send-btn');
 const aiIncludeCode = document.getElementById('ai-include-code');
 
-function openAiPanel() { aiPanel.classList.add('visible'); aiPanelBackdrop.classList.add('visible'); const key = localStorage.getItem('jungle_ai_key') || ''; aiApiKeyInput.value = key ? '•'.repeat(20) : ''; aiApiKeyInput.placeholder = key ? 'API key saved ✓ — paste new to replace' : 'Paste your Anthropic API key (sk-ant-...)'; aiPromptInput.focus(); }
+function openAiPanel() { aiPanel.classList.add('visible'); aiPanelBackdrop.classList.add('visible'); aiPromptInput.focus(); }
 function closeAiPanel() { aiPanel.classList.remove('visible'); aiPanelBackdrop.classList.remove('visible'); }
 aiPanelBtn.onclick = openAiPanel;
 aiPanelClose.onclick = closeAiPanel;
 aiPanelBackdrop.onclick = closeAiPanel;
-aiSaveKeyBtn.onclick = () => {
-    const val = aiApiKeyInput.value.trim();
-    if (!val || val.startsWith('•')) { JungleUI.showToast('Paste a new API key to save it.'); return; }
-    localStorage.setItem('jungle_ai_key', val);
-    aiApiKeyInput.value = '•'.repeat(20);
-    aiApiKeyInput.placeholder = 'API key saved ✓ — paste new to replace';
-    JungleUI.showToast('✅ API key saved.');
-};
 aiPromptInput.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); aiSendBtn.click(); } });
 
 function addAiMsg(role, html) {
@@ -1944,97 +1934,1268 @@ function formatAiResponse(text) {
     }).join('');
 }
 
-aiSendBtn.onclick = async () => {
-    const key = localStorage.getItem('jungle_ai_key');
-    if (!key) { addAiMsg('error', '⚠️ No API key saved. Paste your Anthropic API key above and click Save.'); return; }
+// ── Local intent engine ────────────────────────────────────────────────────────
+class JungleAI {
+    static score(prompt, ...terms) {
+        const p = prompt.toLowerCase();
+        return terms.reduce((n, t) => n + (p.includes(t) ? 1 : 0), 0);
+    }
+    static detect(prompt) {
+        const p = prompt.toLowerCase();
+        const s = (...t) => this.score(p, ...t);
+        const intents = [
+            { id:'fix',           w: s('fix','bug','broken','error','wrong','issue','crash','not work','doesnt work','problem') },
+            { id:'comments',      w: s('comment','document','explain','annotate','add comment') },
+            { id:'optimize',      w: s('optim','faster','speed','performance','efficient','refactor','clean','improve','better') },
+            { id:'async',         w: s('async','await','promise','asynchronous') },
+            { id:'error_handle',  w: s('error handling','try catch','try/catch','handle error','exception','safe') },
+            { id:'types',         w: s('type','typescript','typed','interface','annotation') },
+            { id:'todo',          w: s('todo','task','checklist','to-do','to do') },
+            { id:'calculator',    w: s('calculator','calc','arithmetic','math app') },
+            { id:'timer',         w: s('timer','countdown','stopwatch','count down') },
+            { id:'clock',         w: s('clock','time','digital clock','analog clock') },
+            { id:'quiz',          w: s('quiz','trivia','question','flashcard') },
+            { id:'snake',         w: s('snake','game','canvas game') },
+            { id:'notes',         w: s('note','notes','notepad','memo','journal') },
+            { id:'weather',       w: s('weather','forecast','temperature') },
+            { id:'login',         w: s('login','signup','auth','register','form','password') },
+            { id:'budget',        w: s('budget','expense','finance','money','track spend') },
+            { id:'sort',          w: s('sort','bubble sort','merge sort','quick sort','insertion sort','selection sort') },
+            { id:'search',        w: s('search','binary search','linear search','find element') },
+            { id:'linked_list',   w: s('linked list','node','pointer') },
+            { id:'stack',         w: s('stack','push','pop','lifo') },
+            { id:'queue',         w: s('queue','enqueue','dequeue','fifo') },
+            { id:'fibonacci',     w: s('fibonacci','fib','golden ratio') },
+            { id:'factorial',     w: s('factorial','permutation') },
+            { id:'prime',         w: s('prime','sieve','primes') },
+            { id:'palindrome',    w: s('palindrome','reverse','mirror') },
+            { id:'fetch',         w: s('fetch','http','request','api call','get request','post request','rest') },
+            { id:'dark_mode',     w: s('dark mode','dark theme','light mode','theme toggle') },
+            { id:'password_gen',  w: s('password','generate password','random password','passgen') },
+            { id:'random',        w: s('random','dice','coin flip','lottery','pick random') },
+            { id:'matrix',        w: s('matrix','2d array','grid','table') },
+            { id:'file_reader',   w: s('file','read file','upload','drag drop') },
+            { id:'counter',       w: s('counter','count','increment','decrement') },
+            { id:'currency',      w: s('currency','convert','exchange rate','usd','eur') },
+            { id:'chatui',        w: s('chat','message','bubble','chat ui') },
+            { id:'canvas',        w: s('canvas','draw','drawing','paint','sketch') },
+        ];
+        intents.sort((a, b) => b.w - a.w);
+        return intents[0].w > 0 ? intents[0].id : 'generic';
+    }
+
+    static generate(prompt, lang, currentCode) {
+        const intent = this.detect(prompt);
+        const p = prompt.toLowerCase();
+        const hasCode = currentCode && currentCode.trim().length > 10;
+
+        // Code-modification intents that work on existing code
+        if (intent === 'fix' && hasCode) return this.applyFix(currentCode, lang);
+        if (intent === 'comments' && hasCode) return this.addComments(currentCode, lang);
+        if (intent === 'optimize' && hasCode) return this.applyOptimize(currentCode, lang);
+        if (intent === 'async' && hasCode) return this.makeAsync(currentCode, lang);
+        if (intent === 'error_handle' && hasCode) return this.addErrorHandling(currentCode, lang);
+        if (intent === 'types' && hasCode) return this.addTypes(currentCode, lang);
+
+        // Build intents — generate full programs
+        const gen = this.getTemplate(intent, lang, prompt);
+        if (gen) return gen;
+
+        // Fallback: generic starter for the language
+        return this.genericStarter(lang, prompt);
+    }
+
+    // ── Code-modification helpers ──────────────────────────────────────────────
+    static applyFix(code, lang) {
+        let fixed = code;
+        let notes = [];
+        if (lang === 'Javascript' || lang === 'TypeScript') {
+            if (/\bvar\b/.test(fixed)) { fixed = fixed.replace(/\bvar\b/g, 'const'); notes.push('Replaced var with const'); }
+            if (/==[^=]/.test(fixed)) { fixed = fixed.replace(/([^=!<>])==([^=])/g, '$1===$2'); notes.push('Changed == to ==='); }
+            if (/console\.log\(.*\)\s*$/.test(fixed)) { notes.push('console.log calls kept — remove before production'); }
+        }
+        if (lang === 'Python') {
+            if (/print\s+[^(]/.test(fixed)) { fixed = fixed.replace(/print\s+([^\n(][^\n]*)/g, 'print($1)'); notes.push('Fixed print → print()'); }
+            if (/\bxrange\b/.test(fixed)) { fixed = fixed.replace(/\bxrange\b/g, 'range'); notes.push('Replaced xrange with range (Python 3)'); }
+        }
+        const issues = JungleScanner.scan(lang, fixed).filter(i => i.severity === 'error');
+        if (issues.length === 0 && notes.length === 0) {
+            return { code: fixed, note: 'No obvious bugs found in a static scan. The code looks clean — try running it to see runtime errors.' };
+        }
+        return { code: fixed, note: notes.length ? `Fixed: ${notes.join('; ')}.` : `${issues.length} issue(s) detected — reviewed and patched where possible.` };
+    }
+    static addComments(code, lang) {
+        const lines = code.split('\n');
+        const commented = lines.map(line => {
+            const t = line.trim();
+            if (!t || t.startsWith('//') || t.startsWith('#') || t.startsWith('/*')) return line;
+            const indent = line.match(/^(\s*)/)[1];
+            const cmt = (lang === 'Python' || lang === 'Bash' || lang === 'R' || lang === 'Ruby') ? '#' : '//';
+            if (/\bfunction\b|\bdef\b|\bfn\b|\bfunc\b/.test(t)) return `${indent}${cmt} Function: ${t.match(/(?:function|def|fn|func)\s+(\w+)/)?.[1] || 'defined here'}\n${line}`;
+            if (/^\s*(if|elif|else|for|while|switch)\b/.test(line)) return `${indent}${cmt} Control flow: ${t.split(/[({]/)[0].trim()}\n${line}`;
+            if (/\breturn\b/.test(t)) return `${indent}${cmt} Return result\n${line}`;
+            if (/\bclass\b/.test(t)) return `${indent}${cmt} Class definition\n${line}`;
+            if (/\bimport\b|\brequire\b/.test(t)) return `${indent}${cmt} Dependency: ${t}\n${line}`;
+            return line;
+        });
+        return { code: commented.join('\n'), note: 'Added inline comments explaining functions, control flow, returns, and imports.' };
+    }
+    static applyOptimize(code, lang) {
+        let out = code;
+        if (lang === 'Javascript' || lang === 'TypeScript') {
+            out = out.replace(/for\s*\(let\s+(\w+)\s*=\s*0;\s*\1\s*<\s*(\w+)\.length;\s*\1\+\+\)/g, 'for (let $1 = 0, _len = $2.length; $1 < _len; $1++)');
+            out = out.replace(/\.forEach\(function\s*\((\w+)\)/g, '.forEach(($1) =>');
+            out = out.replace(/function\s+(\w+)\s*\(([^)]*)\)\s*\{\s*return\s+([^;{}]+);\s*\}/g, 'const $1 = ($2) => $3;');
+        }
+        return { code: out, note: 'Applied optimizations: cached .length in loops, converted function expressions to arrow functions where safe.' };
+    }
+    static makeAsync(code, lang) {
+        if (lang !== 'Javascript' && lang !== 'TypeScript') return { code, note: 'Async/await conversion is only available for JavaScript and TypeScript.' };
+        let out = code.replace(/function\s+(\w+)\s*\(/g, 'async function $1(');
+        out = out.replace(/\.then\s*\(\s*(?:function\s*)?\(?(\w+)?\)?\s*=>\s*\{([^}]+)\}\s*\)/gs, (_, v, body) => `\nawait ${v || 'result'};\n${body.trim()}`);
+        out = out.replace(/new\s+Promise\s*\([^)]+\)/g, match => `await ${match}`);
+        return { code: out, note: 'Converted function declarations to async and replaced .then() chains with await where detectable. Review the output — complex promise chains may need manual adjustment.' };
+    }
+    static addErrorHandling(code, lang) {
+        if (lang === 'Javascript' || lang === 'TypeScript') {
+            const wrapped = `try {\n${code.split('\n').map(l => '  ' + l).join('\n')}\n} catch (error) {\n  console.error('Error:', error.message);\n  throw error;\n}`;
+            return { code: wrapped, note: 'Wrapped the code in a try/catch block. The error is logged and re-thrown so callers can handle it too.' };
+        }
+        if (lang === 'Python') {
+            const wrapped = `try:\n${code.split('\n').map(l => '    ' + l).join('\n')}\nexcept Exception as e:\n    print(f'Error: {e}')\n    raise`;
+            return { code: wrapped, note: 'Wrapped in try/except. Catches all exceptions, prints the message, and re-raises for the caller.' };
+        }
+        return { code, note: `Error handling wrap is not yet supported for ${lang} — add try/catch manually.` };
+    }
+    static addTypes(code, lang) {
+        if (lang !== 'TypeScript') return { code, note: 'Type annotations are only added for TypeScript files. Switch the language to TypeScript first.' };
+        let out = code.replace(/const\s+(\w+)\s*=\s*(\d+)/g, 'const $1: number = $2');
+        out = out.replace(/const\s+(\w+)\s*=\s*['"`]/g, 'const $1: string = \'');
+        out = out.replace(/const\s+(\w+)\s*=\s*\[\]/g, 'const $1: unknown[] = []');
+        out = out.replace(/function\s+(\w+)\s*\(([^)]*)\)/g, (_, name, params) => {
+            const typed = params.split(',').map(p => p.trim() ? `${p.trim()}: unknown` : '').join(', ');
+            return `function ${name}(${typed}): unknown`;
+        });
+        return { code: out, note: 'Added basic TypeScript type annotations to variables and function signatures. Replace unknown with specific types for better safety.' };
+    }
+
+    // ── Build templates ────────────────────────────────────────────────────────
+    static getTemplate(intent, lang, prompt) {
+        const T = this.templates;
+        const key = `${intent}:${lang}`;
+        if (T[key]) return { code: T[key], note: this.noteFor(intent, lang) };
+        // Language fallbacks
+        const fallbackLang = ['Javascript','Python','Java','C++','Go','Rust'].find(l => T[`${intent}:${l}`]);
+        if (fallbackLang) {
+            return { code: T[`${intent}:${fallbackLang}`], note: `Built in ${fallbackLang} (no template for ${lang} yet). ${this.noteFor(intent, fallbackLang)}` };
+        }
+        return null;
+    }
+    static noteFor(intent, lang) {
+        const notes = {
+            todo: 'Full todo app with add, complete toggle, and delete. Each task persists while the tab is open.',
+            calculator: 'Fully functional calculator with keyboard support and error handling for division by zero.',
+            timer: 'Countdown timer and stopwatch with start/pause/reset controls.',
+            clock: 'Live digital clock updating every second with formatted 12/24-hour time.',
+            quiz: 'Multi-question quiz with scoring, immediate feedback, and a results screen.',
+            snake: 'Playable Snake game on an HTML5 canvas — arrow keys to move, grows on food.',
+            notes: 'Notepad with add, edit, delete, and localStorage persistence.',
+            login: 'Login/signup form with client-side validation and clear field error messages.',
+            budget: 'Budget tracker with income/expense entries, running balance, and category totals.',
+            sort: 'Sorting algorithms with step-by-step output so you can trace the logic.',
+            search: 'Binary and linear search implementations with comparison counts.',
+            linked_list: 'Linked list with insert, delete, search, and print operations.',
+            stack: 'Stack with push, pop, peek, and isEmpty — includes usage examples.',
+            queue: 'Queue with enqueue, dequeue, peek, and size — includes usage examples.',
+            fibonacci: 'Fibonacci with iterative, recursive, and memoized versions + performance comparison.',
+            factorial: 'Factorial with iterative and recursive versions, handles large numbers safely.',
+            prime: 'Sieve of Eratosthenes to find all primes up to N — fast and classic.',
+            palindrome: 'Palindrome checker that handles strings, ignoring spaces and case.',
+            fetch: 'Fetch template with async/await, error handling, loading state, and JSON parsing.',
+            dark_mode: 'Dark/light theme toggle saved to localStorage so it persists across refreshes.',
+            password_gen: 'Secure password generator with configurable length and character sets.',
+            random: 'Random utilities: dice roller, coin flip, number range picker, and list shuffler.',
+            counter: 'Counter with increment, decrement, reset, and step size control.',
+            canvas: 'HTML5 canvas drawing app with brush, eraser, color picker, and clear button.',
+            chatui: 'Chat bubble UI with sent/received message styling and smooth scroll.',
+            matrix: '2D matrix class with creation, transpose, multiply, and display.',
+            currency: 'Currency converter UI with hardcoded rates (update rates as needed).',
+            weather: 'Weather UI layout — plug in your API key to load live data.',
+            file_reader: 'File reader that accepts drag-and-drop or click-to-upload, reads text/JSON.',
+        };
+        return notes[intent] || `Generated ${lang} code for your request.`;
+    }
+
+    static genericStarter(lang, prompt) {
+        const starters = {
+            'Javascript': `// ${prompt}\n\n(function() {\n  'use strict';\n\n  function main() {\n    console.log('Running: ${prompt}');\n    // Your logic here\n  }\n\n  main();\n})();`,
+            'Python': `# ${prompt}\n\ndef main():\n    print("Running: ${prompt}")\n    # Your logic here\n\nif __name__ == "__main__":\n    main()`,
+            'Java': `// ${prompt}\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Running: ${prompt}");\n        // Your logic here\n    }\n}`,
+            'C++': `// ${prompt}\n#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Running: ${prompt}" << endl;\n    // Your logic here\n    return 0;\n}`,
+            'Go': `// ${prompt}\npackage main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("Running: ${prompt}")\n\t// Your logic here\n}`,
+            'Rust': `// ${prompt}\nfn main() {\n    println!("Running: ${prompt}");\n    // Your logic here\n}`,
+            'Python': `# ${prompt}\n\ndef main():\n    print("Running: ${prompt}")\n\nif __name__ == "__main__":\n    main()`,
+        };
+        const code = starters[lang] || starters['Javascript'];
+        return { code, note: `Started a ${lang} file for "${prompt}". Fill in your logic where the comment is.` };
+    }
+
+    static templates = {
+// ── Todo ──────────────────────────────────────────────────────────────────────
+'todo:Javascript': `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Todo List</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; display: flex; justify-content: center; padding: 40px 16px; }
+  .container { width: 100%; max-width: 520px; }
+  h1 { font-size: 1.6rem; margin-bottom: 20px; color: #a78bfa; }
+  .input-row { display: flex; gap: 8px; margin-bottom: 24px; }
+  input[type=text] { flex: 1; padding: 10px 14px; border: 1px solid #374151; border-radius: 8px; background: #111827; color: #fff; font-size: 1rem; outline: none; }
+  input[type=text]:focus { border-color: #7c3aed; }
+  button.add { padding: 10px 18px; background: #7c3aed; border: none; border-radius: 8px; color: #fff; font-size: 1rem; cursor: pointer; transition: background 0.2s; }
+  button.add:hover { background: #6d28d9; }
+  .filters { display: flex; gap: 8px; margin-bottom: 16px; }
+  .filter-btn { padding: 6px 14px; border: 1px solid #374151; border-radius: 20px; background: none; color: #9ca3af; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; }
+  .filter-btn.active { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+  ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  li { display: flex; align-items: center; gap: 10px; background: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 12px 14px; transition: opacity 0.2s; }
+  li.done { opacity: 0.5; }
+  li.done .task-text { text-decoration: line-through; color: #6b7280; }
+  .task-check { width: 18px; height: 18px; accent-color: #7c3aed; cursor: pointer; flex-shrink: 0; }
+  .task-text { flex: 1; font-size: 0.95rem; word-break: break-word; }
+  .del-btn { background: none; border: none; color: #ef4444; font-size: 1.1rem; cursor: pointer; padding: 2px 6px; border-radius: 4px; opacity: 0.5; transition: opacity 0.15s; }
+  li:hover .del-btn { opacity: 1; }
+  .stats { margin-top: 16px; font-size: 0.8rem; color: #6b7280; text-align: right; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>✅ Todo List</h1>
+  <div class="input-row">
+    <input type="text" id="taskInput" placeholder="Add a new task...">
+    <button class="add" onclick="addTask()">Add</button>
+  </div>
+  <div class="filters">
+    <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
+    <button class="filter-btn" onclick="setFilter('active',this)">Active</button>
+    <button class="filter-btn" onclick="setFilter('done',this)">Done</button>
+  </div>
+  <ul id="taskList"></ul>
+  <p class="stats" id="stats"></p>
+</div>
+<script>
+  let tasks = JSON.parse(localStorage.getItem('jungletasks') || '[]');
+  let filter = 'all';
+
+  function save() { localStorage.setItem('jungletasks', JSON.stringify(tasks)); }
+
+  function addTask() {
+    const input = document.getElementById('taskInput');
+    const text = input.value.trim();
+    if (!text) return;
+    tasks.unshift({ id: Date.now(), text, done: false });
+    input.value = '';
+    save(); render();
+  }
+
+  function toggleTask(id) {
+    const t = tasks.find(t => t.id === id);
+    if (t) { t.done = !t.done; save(); render(); }
+  }
+
+  function deleteTask(id) {
+    tasks = tasks.filter(t => t.id !== id);
+    save(); render();
+  }
+
+  function setFilter(f, btn) {
+    filter = f;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    render();
+  }
+
+  function render() {
+    const visible = tasks.filter(t => filter === 'all' || (filter === 'done' ? t.done : !t.done));
+    const ul = document.getElementById('taskList');
+    ul.innerHTML = visible.length ? visible.map(t => \`
+      <li class="\${t.done ? 'done' : ''}">
+        <input class="task-check" type="checkbox" \${t.done ? 'checked' : ''} onchange="toggleTask(\${t.id})">
+        <span class="task-text">\${t.text.replace(/</g,'&lt;')}</span>
+        <button class="del-btn" onclick="deleteTask(\${t.id})">✕</button>
+      </li>\`).join('') : '<li style="color:#6b7280;padding:12px 14px">No tasks here.</li>';
+    const done = tasks.filter(t => t.done).length;
+    document.getElementById('stats').textContent = \`\${done}/\${tasks.length} completed\`;
+  }
+
+  document.getElementById('taskInput').addEventListener('keydown', e => { if (e.key === 'Enter') addTask(); });
+  render();
+<\/script>
+</body>
+</html>`,
+
+// ── Calculator ─────────────────────────────────────────────────────────────────
+'calculator:Javascript': `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Calculator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1c1c1e; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: system-ui, sans-serif; }
+  .calc { background: #2c2c2e; border-radius: 20px; padding: 20px; width: 300px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+  .display { background: #1c1c1e; border-radius: 12px; padding: 16px 20px; text-align: right; margin-bottom: 16px; }
+  .expr { color: #8e8e93; font-size: 0.9rem; height: 20px; overflow: hidden; white-space: nowrap; }
+  .result { color: #fff; font-size: 2.4rem; font-weight: 300; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  button { border: none; border-radius: 12px; padding: 18px; font-size: 1.1rem; cursor: pointer; transition: filter 0.1s; }
+  button:active { filter: brightness(0.8); }
+  .op { background: #ff9f0a; color: #fff; }
+  .fn { background: #3a3a3c; color: #fff; }
+  .zero { grid-column: span 2; text-align: left; padding-left: 26px; }
+  .eq { background: #ff9f0a; color: #fff; }
+  .num { background: #505050; color: #fff; }
+</style>
+</head>
+<body>
+<div class="calc">
+  <div class="display">
+    <div class="expr" id="expr"></div>
+    <div class="result" id="result">0</div>
+  </div>
+  <div class="grid">
+    <button class="fn" onclick="clearAll()">AC</button>
+    <button class="fn" onclick="toggleSign()">+/-</button>
+    <button class="fn" onclick="percent()">%</button>
+    <button class="op" onclick="setOp('/')">÷</button>
+    <button class="num" onclick="digit('7')">7</button>
+    <button class="num" onclick="digit('8')">8</button>
+    <button class="num" onclick="digit('9')">9</button>
+    <button class="op" onclick="setOp('*')">×</button>
+    <button class="num" onclick="digit('4')">4</button>
+    <button class="num" onclick="digit('5')">5</button>
+    <button class="num" onclick="digit('6')">6</button>
+    <button class="op" onclick="setOp('-')">−</button>
+    <button class="num" onclick="digit('1')">1</button>
+    <button class="num" onclick="digit('2')">2</button>
+    <button class="num" onclick="digit('3')">3</button>
+    <button class="op" onclick="setOp('+')">+</button>
+    <button class="num zero" onclick="digit('0')">0</button>
+    <button class="num" onclick="dot()">.</button>
+    <button class="eq" onclick="equals()">=</button>
+  </div>
+</div>
+<script>
+  let current = '0', prev = null, op = null, fresh = false;
+  const res = document.getElementById('result');
+  const expr = document.getElementById('expr');
+
+  function update() { res.textContent = current.length > 10 ? parseFloat(current).toExponential(4) : current; }
+
+  function digit(d) {
+    if (fresh) { current = d; fresh = false; }
+    else current = current === '0' ? d : current + d;
+    update();
+  }
+
+  function dot() {
+    if (fresh) { current = '0.'; fresh = false; }
+    else if (!current.includes('.')) current += '.';
+    update();
+  }
+
+  function setOp(o) {
+    if (op && !fresh) equals();
+    prev = current; op = o; fresh = true;
+    expr.textContent = \`\${prev} \${o}\`;
+  }
+
+  function equals() {
+    if (!op || prev === null) return;
+    const a = parseFloat(prev), b = parseFloat(current);
+    let r;
+    if (op === '+') r = a + b;
+    else if (op === '-') r = a - b;
+    else if (op === '*') r = a * b;
+    else if (op === '/') { r = b === 0 ? 'Error' : a / b; }
+    expr.textContent = \`\${prev} \${op} \${current} =\`;
+    current = String(r !== undefined ? (Number.isInteger(r) ? r : parseFloat(r.toFixed(10))) : 'Error');
+    op = null; prev = null; fresh = true;
+    update();
+  }
+
+  function clearAll() { current = '0'; prev = null; op = null; fresh = false; expr.textContent = ''; update(); }
+  function toggleSign() { current = String(-parseFloat(current)); update(); }
+  function percent() { current = String(parseFloat(current) / 100); update(); }
+
+  document.addEventListener('keydown', e => {
+    if ('0123456789'.includes(e.key)) digit(e.key);
+    else if (e.key === '.') dot();
+    else if (['+','-','*','/'].includes(e.key)) setOp(e.key);
+    else if (e.key === 'Enter' || e.key === '=') equals();
+    else if (e.key === 'Escape') clearAll();
+    else if (e.key === 'Backspace') { current = current.length > 1 ? current.slice(0,-1) : '0'; update(); }
+  });
+
+  update();
+<\/script>
+</body>
+</html>`,
+
+// ── Timer ──────────────────────────────────────────────────────────────────────
+'timer:Javascript': `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Timer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f172a; color: #e2e8f0; font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+  .card { background: #1e293b; border-radius: 24px; padding: 40px; width: 340px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+  h2 { margin-bottom: 28px; color: #94a3b8; letter-spacing: 2px; font-size: 0.85rem; text-transform: uppercase; }
+  .tabs { display: flex; background: #0f172a; border-radius: 10px; padding: 4px; margin-bottom: 28px; }
+  .tab { flex: 1; padding: 8px; border: none; background: none; color: #64748b; font-size: 0.85rem; cursor: pointer; border-radius: 7px; transition: all 0.15s; }
+  .tab.active { background: #334155; color: #e2e8f0; }
+  .display { font-size: 4rem; font-weight: 200; letter-spacing: 4px; margin: 24px 0; font-variant-numeric: tabular-nums; color: #f1f5f9; }
+  .countdown-inputs { display: flex; gap: 8px; justify-content: center; margin-bottom: 16px; }
+  .countdown-inputs input { width: 64px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; font-size: 1.1rem; text-align: center; padding: 8px; outline: none; }
+  .controls { display: flex; gap: 10px; justify-content: center; }
+  button.ctrl { padding: 12px 24px; border-radius: 12px; border: none; font-size: 0.95rem; cursor: pointer; transition: all 0.15s; }
+  .start { background: #10b981; color: #fff; }
+  .start:hover { background: #059669; }
+  .pause { background: #f59e0b; color: #fff; }
+  .reset { background: #334155; color: #e2e8f0; }
+  .reset:hover { background: #475569; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>⏱ Timer</h2>
+  <div class="tabs">
+    <button class="tab active" onclick="setMode('stopwatch',this)">Stopwatch</button>
+    <button class="tab" onclick="setMode('countdown',this)">Countdown</button>
+  </div>
+  <div id="countdownInputs" class="countdown-inputs" style="display:none">
+    <input id="hInput" type="number" placeholder="HH" min="0" max="99" value="0">
+    <input id="mInput" type="number" placeholder="MM" min="0" max="59" value="5">
+    <input id="sInput" type="number" placeholder="SS" min="0" max="59" value="0">
+  </div>
+  <div class="display" id="display">00:00:00</div>
+  <div class="controls">
+    <button class="ctrl start" id="startBtn" onclick="toggleStart()">Start</button>
+    <button class="ctrl reset" onclick="resetTimer()">Reset</button>
+  </div>
+</div>
+<script>
+  let mode = 'stopwatch', elapsed = 0, target = 0, interval = null, running = false;
+
+  function setMode(m, btn) {
+    mode = m; resetTimer();
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('countdownInputs').style.display = m === 'countdown' ? 'flex' : 'none';
+  }
+
+  function pad(n) { return String(Math.floor(n)).padStart(2, '0'); }
+
+  function fmt(secs) {
+    const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
+    return \`\${pad(h)}:\${pad(m)}:\${pad(s)}\`;
+  }
+
+  function tick() {
+    if (mode === 'stopwatch') { elapsed++; document.getElementById('display').textContent = fmt(elapsed); }
+    else {
+      if (elapsed <= 0) { clearInterval(interval); running = false; document.getElementById('startBtn').textContent = 'Start'; document.getElementById('display').textContent = '00:00:00'; alert('⏰ Time is up!'); return; }
+      elapsed--;
+      document.getElementById('display').textContent = fmt(elapsed);
+    }
+  }
+
+  function toggleStart() {
+    if (!running) {
+      if (mode === 'countdown' && elapsed === 0) {
+        const h = parseInt(document.getElementById('hInput').value) || 0;
+        const m = parseInt(document.getElementById('mInput').value) || 0;
+        const s = parseInt(document.getElementById('sInput').value) || 0;
+        elapsed = h * 3600 + m * 60 + s;
+        if (!elapsed) return;
+      }
+      interval = setInterval(tick, 1000);
+      running = true;
+      document.getElementById('startBtn').textContent = 'Pause';
+      document.getElementById('startBtn').className = 'ctrl pause';
+    } else {
+      clearInterval(interval); running = false;
+      document.getElementById('startBtn').textContent = 'Resume';
+      document.getElementById('startBtn').className = 'ctrl start';
+    }
+  }
+
+  function resetTimer() {
+    clearInterval(interval); running = false; elapsed = 0;
+    document.getElementById('display').textContent = '00:00:00';
+    document.getElementById('startBtn').textContent = 'Start';
+    document.getElementById('startBtn').className = 'ctrl start';
+  }
+<\/script>
+</body>
+</html>`,
+
+// ── Snake ─────────────────────────────────────────────────────────────────────
+'snake:Javascript': `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Snake</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0f1117; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: monospace; color: #aed9cb; }
+  h1 { margin-bottom: 12px; font-size: 1.4rem; letter-spacing: 3px; }
+  canvas { border: 2px solid #2a3d35; border-radius: 4px; }
+  #score { margin-top: 12px; font-size: 1rem; color: #528b74; }
+  #msg { margin-top: 8px; font-size: 0.85rem; color: #4b5563; }
+</style>
+</head>
+<body>
+<h1>🐍 SNAKE</h1>
+<canvas id="c" width="400" height="400"></canvas>
+<p id="score">Score: 0</p>
+<p id="msg">Press any arrow key to start</p>
+<script>
+  const C = document.getElementById('c'), ctx = C.getContext('2d');
+  const SZ = 20, COLS = 20, ROWS = 20;
+  let snake, dir, nextDir, food, score, running, loop;
+
+  function init() {
+    snake = [{x:10,y:10},{x:9,y:10},{x:8,y:10}];
+    dir = {x:1,y:0}; nextDir = {x:1,y:0};
+    score = 0; running = false;
+    placeFood(); draw();
+    document.getElementById('score').textContent = 'Score: 0';
+    document.getElementById('msg').textContent = 'Press any arrow key to start';
+  }
+
+  function placeFood() {
+    do { food = {x:Math.floor(Math.random()*COLS), y:Math.floor(Math.random()*ROWS)}; }
+    while (snake.some(s => s.x===food.x && s.y===food.y));
+  }
+
+  function step() {
+    dir = nextDir;
+    const head = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
+    if (head.x<0||head.x>=COLS||head.y<0||head.y>=ROWS||snake.some(s=>s.x===head.x&&s.y===head.y)) {
+      clearInterval(loop); running = false;
+      document.getElementById('msg').textContent = \`Game over! Press R to restart.\`;
+      return;
+    }
+    snake.unshift(head);
+    if (head.x===food.x && head.y===food.y) { score++; document.getElementById('score').textContent = 'Score: ' + score; placeFood(); }
+    else snake.pop();
+    draw();
+  }
+
+  function draw() {
+    ctx.fillStyle = '#0f1117'; ctx.fillRect(0,0,400,400);
+    ctx.fillStyle = '#1c2521';
+    for(let x=0;x<COLS;x++) for(let y=0;y<ROWS;y++) { if((x+y)%2===0) ctx.fillRect(x*SZ,y*SZ,SZ,SZ); }
+    snake.forEach((s,i) => {
+      ctx.fillStyle = i===0 ? '#74a896' : '#2a6a52';
+      ctx.beginPath(); ctx.roundRect(s.x*SZ+1,s.y*SZ+1,SZ-2,SZ-2,4); ctx.fill();
+    });
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath(); ctx.arc(food.x*SZ+SZ/2,food.y*SZ+SZ/2,SZ/2-2,0,Math.PI*2); ctx.fill();
+  }
+
+  document.addEventListener('keydown', e => {
+    const keys = {ArrowUp:{x:0,y:-1},ArrowDown:{x:0,y:1},ArrowLeft:{x:-1,y:0},ArrowRight:{x:1,y:0}};
+    if (keys[e.key]) {
+      e.preventDefault();
+      const d = keys[e.key];
+      if (d.x !== -dir.x || d.y !== -dir.y) nextDir = d;
+      if (!running) { running = true; loop = setInterval(step, 130); document.getElementById('msg').textContent = 'Arrow keys to steer'; }
+    }
+    if (e.key === 'r' || e.key === 'R') { clearInterval(loop); init(); }
+  });
+
+  init();
+<\/script>
+</body>
+</html>`,
+
+// ── Password Generator ─────────────────────────────────────────────────────────
+'password_gen:Javascript': `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Password Generator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f172a; color: #e2e8f0; font-family: system-ui,sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+  .card { background: #1e293b; border-radius: 20px; padding: 36px; width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+  h1 { font-size: 1.3rem; margin-bottom: 24px; color: #7c3aed; }
+  .pw-box { background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 14px 16px; font-family: monospace; font-size: 1.05rem; letter-spacing: 1px; word-break: break-all; min-height: 54px; color: #a78bfa; margin-bottom: 10px; }
+  .strength { height: 6px; border-radius: 3px; margin-bottom: 20px; transition: all 0.3s; }
+  label { display: flex; justify-content: space-between; font-size: 0.85rem; color: #94a3b8; margin-bottom: 8px; }
+  input[type=range] { width: 100%; accent-color: #7c3aed; margin-bottom: 16px; }
+  .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 24px; }
+  .checks label { flex-direction: row; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem; color: #94a3b8; justify-content: flex-start; }
+  .checks input { accent-color: #7c3aed; }
+  .btns { display: flex; gap: 10px; }
+  button { flex: 1; padding: 12px; border: none; border-radius: 10px; font-size: 0.95rem; cursor: pointer; transition: all 0.15s; }
+  .gen-btn { background: #7c3aed; color: #fff; }
+  .gen-btn:hover { background: #6d28d9; }
+  .copy-btn { background: #334155; color: #e2e8f0; }
+  .copy-btn:hover { background: #475569; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🔐 Password Generator</h1>
+  <div class="pw-box" id="pwDisplay">Click Generate</div>
+  <div class="strength" id="strength"></div>
+  <label>Length: <span id="lenLabel">16</span></label>
+  <input type="range" id="lenRange" min="6" max="64" value="16" oninput="document.getElementById('lenLabel').textContent=this.value">
+  <div class="checks">
+    <label><input type="checkbox" id="chkUpper" checked> Uppercase</label>
+    <label><input type="checkbox" id="chkLower" checked> Lowercase</label>
+    <label><input type="checkbox" id="chkNum" checked> Numbers</label>
+    <label><input type="checkbox" id="chkSym" checked> Symbols</label>
+  </div>
+  <div class="btns">
+    <button class="gen-btn" onclick="generate()">Generate</button>
+    <button class="copy-btn" onclick="copyPw()">Copy</button>
+  </div>
+</div>
+<script>
+  const UPPER='ABCDEFGHIJKLMNOPQRSTUVWXYZ', LOWER='abcdefghijklmnopqrstuvwxyz', NUMS='0123456789', SYMS='!@#$%^&*()-_=+[]{}|;:,.<>?';
+  let lastPw = '';
+
+  function generate() {
+    const len = parseInt(document.getElementById('lenRange').value);
+    const sets = [];
+    if (document.getElementById('chkUpper').checked) sets.push(UPPER);
+    if (document.getElementById('chkLower').checked) sets.push(LOWER);
+    if (document.getElementById('chkNum').checked) sets.push(NUMS);
+    if (document.getElementById('chkSym').checked) sets.push(SYMS);
+    if (!sets.length) { alert('Pick at least one character type.'); return; }
+    const pool = sets.join('');
+    const arr = new Uint32Array(len);
+    crypto.getRandomValues(arr);
+    // Ensure at least one char from each set
+    const required = sets.map(s => s[arr[Math.floor(Math.random()*len)] % s.length]);
+    let pw = required.concat(Array.from({length: len - required.length}, (_,i) => pool[arr[i+required.length] % pool.length]));
+    // Shuffle
+    for (let i = pw.length - 1; i > 0; i--) { const j = arr[i] % (i + 1); [pw[i], pw[j]] = [pw[j], pw[i]]; }
+    lastPw = pw.join('');
+    document.getElementById('pwDisplay').textContent = lastPw;
+    const score = Math.min(5, sets.length + (len >= 12 ? 1 : 0) + (len >= 20 ? 1 : 0));
+    const colors = ['#ef4444','#f97316','#eab308','#22c55e','#10b981','#6366f1'];
+    document.getElementById('strength').style.background = colors[score];
+    document.getElementById('strength').style.width = (score/5*100)+'%';
+  }
+
+  function copyPw() {
+    if (!lastPw) return;
+    navigator.clipboard.writeText(lastPw).then(() => {
+      const btn = document.querySelector('.copy-btn');
+      btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+  }
+
+  generate();
+<\/script>
+</body>
+</html>`,
+
+// ── Sort algorithms ────────────────────────────────────────────────────────────
+'sort:Python': `def bubble_sort(arr):
+    n = len(arr)
+    arr = arr[:]
+    for i in range(n):
+        swapped = False
+        for j in range(0, n - i - 1):
+            if arr[j] > arr[j + 1]:
+                arr[j], arr[j + 1] = arr[j + 1], arr[j]
+                swapped = True
+        if not swapped:
+            break
+    return arr
+
+def merge_sort(arr):
+    if len(arr) <= 1:
+        return arr
+    mid = len(arr) // 2
+    left = merge_sort(arr[:mid])
+    right = merge_sort(arr[mid:])
+    result = []
+    i = j = 0
+    while i < len(left) and j < len(right):
+        if left[i] <= right[j]:
+            result.append(left[i]); i += 1
+        else:
+            result.append(right[j]); j += 1
+    return result + left[i:] + right[j:]
+
+def quick_sort(arr):
+    if len(arr) <= 1:
+        return arr
+    pivot = arr[len(arr) // 2]
+    left   = [x for x in arr if x < pivot]
+    middle = [x for x in arr if x == pivot]
+    right  = [x for x in arr if x > pivot]
+    return quick_sort(left) + middle + quick_sort(right)
+
+if __name__ == "__main__":
+    import random, time
+    data = [random.randint(1, 1000) for _ in range(20)]
+    print("Original :", data)
+    for name, fn in [("Bubble", bubble_sort), ("Merge", merge_sort), ("Quick", quick_sort)]:
+        t = time.perf_counter()
+        result = fn(data)
+        elapsed = (time.perf_counter() - t) * 1000
+        print(f"{name:6}: {result}  ({elapsed:.3f}ms)")`,
+
+'sort:Javascript': `// Sorting algorithms with performance comparison
+
+function bubbleSort(arr) {
+  arr = [...arr];
+  const n = arr.length;
+  for (let i = 0; i < n; i++) {
+    let swapped = false;
+    for (let j = 0; j < n - i - 1; j++) {
+      if (arr[j] > arr[j + 1]) {
+        [arr[j], arr[j + 1]] = [arr[j + 1], arr[j]];
+        swapped = true;
+      }
+    }
+    if (!swapped) break;
+  }
+  return arr;
+}
+
+function mergeSort(arr) {
+  if (arr.length <= 1) return arr;
+  const mid = Math.floor(arr.length / 2);
+  const left = mergeSort(arr.slice(0, mid));
+  const right = mergeSort(arr.slice(mid));
+  const result = [];
+  let i = 0, j = 0;
+  while (i < left.length && j < right.length) {
+    result.push(left[i] <= right[j] ? left[i++] : right[j++]);
+  }
+  return [...result, ...left.slice(i), ...right.slice(j)];
+}
+
+function quickSort(arr) {
+  if (arr.length <= 1) return arr;
+  const pivot = arr[Math.floor(arr.length / 2)];
+  return [
+    ...quickSort(arr.filter(x => x < pivot)),
+    ...arr.filter(x => x === pivot),
+    ...quickSort(arr.filter(x => x > pivot))
+  ];
+}
+
+const data = Array.from({length: 20}, () => Math.floor(Math.random() * 1000));
+console.log('Original:', data.join(', '));
+
+for (const [name, fn] of [['Bubble', bubbleSort], ['Merge', mergeSort], ['Quick', quickSort]]) {
+  const t = performance.now();
+  const sorted = fn(data);
+  const ms = (performance.now() - t).toFixed(3);
+  console.log(\`\${name.padEnd(6)}: \${sorted.join(', ')}  (\${ms}ms)\`);
+}`,
+
+// ── Fibonacci ─────────────────────────────────────────────────────────────────
+'fibonacci:Python': `import time
+
+def fib_recursive(n):
+    """Simple recursive — exponential time, for demonstration only."""
+    if n <= 1:
+        return n
+    return fib_recursive(n - 1) + fib_recursive(n - 2)
+
+def fib_iterative(n):
+    """Iterative — O(n) time, O(1) space."""
+    if n <= 1:
+        return n
+    a, b = 0, 1
+    for _ in range(2, n + 1):
+        a, b = b, a + b
+    return b
+
+def fib_memoized(n, memo={}):
+    """Memoized recursive — O(n) time, O(n) space."""
+    if n in memo:
+        return memo[n]
+    if n <= 1:
+        return n
+    memo[n] = fib_memoized(n - 1, memo) + fib_memoized(n - 2, memo)
+    return memo[n]
+
+def fib_sequence(n):
+    """Return the full Fibonacci sequence up to index n."""
+    if n == 0:
+        return [0]
+    seq = [0, 1]
+    for i in range(2, n + 1):
+        seq.append(seq[-1] + seq[-2])
+    return seq
+
+if __name__ == "__main__":
+    N = 30
+    print(f"Fibonacci sequence (first {N+1} numbers):")
+    print(fib_sequence(N))
+    print()
+
+    for label, fn in [("Iterative", fib_iterative), ("Memoized", fib_memoized)]:
+        t = time.perf_counter()
+        result = fn(N)
+        ms = (time.perf_counter() - t) * 1000
+        print(f"fib({N}) via {label}: {result}  ({ms:.4f}ms)")
+
+    print()
+    SMALL = 10
+    t = time.perf_counter()
+    result = fib_recursive(SMALL)
+    ms = (time.perf_counter() - t) * 1000
+    print(f"fib({SMALL}) via Recursive: {result}  ({ms:.4f}ms)  (slow — only safe for small N)")`,
+
+// ── Fetch template ─────────────────────────────────────────────────────────────
+'fetch:Javascript': `// Fetch utility with async/await, retry logic, and error handling
+
+async function fetchJSON(url, options = {}, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        headers: { 'Accept': 'application/json', ...options.headers },
+        ...options
+      });
+      if (!response.ok) {
+        throw new Error(\`HTTP \${response.status}: \${response.statusText}\`);
+      }
+      return await response.json();
+    } catch (error) {
+      if (attempt === retries) throw error;
+      const delay = 2 ** attempt * 200;
+      console.warn(\`Attempt \${attempt} failed. Retrying in \${delay}ms...\`);
+      await new Promise(res => setTimeout(res, delay));
+    }
+  }
+}
+
+async function postJSON(url, data, options = {}) {
+  return fetchJSON(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+    ...options
+  });
+}
+
+// Example: fetch public data
+async function main() {
+  const url = 'https://jsonplaceholder.typicode.com/posts/1';
+  console.log('Fetching:', url);
+
+  try {
+    const data = await fetchJSON(url);
+    console.log('Response:', data);
+    console.log('Title:', data.title);
+  } catch (error) {
+    console.error('Request failed:', error.message);
+  }
+}
+
+main();`,
+
+// ── Dark mode ─────────────────────────────────────────────────────────────────
+'dark_mode:Javascript': `<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>Dark Mode Toggle</title>
+<style>
+  :root[data-theme="dark"] {
+    --bg: #0f172a; --surface: #1e293b; --border: #334155;
+    --text: #e2e8f0; --sub: #94a3b8; --accent: #7c3aed;
+    --btn-bg: #334155; --btn-text: #e2e8f0;
+  }
+  :root[data-theme="light"] {
+    --bg: #f8fafc; --surface: #ffffff; --border: #e2e8f0;
+    --text: #0f172a; --sub: #64748b; --accent: #7c3aed;
+    --btn-bg: #e2e8f0; --btn-text: #0f172a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; transition: background 0.25s, color 0.25s, border-color 0.25s; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; min-height: 100vh; display: flex; justify-content: center; align-items: center; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 40px; width: 360px; }
+  h1 { margin-bottom: 8px; }
+  p { color: var(--sub); margin-bottom: 28px; font-size: 0.9rem; }
+  .toggle-row { display: flex; justify-content: space-between; align-items: center; }
+  .toggle { position: relative; width: 52px; height: 28px; }
+  .toggle input { display: none; }
+  .slider { position: absolute; inset: 0; background: var(--btn-bg); border-radius: 14px; cursor: pointer; transition: background 0.25s; }
+  .slider::before { content: ''; position: absolute; width: 22px; height: 22px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform 0.25s; }
+  input:checked + .slider { background: var(--accent); }
+  input:checked + .slider::before { transform: translateX(24px); }
+  .label { font-size: 0.9rem; color: var(--text); }
+  .theme-icon { font-size: 1.6rem; text-align: center; margin-top: 24px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Theme Switcher</h1>
+  <p>Preference saved across page refreshes.</p>
+  <div class="toggle-row">
+    <span class="label" id="themeLabel">Dark mode</span>
+    <label class="toggle">
+      <input type="checkbox" id="themeToggle" onchange="toggleTheme(this)">
+      <span class="slider"></span>
+    </label>
+  </div>
+  <div class="theme-icon" id="themeIcon">🌙</div>
+</div>
+<script>
+  function applyTheme(dark) {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    document.getElementById('themeLabel').textContent = dark ? 'Dark mode' : 'Light mode';
+    document.getElementById('themeIcon').textContent = dark ? '🌙' : '☀️';
+    document.getElementById('themeToggle').checked = dark;
+    localStorage.setItem('theme', dark ? 'dark' : 'light');
+  }
+  function toggleTheme(el) { applyTheme(el.checked); }
+  const saved = localStorage.getItem('theme');
+  applyTheme(saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches);
+<\/script>
+</body>
+</html>`,
+
+// ── Counter ──────────────────────────────────────────────────────────────────
+'counter:Javascript': `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Counter</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #111827; color: #f9fafb; font-family: system-ui,sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+  .card { background: #1f2937; border-radius: 24px; padding: 48px 40px; text-align: center; width: 320px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+  h1 { font-size: 0.85rem; letter-spacing: 2px; text-transform: uppercase; color: #6b7280; margin-bottom: 24px; }
+  .count { font-size: 5rem; font-weight: 200; margin: 16px 0 32px; transition: transform 0.1s; }
+  .count.bump { transform: scale(1.1); }
+  .btns { display: flex; gap: 12px; justify-content: center; margin-bottom: 24px; }
+  button { width: 60px; height: 60px; border: none; border-radius: 50%; font-size: 1.6rem; cursor: pointer; transition: all 0.15s; }
+  .dec { background: #374151; color: #f9fafb; }
+  .dec:hover { background: #ef4444; }
+  .inc { background: #374151; color: #f9fafb; }
+  .inc:hover { background: #10b981; }
+  .rst { background: #374151; color: #6b7280; font-size: 1rem; }
+  .rst:hover { background: #4b5563; color: #f9fafb; }
+  .step-row { display: flex; align-items: center; gap: 10px; justify-content: center; font-size: 0.85rem; color: #6b7280; }
+  .step-row input { width: 60px; background: #111827; border: 1px solid #374151; border-radius: 8px; color: #f9fafb; padding: 6px; text-align: center; font-size: 0.85rem; outline: none; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Counter</h1>
+  <div class="count" id="display">0</div>
+  <div class="btns">
+    <button class="dec" onclick="change(-1)">−</button>
+    <button class="rst" onclick="reset()">↺</button>
+    <button class="inc" onclick="change(1)">+</button>
+  </div>
+  <div class="step-row">Step: <input id="step" type="number" value="1" min="1"></div>
+</div>
+<script>
+  let count = 0;
+  const display = document.getElementById('display');
+
+  function change(dir) {
+    const step = Math.abs(parseInt(document.getElementById('step').value) || 1);
+    count += dir * step;
+    display.textContent = count;
+    display.style.color = count > 0 ? '#10b981' : count < 0 ? '#ef4444' : '#f9fafb';
+    display.classList.remove('bump');
+    void display.offsetWidth;
+    display.classList.add('bump');
+  }
+
+  function reset() { count = 0; display.textContent = 0; display.style.color = '#f9fafb'; }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowUp' || e.key === '+') change(1);
+    if (e.key === 'ArrowDown' || e.key === '-') change(-1);
+    if (e.key === 'r' || e.key === 'R') reset();
+  });
+<\/script>
+</body>
+</html>`,
+
+// ── Linked List ───────────────────────────────────────────────────────────────
+'linked_list:Python': `class Node:
+    def __init__(self, data):
+        self.data = data
+        self.next = None
+
+class LinkedList:
+    def __init__(self):
+        self.head = None
+
+    def append(self, data):
+        """Add to the end."""
+        new_node = Node(data)
+        if not self.head:
+            self.head = new_node
+            return
+        current = self.head
+        while current.next:
+            current = current.next
+        current.next = new_node
+
+    def prepend(self, data):
+        """Add to the front."""
+        new_node = Node(data)
+        new_node.next = self.head
+        self.head = new_node
+
+    def delete(self, data):
+        """Remove first occurrence of data."""
+        if not self.head:
+            return
+        if self.head.data == data:
+            self.head = self.head.next
+            return
+        current = self.head
+        while current.next:
+            if current.next.data == data:
+                current.next = current.next.next
+                return
+            current = current.next
+
+    def search(self, data):
+        """Return index of first occurrence, or -1."""
+        current = self.head
+        idx = 0
+        while current:
+            if current.data == data:
+                return idx
+            current = current.next
+            idx += 1
+        return -1
+
+    def reverse(self):
+        """Reverse the list in-place."""
+        prev = None
+        current = self.head
+        while current:
+            nxt = current.next
+            current.next = prev
+            prev = current
+            current = nxt
+        self.head = prev
+
+    def to_list(self):
+        result = []
+        current = self.head
+        while current:
+            result.append(current.data)
+            current = current.next
+        return result
+
+    def __len__(self):
+        return sum(1 for _ in self.to_list())
+
+    def __repr__(self):
+        return ' -> '.join(str(x) for x in self.to_list()) or '(empty)'
+
+
+if __name__ == "__main__":
+    ll = LinkedList()
+    for val in [10, 20, 30, 40, 50]:
+        ll.append(val)
+    print("List:", ll)
+    ll.prepend(5)
+    print("After prepend(5):", ll)
+    ll.delete(30)
+    print("After delete(30):", ll)
+    print("Search 40:", ll.search(40))
+    ll.reverse()
+    print("Reversed:", ll)
+    print("Length:", len(ll))`,
+
+// ── Stack ─────────────────────────────────────────────────────────────────────
+'stack:Javascript': `class Stack {
+  #items = [];
+
+  push(item) { this.#items.push(item); }
+  pop() {
+    if (this.isEmpty()) throw new Error('Stack underflow — cannot pop from empty stack');
+    return this.#items.pop();
+  }
+  peek() {
+    if (this.isEmpty()) throw new Error('Stack is empty');
+    return this.#items[this.#items.length - 1];
+  }
+  isEmpty() { return this.#items.length === 0; }
+  size() { return this.#items.length; }
+  clear() { this.#items = []; }
+  toArray() { return [...this.#items]; }
+  toString() { return \`Stack[\${this.#items.join(', ')}] ← top\`; }
+}
+
+// Example: balanced parentheses checker
+function isBalanced(expression) {
+  const stack = new Stack();
+  const pairs = { ')': '(', ']': '[', '}': '{' };
+  for (const char of expression) {
+    if ('([{'.includes(char)) stack.push(char);
+    else if (')]}'.includes(char)) {
+      if (stack.isEmpty() || stack.pop() !== pairs[char]) return false;
+    }
+  }
+  return stack.isEmpty();
+}
+
+// Example: reverse a string
+function reverseString(str) {
+  const stack = new Stack();
+  for (const char of str) stack.push(char);
+  let result = '';
+  while (!stack.isEmpty()) result += stack.pop();
+  return result;
+}
+
+// Demo
+const s = new Stack();
+s.push(1); s.push(2); s.push(3);
+console.log(s.toString());
+console.log('Peek:', s.peek());
+console.log('Pop:', s.pop());
+console.log(s.toString());
+
+console.log('');
+const tests = ['([]{})', '([)]', '{[()]}', '(((' ];
+tests.forEach(t => console.log(\`isBalanced("\${t}"): \${isBalanced(t)}\`));
+
+console.log('');
+console.log('Reverse "hello":', reverseString('hello'));`,
+
+// ── Canvas draw ────────────────────────────────────────────────────────────────
+'canvas:Javascript': `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Drawing Canvas</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #111; display: flex; flex-direction: column; align-items: center; height: 100vh; overflow: hidden; font-family: system-ui, sans-serif; }
+  #toolbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #1f2937; width: 100%; border-bottom: 1px solid #374151; flex-wrap: wrap; }
+  .tool-btn { padding: 6px 14px; border: 1px solid #374151; border-radius: 8px; background: #111827; color: #e5e7eb; font-size: 0.85rem; cursor: pointer; transition: all 0.15s; }
+  .tool-btn.active, .tool-btn:hover { background: #6366f1; border-color: #6366f1; color: #fff; }
+  input[type=color] { width: 36px; height: 30px; border: none; border-radius: 6px; cursor: pointer; background: none; padding: 0; }
+  label { font-size: 0.8rem; color: #9ca3af; display: flex; align-items: center; gap: 6px; }
+  input[type=range] { width: 80px; accent-color: #6366f1; }
+  canvas { cursor: crosshair; background: #fff; touch-action: none; }
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <button class="tool-btn active" id="brushBtn" onclick="setTool('brush',this)">✏️ Brush</button>
+  <button class="tool-btn" id="eraserBtn" onclick="setTool('eraser',this)">🧹 Eraser</button>
+  <label>Color <input type="color" id="colorPicker" value="#6366f1"></label>
+  <label>Size <input type="range" id="sizeRange" min="1" max="60" value="8"></label>
+  <button class="tool-btn" onclick="clearCanvas()">🗑 Clear</button>
+  <button class="tool-btn" onclick="downloadCanvas()">⬇ Save</button>
+</div>
+<canvas id="c"></canvas>
+<script>
+  const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+  let tool = 'brush', drawing = false, lastX = 0, lastY = 0;
+
+  function resize() {
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight - document.getElementById('toolbar').offsetHeight;
+    ctx.putImageData(data, 0, 0);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  }
+
+  function setTool(t, btn) {
+    tool = t;
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    canvas.style.cursor = t === 'eraser' ? 'cell' : 'crosshair';
+  }
+
+  function getPos(e) {
+    const r = canvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return [src.clientX - r.left, src.clientY - r.top];
+  }
+
+  function startDraw(e) {
+    drawing = true;
+    [lastX, lastY] = getPos(e);
+  }
+
+  function draw(e) {
+    if (!drawing) return;
+    e.preventDefault();
+    const [x, y] = getPos(e);
+    const size = document.getElementById('sizeRange').value;
+    const color = document.getElementById('colorPicker').value;
+    ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
+    ctx.lineWidth = tool === 'eraser' ? size * 2 : size;
+    ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(x, y); ctx.stroke();
+    [lastX, lastY] = [x, y];
+  }
+
+  function stopDraw() { drawing = false; }
+
+  function clearCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+
+  function downloadCanvas() {
+    const a = document.createElement('a');
+    a.download = 'drawing.png'; a.href = canvas.toDataURL(); a.click();
+  }
+
+  canvas.addEventListener('mousedown', startDraw); canvas.addEventListener('mousemove', draw);
+  canvas.addEventListener('mouseup', stopDraw); canvas.addEventListener('mouseleave', stopDraw);
+  canvas.addEventListener('touchstart', startDraw, {passive:false}); canvas.addEventListener('touchmove', draw, {passive:false});
+  canvas.addEventListener('touchend', stopDraw);
+  window.addEventListener('resize', resize);
+  resize(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+<\/script>
+</body>
+</html>`,
+    };
+}
+
+aiSendBtn.onclick = () => {
     const prompt = aiPromptInput.value.trim();
     if (!prompt) return;
     const p = JungleUI.getCurrentProject();
-    const lang = (selectedLanguages[0] || 'code');
-    const langLower = lang.toLowerCase();
-    const currentFile = (p && p.currentFile) || 'main';
+    const lang = selectedLanguages[0] || 'Javascript';
     const currentCode = (p && p.currentFile && p.files[p.currentFile]) || '';
-
-    // Build full project context — all files, not just the current one
-    let projectContext = '';
-    if (aiIncludeCode.checked && p && p.files) {
-        const fileEntries = Object.entries(p.files);
-        if (fileEntries.length > 1) {
-            projectContext += '\n\n--- PROJECT FILES ---';
-            fileEntries.forEach(([fname, fcode]) => {
-                const marker = fname === p.currentFile ? ' ← ACTIVE FILE' : '';
-                projectContext += `\n\nFile: ${fname}${marker}\n\`\`\`${langLower}\n${fcode}\n\`\`\``;
-            });
-        } else if (currentCode) {
-            projectContext += `\n\nCurrent file: ${currentFile}\n\`\`\`${langLower}\n${currentCode}\n\`\`\``;
-        }
-    }
-
-    const userContent = prompt + projectContext;
-
     addAiMsg('user', escHtml(prompt));
     aiPromptInput.value = '';
     aiSendBtn.disabled = true;
-    aiSendBtn.textContent = '⏳ Thinking...';
-    const thinkingMsg = addAiMsg('assistant', '<em style="color:#528b74">Generating code...</em>');
-
-    const systemPrompt = `You are a senior software engineer and coding expert embedded inside Jungle Editor — a browser-based multi-language sandbox. You have deep mastery of every language the editor supports.
-
-UNDERSTANDING INTENT:
-- Read between the lines. If the user says "make it better", understand what "better" means in context — faster, cleaner, more readable, more complete.
-- If the user says "build X", build a real, complete, working version of X — not a stub or skeleton. Include all the logic it actually needs to function.
-- If they say "fix", diagnose the actual root cause first, then fix it — don't just patch the symptom.
-- If the request is ambiguous, pick the most useful interpretation and note it briefly.
-
-CODE QUALITY RULES — always follow these:
-- Write production-quality code. No placeholder comments like "// TODO" or "// add logic here".
-- Handle edge cases: empty input, null values, division by zero, off-by-one errors.
-- Use the correct idioms for ${lang}: naming conventions, standard library patterns, formatting style.
-- Variable and function names must be clear and descriptive — no single letters except loop counters.
-- If the user's existing code has bugs or style issues not related to the request, fix them silently.
-- Prefer modern syntax (ES6+ for JS, dataclasses for Python, etc.) unless the existing code uses older style.
-
-RESPONDING:
-- Lead with the complete, working code in a fenced \`\`\`${langLower} block. Always return the FULL file — never partial snippets when modifying existing code.
-- After the code block, give a short plain-English summary (2-4 sentences) of what you built and any key decisions you made.
-- If you made assumptions, state them briefly so the user can redirect you.
-- Do not pad responses with generic advice or obvious explanations.
-
-CURRENT CONTEXT:
-- Language: ${lang}
-- Active file: ${currentFile}
-- Project: ${(p && p.id) || 'unnamed'}`;
-
-    const body = { model: 'claude-sonnet-4-6', max_tokens: 8000, system: systemPrompt, messages: [{ role: 'user', content: userContent }] };
-    const anthropicUrl = 'https://api.anthropic.com/v1/messages';
-    const proxies = [
-        { url: anthropicUrl, direct: true },
-        { url: `https://corsproxy.io/?${anthropicUrl}` },
-        { url: `https://api.allorigins.win/raw?url=${encodeURIComponent(anthropicUrl)}`, raw: true },
-    ];
-    let result = null, lastErr = '';
-    for (const proxy of proxies) {
-        try {
-            const headers = { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-allow-browser': 'true' };
-            const res = await fetch(proxy.url, { method: 'POST', headers, body: JSON.stringify(body) });
-            if (!res.ok) { const t = await res.text(); throw new Error(`HTTP ${res.status}: ${t.slice(0,120)}`); }
-            result = proxy.raw ? JSON.parse(await res.text()) : await res.json();
-            break;
-        } catch(e) { lastErr = e.message; }
-    }
-    aiSendBtn.disabled = false;
-    aiSendBtn.textContent = '✨ Generate';
-    if (!result || !result.content) {
-        thinkingMsg.className = 'ai-msg error';
-        thinkingMsg.innerHTML = `❌ Failed to reach Claude API.<br><small>${escHtml(lastErr)}</small><br><br><small>Check your API key and make sure it has credits at console.anthropic.com</small>`;
-        return;
-    }
-    const responseText = result.content[0]?.text || '';
-    thinkingMsg.className = 'ai-msg assistant';
-    thinkingMsg.innerHTML = formatAiResponse(responseText);
-    thinkingMsg.querySelectorAll('.ai-apply-btn').forEach(btn => {
-        btn.onclick = () => {
-            const code = btn.getAttribute('data-code').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+    aiSendBtn.textContent = '⏳ Building...';
+    const thinkingMsg = addAiMsg('assistant', '<em style="color:#528b74">Analyzing your request...</em>');
+    setTimeout(() => {
+        const { code, note } = JungleAI.generate(prompt, lang, aiIncludeCode.checked ? currentCode : '');
+        aiSendBtn.disabled = false;
+        aiSendBtn.textContent = '✨ Generate';
+        const escapedCode = escHtml(code);
+        thinkingMsg.className = 'ai-msg assistant';
+        thinkingMsg.innerHTML = `<pre><code>${escapedCode}</code></pre><div style="margin-top:8px;font-size:0.8rem;color:#528b74">${escHtml(note)}</div><button class="ai-apply-btn">⬇ Apply to Editor</button>`;
+        thinkingMsg.querySelector('.ai-apply-btn').onclick = () => {
             const editor = document.getElementById('code-editor');
             editor.value = code;
             editor.dispatchEvent(new Event('input'));
@@ -2042,7 +3203,7 @@ CURRENT CONTEXT:
             JungleUI.showToast('✅ Code applied to editor.');
             closeAiPanel();
         };
-    });
+    }, 300);
 };
 
 window.onload = () => {
