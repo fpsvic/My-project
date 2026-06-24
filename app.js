@@ -1951,18 +1951,61 @@ aiSendBtn.onclick = async () => {
     if (!prompt) return;
     const p = JungleUI.getCurrentProject();
     const lang = (selectedLanguages[0] || 'code');
-    const currentCode = p && p.currentFile && p.files[p.currentFile] ? p.files[p.currentFile] : '';
-    let userContent = prompt;
-    if (aiIncludeCode.checked && currentCode) {
-        userContent += `\n\nCurrent ${lang} code in file "${p.currentFile}":\n\`\`\`${lang.toLowerCase()}\n${currentCode}\n\`\`\``;
+    const langLower = lang.toLowerCase();
+    const currentFile = (p && p.currentFile) || 'main';
+    const currentCode = (p && p.currentFile && p.files[p.currentFile]) || '';
+
+    // Build full project context — all files, not just the current one
+    let projectContext = '';
+    if (aiIncludeCode.checked && p && p.files) {
+        const fileEntries = Object.entries(p.files);
+        if (fileEntries.length > 1) {
+            projectContext += '\n\n--- PROJECT FILES ---';
+            fileEntries.forEach(([fname, fcode]) => {
+                const marker = fname === p.currentFile ? ' ← ACTIVE FILE' : '';
+                projectContext += `\n\nFile: ${fname}${marker}\n\`\`\`${langLower}\n${fcode}\n\`\`\``;
+            });
+        } else if (currentCode) {
+            projectContext += `\n\nCurrent file: ${currentFile}\n\`\`\`${langLower}\n${currentCode}\n\`\`\``;
+        }
     }
+
+    const userContent = prompt + projectContext;
+
     addAiMsg('user', escHtml(prompt));
     aiPromptInput.value = '';
     aiSendBtn.disabled = true;
     aiSendBtn.textContent = '⏳ Thinking...';
     const thinkingMsg = addAiMsg('assistant', '<em style="color:#528b74">Generating code...</em>');
-    const systemPrompt = `You are an expert coding assistant inside Jungle Editor, a browser-based multi-language code editor. The user is working in ${lang}. When asked to build or modify something, respond with the complete working code in a fenced code block (\`\`\`${lang.toLowerCase()}...\`\`\`). Keep explanations brief — lead with the code. If updating existing code, always return the full updated file, not just a snippet.`;
-    const body = { model: 'claude-haiku-4-5-20251001', max_tokens: 4096, system: systemPrompt, messages: [{ role: 'user', content: userContent }] };
+
+    const systemPrompt = `You are a senior software engineer and coding expert embedded inside Jungle Editor — a browser-based multi-language sandbox. You have deep mastery of every language the editor supports.
+
+UNDERSTANDING INTENT:
+- Read between the lines. If the user says "make it better", understand what "better" means in context — faster, cleaner, more readable, more complete.
+- If the user says "build X", build a real, complete, working version of X — not a stub or skeleton. Include all the logic it actually needs to function.
+- If they say "fix", diagnose the actual root cause first, then fix it — don't just patch the symptom.
+- If the request is ambiguous, pick the most useful interpretation and note it briefly.
+
+CODE QUALITY RULES — always follow these:
+- Write production-quality code. No placeholder comments like "// TODO" or "// add logic here".
+- Handle edge cases: empty input, null values, division by zero, off-by-one errors.
+- Use the correct idioms for ${lang}: naming conventions, standard library patterns, formatting style.
+- Variable and function names must be clear and descriptive — no single letters except loop counters.
+- If the user's existing code has bugs or style issues not related to the request, fix them silently.
+- Prefer modern syntax (ES6+ for JS, dataclasses for Python, etc.) unless the existing code uses older style.
+
+RESPONDING:
+- Lead with the complete, working code in a fenced \`\`\`${langLower} block. Always return the FULL file — never partial snippets when modifying existing code.
+- After the code block, give a short plain-English summary (2-4 sentences) of what you built and any key decisions you made.
+- If you made assumptions, state them briefly so the user can redirect you.
+- Do not pad responses with generic advice or obvious explanations.
+
+CURRENT CONTEXT:
+- Language: ${lang}
+- Active file: ${currentFile}
+- Project: ${(p && p.id) || 'unnamed'}`;
+
+    const body = { model: 'claude-sonnet-4-6', max_tokens: 8000, system: systemPrompt, messages: [{ role: 'user', content: userContent }] };
     const anthropicUrl = 'https://api.anthropic.com/v1/messages';
     const proxies = [
         { url: anthropicUrl, direct: true },
