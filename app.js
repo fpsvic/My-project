@@ -1895,6 +1895,113 @@ function renderLangPickerGrid(filter) {
         };
     });
 }
+// --- AI Code Assistant ---
+const aiPanel = document.getElementById('ai-panel');
+const aiPanelBackdrop = document.getElementById('ai-panel-backdrop');
+const aiPanelBtn = document.getElementById('ai-panel-btn');
+const aiPanelClose = document.getElementById('ai-panel-close');
+const aiApiKeyInput = document.getElementById('ai-api-key');
+const aiSaveKeyBtn = document.getElementById('ai-save-key-btn');
+const aiChatHistory = document.getElementById('ai-chat-history');
+const aiPromptInput = document.getElementById('ai-prompt');
+const aiSendBtn = document.getElementById('ai-send-btn');
+const aiIncludeCode = document.getElementById('ai-include-code');
+
+function openAiPanel() { aiPanel.classList.add('visible'); aiPanelBackdrop.classList.add('visible'); const key = localStorage.getItem('jungle_ai_key') || ''; aiApiKeyInput.value = key ? '•'.repeat(20) : ''; aiApiKeyInput.placeholder = key ? 'API key saved ✓ — paste new to replace' : 'Paste your Anthropic API key (sk-ant-...)'; aiPromptInput.focus(); }
+function closeAiPanel() { aiPanel.classList.remove('visible'); aiPanelBackdrop.classList.remove('visible'); }
+aiPanelBtn.onclick = openAiPanel;
+aiPanelClose.onclick = closeAiPanel;
+aiPanelBackdrop.onclick = closeAiPanel;
+aiSaveKeyBtn.onclick = () => {
+    const val = aiApiKeyInput.value.trim();
+    if (!val || val.startsWith('•')) { JungleUI.showToast('Paste a new API key to save it.'); return; }
+    localStorage.setItem('jungle_ai_key', val);
+    aiApiKeyInput.value = '•'.repeat(20);
+    aiApiKeyInput.placeholder = 'API key saved ✓ — paste new to replace';
+    JungleUI.showToast('✅ API key saved.');
+};
+aiPromptInput.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); aiSendBtn.click(); } });
+
+function addAiMsg(role, html) {
+    const div = document.createElement('div');
+    div.className = `ai-msg ${role}`;
+    div.innerHTML = html;
+    aiChatHistory.appendChild(div);
+    aiChatHistory.scrollTop = aiChatHistory.scrollHeight;
+    return div;
+}
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function formatAiResponse(text) {
+    const parts = text.split(/(```[\s\S]*?```)/g);
+    return parts.map(part => {
+        if (part.startsWith('```')) {
+            const lines = part.slice(3).split('\n');
+            const lang = lines[0].trim();
+            const code = lines.slice(1).join('\n').replace(/```$/, '').trimEnd();
+            return `<pre><code>${escHtml(code)}</code></pre><button class="ai-apply-btn" data-code="${escHtml(code)}">⬇ Apply to Editor</button>`;
+        }
+        return escHtml(part).replace(/\n/g, '<br>');
+    }).join('');
+}
+
+aiSendBtn.onclick = async () => {
+    const key = localStorage.getItem('jungle_ai_key');
+    if (!key) { addAiMsg('error', '⚠️ No API key saved. Paste your Anthropic API key above and click Save.'); return; }
+    const prompt = aiPromptInput.value.trim();
+    if (!prompt) return;
+    const p = JungleUI.getCurrentProject();
+    const lang = (selectedLanguages[0] || 'code');
+    const currentCode = p && p.currentFile && p.files[p.currentFile] ? p.files[p.currentFile] : '';
+    let userContent = prompt;
+    if (aiIncludeCode.checked && currentCode) {
+        userContent += `\n\nCurrent ${lang} code in file "${p.currentFile}":\n\`\`\`${lang.toLowerCase()}\n${currentCode}\n\`\`\``;
+    }
+    addAiMsg('user', escHtml(prompt));
+    aiPromptInput.value = '';
+    aiSendBtn.disabled = true;
+    aiSendBtn.textContent = '⏳ Thinking...';
+    const thinkingMsg = addAiMsg('assistant', '<em style="color:#528b74">Generating code...</em>');
+    const systemPrompt = `You are an expert coding assistant inside Jungle Editor, a browser-based multi-language code editor. The user is working in ${lang}. When asked to build or modify something, respond with the complete working code in a fenced code block (\`\`\`${lang.toLowerCase()}...\`\`\`). Keep explanations brief — lead with the code. If updating existing code, always return the full updated file, not just a snippet.`;
+    const body = { model: 'claude-haiku-4-5-20251001', max_tokens: 4096, system: systemPrompt, messages: [{ role: 'user', content: userContent }] };
+    const anthropicUrl = 'https://api.anthropic.com/v1/messages';
+    const proxies = [
+        { url: anthropicUrl, direct: true },
+        { url: `https://corsproxy.io/?${anthropicUrl}` },
+        { url: `https://api.allorigins.win/raw?url=${encodeURIComponent(anthropicUrl)}`, raw: true },
+    ];
+    let result = null, lastErr = '';
+    for (const proxy of proxies) {
+        try {
+            const headers = { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-allow-browser': 'true' };
+            const res = await fetch(proxy.url, { method: 'POST', headers, body: JSON.stringify(body) });
+            if (!res.ok) { const t = await res.text(); throw new Error(`HTTP ${res.status}: ${t.slice(0,120)}`); }
+            result = proxy.raw ? JSON.parse(await res.text()) : await res.json();
+            break;
+        } catch(e) { lastErr = e.message; }
+    }
+    aiSendBtn.disabled = false;
+    aiSendBtn.textContent = '✨ Generate';
+    if (!result || !result.content) {
+        thinkingMsg.className = 'ai-msg error';
+        thinkingMsg.innerHTML = `❌ Failed to reach Claude API.<br><small>${escHtml(lastErr)}</small><br><br><small>Check your API key and make sure it has credits at console.anthropic.com</small>`;
+        return;
+    }
+    const responseText = result.content[0]?.text || '';
+    thinkingMsg.className = 'ai-msg assistant';
+    thinkingMsg.innerHTML = formatAiResponse(responseText);
+    thinkingMsg.querySelectorAll('.ai-apply-btn').forEach(btn => {
+        btn.onclick = () => {
+            const code = btn.getAttribute('data-code').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+            const editor = document.getElementById('code-editor');
+            editor.value = code;
+            editor.dispatchEvent(new Event('input'));
+            if (p && p.currentFile) { p.files[p.currentFile] = code; JungleStorage.saveProjects(projects); }
+            JungleUI.showToast('✅ Code applied to editor.');
+            closeAiPanel();
+        };
+    });
+};
+
 window.onload = () => {
     projects = JungleStorage.getProjects();
 };
