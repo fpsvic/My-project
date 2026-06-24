@@ -48,41 +48,128 @@ class JungleStorage {
 // --- Smart Code Analysis and Error Diagnostic Modules ---
 class JungleScanner {
     static scan(lang, code) {
-        let errors = [];
-        let stack = [];
-        let bracketPairs = { '(': ')', '[': ']', '{': '}' };
-        let matchingPairs = { ')': '(', ']': '[', '}': '{' };
-        let lines = code.split('\n');
+        const lines = code.split('\n');
+        const errors = [
+            ...this.scanDelimiters(lines),
+            ...this.scanLanguagePatterns(lang, lines)
+        ];
+        if (lang === 'HTML') {
+            errors.push(...this.scanHtmlTags(lines));
+        }
+        return errors;
+    }
+    static makeIssue(line, msg, hint = "", kind = "Static analysis", column = null) {
+        return { line, msg, hint, kind, column };
+    }
+    static scanDelimiters(lines) {
+        const errors = [];
+        const stack = [];
+        const bracketPairs = { '(': ')', '[': ']', '{': '}' };
+        const matchingPairs = { ')': '(', ']': '[', '}': '{' };
+        let inBlockComment = false;
+        let inString = null;
         for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
-            let lineNum = i + 1;
-            let inQuotes = null;
+            const line = lines[i];
+            const lineNum = i + 1;
             for (let j = 0; j < line.length; j++) {
-                let char = line[j];
-                if ((char === '"' || char === "'") && line[j-1] !== '\\') {
-                    if (inQuotes === char) { inQuotes = null; } else if (!inQuotes) { inQuotes = char; }
+                const char = line[j];
+                const next = line[j + 1];
+                const prev = line[j - 1];
+                if (inBlockComment) {
+                    if (char === '*' && next === '/') { inBlockComment = false; j++; }
+                    continue;
                 }
-                if (!inQuotes) {
-                    if (bracketPairs[char]) { stack.push({ char: char, line: lineNum }); }
-                    else if (matchingPairs[char]) {
-                        if (stack.length === 0) { errors.push({ line: lineNum, msg: `Mismatched closing bracket '${char}' without matching opener.` }); }
-                        else {
-                            let last = stack.pop();
-                            if (last.char !== matchingPairs[char]) { errors.push({ line: lineNum, msg: `Mismatched closing bracket '${char}' - expected match for '${last.char}' from line ${last.line}.` }); }
+                if (inString) {
+                    if (char === inString && prev !== '\\') inString = null;
+                    continue;
+                }
+                if (char === '/' && next === '/') break;
+                if (char === '/' && next === '*') { inBlockComment = true; j++; continue; }
+                if (char === '"' || char === "'" || char === '`') { inString = char; continue; }
+                if (bracketPairs[char]) {
+                    stack.push({ char, line: lineNum, column: j + 1 });
+                } else if (matchingPairs[char]) {
+                    if (stack.length === 0) {
+                        errors.push(this.makeIssue(lineNum, `Mismatched closing bracket '${char}' without matching opener.`, `Remove this '${char}' or add the matching '${matchingPairs[char]}' before it.`, "Delimiter check", j + 1));
+                    } else {
+                        const last = stack.pop();
+                        if (last.char !== matchingPairs[char]) {
+                            errors.push(this.makeIssue(lineNum, `Mismatched closing bracket '${char}' - expected '${bracketPairs[last.char]}' for '${last.char}' from line ${last.line}.`, `Close '${last.char}' with '${bracketPairs[last.char]}' before using '${char}'.`, "Delimiter check", j + 1));
                         }
                     }
                 }
             }
         }
         while (stack.length > 0) {
-            let unclosed = stack.pop();
-            errors.push({ line: unclosed.line, msg: `Unclosed bracket or delimiter '${unclosed.char}' detected.` });
+            const unclosed = stack.pop();
+            errors.push(this.makeIssue(unclosed.line, `Unclosed bracket or delimiter '${unclosed.char}' detected.`, `Add '${bracketPairs[unclosed.char]}' to close the block opened here.`, "Delimiter check", unclosed.column));
         }
-        if (lang === 'HTML') {
-            let openTags = (code.match(/<[a-zA-Z0-9:-]+/g) || []).length;
-            let closeTags = (code.match(/<\/[a-zA-Z0-9:-]+/g) || []).length;
-            if (openTags !== closeTags) { errors.push({ line: 1, msg: `Structural tag count mismatch: Detected ${openTags} opening tags but only ${closeTags} closing tags.` }); }
+        return errors;
+    }
+    static scanHtmlTags(lines) {
+        const errors = [];
+        const stack = [];
+        const voidTags = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
+        const tagRegex = /<!--[\s\S]*?-->|<!doctype[^>]*>|<\/?([a-zA-Z0-9:-]+)(?:\s[^>]*)?>/gi;
+        const code = lines.join('\n');
+        let match;
+        while ((match = tagRegex.exec(code)) !== null) {
+            const raw = match[0];
+            const tagName = match[1] ? match[1].toLowerCase() : null;
+            if (!tagName || raw.startsWith('<!--') || raw.toLowerCase().startsWith('<!doctype')) continue;
+            const before = code.slice(0, match.index);
+            const line = before.split('\n').length;
+            const column = match.index - before.lastIndexOf('\n');
+            const isClosing = raw.startsWith('</');
+            const isSelfClosing = raw.endsWith('/>') || voidTags.has(tagName);
+            if (isClosing) {
+                const last = stack.pop();
+                if (!last) {
+                    errors.push(this.makeIssue(line, `Closing tag </${tagName}> has no matching opening tag.`, `Remove </${tagName}> or add <${tagName}> before it.`, "HTML structure", column));
+                } else if (last.tag !== tagName) {
+                    errors.push(this.makeIssue(line, `Closing tag </${tagName}> does not match <${last.tag}> from line ${last.line}.`, `Change this to </${last.tag}> or close <${last.tag}> before </${tagName}>.`, "HTML structure", column));
+                }
+            } else if (!isSelfClosing) {
+                stack.push({ tag: tagName, line, column });
+            }
         }
+        while (stack.length > 0) {
+            const unclosed = stack.pop();
+            errors.push(this.makeIssue(unclosed.line, `Unclosed HTML tag <${unclosed.tag}> detected.`, `Add </${unclosed.tag}> after this element's content.`, "HTML structure", unclosed.column));
+        }
+        return errors;
+    }
+    static scanLanguagePatterns(lang, lines) {
+        const errors = [];
+        lines.forEach((line, idx) => {
+            const lineNum = idx + 1;
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('#')) return;
+            if (lang === 'Python') {
+                if (/^(if|elif|else|for|while|def|class|try|except|finally|with)\b/.test(trimmed) && !trimmed.endsWith(':')) {
+                    errors.push(this.makeIssue(lineNum, "Python block statement is missing a trailing colon.", "Add ':' at the end of the line.", "Python syntax"));
+                }
+                if (/\b(console\.log|let|const|var)\b/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "This looks like JavaScript inside a Python file.", "Switch the language to JavaScript or rewrite the line using Python syntax.", "Language mismatch"));
+                }
+            } else if (lang === 'Javascript' || lang === 'TypeScript') {
+                const condition = trimmed.match(/\b(if|while)\s*\((.*)\)/);
+                if (condition && /(^|[^=!<>])=([^=>]|$)/.test(condition[2])) {
+                    errors.push(this.makeIssue(lineNum, "Possible assignment inside a condition.", "Use '===' for comparison unless you intentionally meant assignment.", "JavaScript logic"));
+                }
+                if (/^\s*(def|elif|print\s*\()\b/.test(line)) {
+                    errors.push(this.makeIssue(lineNum, "This looks like Python inside a JavaScript file.", "Switch the language to Python or rewrite the line using JavaScript syntax.", "Language mismatch"));
+                }
+            } else if (lang === 'Java') {
+                if (/public\s+class\s+([A-Za-z_][A-Za-z0-9_]*)/.test(trimmed) && !/\{/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "Java class declaration is missing an opening brace.", "Add '{' after the class declaration.", "Java syntax"));
+                }
+            } else if (lang === 'C++' || lang === 'C') {
+                if (/^\s*#include\s+[A-Za-z0-9_./]+/.test(line)) {
+                    errors.push(this.makeIssue(lineNum, "Include directive is missing angle brackets or quotes.", "Use #include <iostream> or #include \"file.h\".", "C/C++ syntax"));
+                }
+            }
+        });
         return errors;
     }
     static detectLanguage(code) {
@@ -123,12 +210,21 @@ class JungleRunner {
         try {
             const scanErrors = JungleScanner.scan(lang, code);
             if (scanErrors.length > 0) {
-                const errorMsg = scanErrors[0].msg;
-                const lineNo = scanErrors[0].line;
+                const primaryError = scanErrors[0];
+                const errorMsg = primaryError.msg;
+                const lineNo = primaryError.line;
                 switchView('terminal', false);
                 terminalStatus.textContent = "FAILED TO RUN";
                 terminalStatus.className = "text-rose-500 font-bold";
-                const errorDetails = { file: "main.py", lineNo: lineNo, errorMsg: errorMsg };
+                const p = JungleUI.getCurrentProject();
+                const errorDetails = {
+                    file: (p && p.currentFile) || "main",
+                    lineNo: lineNo,
+                    column: primaryError.column,
+                    errorMsg: errorMsg,
+                    likelyCause: primaryError.kind,
+                    suggestion: primaryError.hint
+                };
                 this.printCrashAnalysis(errorDetails, "", "");
                 JungleUI.showToast("❌ Failed to run! Tap here to inspect terminal diagnostics.", () => {
                     switchView('terminal', false);
@@ -198,35 +294,99 @@ class JungleRunner {
         terminalStatus.textContent = "FAILED TO RUN";
         terminalStatus.className = "text-rose-500 font-bold";
         terminalViewBody.textContent = "=========================================================\n❌ JUNGLE CRASH REPORT GENERATOR (ENVIRONMENT FAILURE)\n=========================================================\nFAILED TO COMPILE OR EXECUTE LOGIC STREAMS\nDetails: " + (err.message || err) + "\n=========================================================\n";
-        JungleUI.showToast("❌ Failed to run! Tap here to inspect terminal diagnostics.", () => { var_switchView('terminal', false); });
+        JungleUI.showToast("❌ Failed to run! Tap here to inspect terminal diagnostics.", () => { switchView('terminal', false); });
     }
     static parseError(stderr, stdout, lang) {
-        let errorMsg = "Execution anomaly detected.", lineNo = "Unknown line", file = "main.py";
+        let errorMsg = "Execution anomaly detected.", lineNo = "Unknown line", file = "main";
+        let column = null, likelyCause = "", suggestion = "";
         const combined = (stderr || "") + "\n" + (stdout || "");
+        const lines = combined.trim().split('\n').filter(Boolean);
         if (lang === 'Python') {
             const match = combined.match(/File\s+"([^"]+)",\s+line\s+(\d+)/i);
             if (match) { file = match[1]; lineNo = match[2]; }
-            const lines = combined.trim().split('\n');
             for (let i = lines.length - 1; i >= 0; i--) {
                 const l = lines[i].trim();
                 if (l && (l.includes('Error:') || l.includes('Exception:') || l.match(/^[a-zA-Z0-9_]+Error:/))) { errorMsg = l; break; }
             }
             if (errorMsg === "Execution anomaly detected." && lines.length > 0) { errorMsg = lines[lines.length - 1]; }
         } else if (lang === 'Javascript' || lang === 'TypeScript') {
-            const lines = combined.trim().split('\n');
             if (lines[0]) errorMsg = lines[0];
-            const match = combined.match(/\/([^/:\s]+):(\d+):(\d+)/) || combined.match(/at\s+.*:(\d+):(\d+)/);
+            const match = combined.match(/\/([^/:\s]+):(\d+):(\d+)/) || combined.match(/(?:^|\n)([^:\n]+):(\d+):(\d+)/) || combined.match(/at\s+.*:(\d+):(\d+)/);
             if (match) {
-                if (match.length > 2) { file = match[1] || "main.js"; lineNo = match[2]; } else { lineNo = match[1]; }
+                if (match.length > 3) { file = match[1] || "main.js"; lineNo = match[2]; column = match[3]; } else { lineNo = match[1]; column = match[2]; }
             }
         } else if (lang === 'C++' || lang === 'Java') {
-            const match = combined.match(/([^:\n]+):(\d+):(?:\d+:)?\s+error:\s+(.+)/i);
-            if (match) { file = match[1]; lineNo = match[2]; errorMsg = match[3]; }
+            const match = combined.match(/([^:\n]+):(\d+):(?:(\d+):)?\s+(?:fatal\s+)?error:\s+(.+)/i);
+            if (match) { file = match[1]; lineNo = match[2]; column = match[3] || null; errorMsg = match[4]; }
+        } else {
+            const generic = combined.match(/([^:\n]+):(\d+):(?:(\d+):)?\s*(.+)/);
+            if (generic) { file = generic[1]; lineNo = generic[2]; column = generic[3] || null; errorMsg = generic[4]; }
+            else if (lines.length > 0) { errorMsg = lines[0]; }
         }
-        return { errorMsg, lineNo, file };
+        const insight = this.explainError(errorMsg, lang, combined);
+        likelyCause = insight.likelyCause;
+        suggestion = insight.suggestion;
+        return { errorMsg, lineNo, file, column, likelyCause, suggestion, rawOutput: combined.trim() };
+    }
+    static explainError(errorMsg, lang, rawOutput) {
+        const text = `${errorMsg}\n${rawOutput || ""}`.toLowerCase();
+        const rules = [
+            { test: /syntaxerror|invalid syntax|unexpected token|expected/i, cause: "The parser found code that does not match the language grammar.", fix: "Check punctuation near the reported line: missing commas, colons, braces, or quotes are common causes." },
+            { test: /indentationerror|expected an indented block|unexpected indent/i, cause: "Python indentation is inconsistent or a block has no body.", fix: "Align the block with spaces consistently and indent the statements under def/if/for/while." },
+            { test: /nameerror|is not defined|referenceerror/i, cause: "The code uses a variable, function, or class name before it exists.", fix: "Check the spelling and make sure the value is declared before this line runs." },
+            { test: /typeerror|cannot read properties|undefined is not a function|not a function/i, cause: "A value is being used with the wrong type or before it has the expected shape.", fix: "Inspect the value on the previous line and guard against null/undefined or convert it to the expected type." },
+            { test: /indexerror|rangeerror|out of range/i, cause: "The code tried to access an item outside the available range.", fix: "Check the array/list length before accessing that index." },
+            { test: /modulenotfounderror|cannot find module|package .* not found|no module named/i, cause: "A dependency or imported file is missing from the sandbox.", fix: "Add the missing file to the project or use a module available in the selected runtime." },
+            { test: /permission denied|eacces/i, cause: "The runtime blocked a file or system operation.", fix: "Avoid writing to protected paths and keep file access inside the sandbox workspace." },
+            { test: /time limit|timed out|timeout/i, cause: "The program ran too long, often because of an infinite loop or slow input handling.", fix: "Add a loop exit condition or reduce the amount of work done per run." },
+            { test: /segmentation fault|core dumped/i, cause: "Native code accessed invalid memory.", fix: "Check pointer usage, array bounds, and object lifetimes around the reported location." }
+        ];
+        const matched = rules.find(rule => rule.test.test(text));
+        if (matched) return { likelyCause: matched.cause, suggestion: matched.fix };
+        if (lang === 'Python') return { likelyCause: "Python raised an exception while executing the script.", suggestion: "Read the last traceback line first, then inspect the reported source line." };
+        if (lang === 'Javascript' || lang === 'TypeScript') return { likelyCause: "The JavaScript runtime stopped on an exception.", suggestion: "Check the first error line and the top stack frame that points into your file." };
+        if (lang === 'C++' || lang === 'C') return { likelyCause: "The compiler or runtime rejected the native program.", suggestion: "Start with the first compiler error; later errors are often side effects." };
+        if (lang === 'Java') return { likelyCause: "The Java compiler or JVM stopped because of the reported error.", suggestion: "Verify the class name, method signatures, and the first reported line." };
+        return { likelyCause: "The selected runtime reported an execution error.", suggestion: "Inspect the raw output and confirm the file language matches the selected runtime." };
+    }
+    static getCodeFrame(file, lineNo, column = null) {
+        const p = JungleUI.getCurrentProject();
+        if (!p || !p.files) return "";
+        const source = p.files[file] || p.files[p.currentFile];
+        const lineNumber = Number(lineNo);
+        if (!source || !Number.isFinite(lineNumber)) return "";
+        const lines = source.split('\n');
+        const start = Math.max(1, lineNumber - 2);
+        const end = Math.min(lines.length, lineNumber + 2);
+        const frame = [];
+        for (let i = start; i <= end; i++) {
+            const marker = i === lineNumber ? ">" : " ";
+            frame.push(`${marker} ${String(i).padStart(4, ' ')} | ${lines[i - 1]}`);
+            if (i === lineNumber && column) {
+                frame.push(`       | ${" ".repeat(Math.max(0, Number(column) - 1))}^`);
+            }
+        }
+        return frame.join('\n');
     }
     static printCrashAnalysis(details, stdout, stderr) {
-        terminalViewBody.textContent = "=========================================================\n❌ JUNGLE CRASH REPORT GENERATOR\n=========================================================\nWHAT WENT WRONG: " + details.errorMsg + "\nWHERE IT IS:     File \"" + details.file + "\", Line " + details.lineNo + "\n=========================================================\n";
+        const location = `File "${details.file}", Line ${details.lineNo}${details.column ? `, Col ${details.column}` : ""}`;
+        const frame = this.getCodeFrame(details.file, details.lineNo, details.column);
+        const rawOutput = details.rawOutput || [stderr, stdout].filter(Boolean).join('\n').trim();
+        terminalViewBody.textContent =
+            "=========================================================\n" +
+            "❌ JUNGLE CRASH REPORT GENERATOR\n" +
+            "=========================================================\n" +
+            "WHAT WENT WRONG: " + details.errorMsg + "\n" +
+            "WHERE IT IS:     " + location + "\n" +
+            "LIKELY CAUSE:    " + (details.likelyCause || "Needs manual inspection.") + "\n" +
+            "TRY THIS:        " + (details.suggestion || "Check the highlighted line and rerun after fixing it.") + "\n" +
+            "=========================================================\n";
+        if (frame) {
+            terminalViewBody.textContent += "SOURCE CONTEXT:\n" + frame + "\n=========================================================\n";
+        }
+        if (rawOutput) {
+            terminalViewBody.textContent += "RAW RUNTIME OUTPUT:\n" + rawOutput + "\n=========================================================\n";
+        }
         terminalViewBody.scrollTop = 0;
     }
 }
@@ -614,7 +774,17 @@ window.handleIframeError = (message, source, lineno, colno) => {
     switchView('terminal', false);
     terminalStatus.textContent = "FAILED TO RUN";
     terminalStatus.className = "text-rose-500 font-bold";
-    terminalViewBody.textContent = '=========================================================\n❌ JUNGLE HTML RUNTIME/SYNTAX EXCEPTION DETECTED\n=========================================================\nERROR MESSAGE: ' + message + '\nWHERE IT IS:   Line ' + lineno + ', Col ' + colno + '\n=========================================================\n';
+    const p = JungleUI.getCurrentProject();
+    const insight = JungleRunner.explainError(message, 'HTML', message);
+    JungleRunner.printCrashAnalysis({
+        file: (p && p.currentFile) || "index.html",
+        lineNo: lineno,
+        column: colno,
+        errorMsg: message,
+        likelyCause: insight.likelyCause || "A script inside the preview frame crashed.",
+        suggestion: insight.suggestion || "Inspect the JavaScript near the reported line in the HTML file.",
+        rawOutput: message
+    }, "", message);
     JungleUI.showToast("❌ Failed to run! Tap here to inspect terminal diagnostics.", () => {
         switchView('terminal', false);
     });
