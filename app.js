@@ -962,14 +962,23 @@ class JungleRunner {
             const payload = { language: pistonLang, version: "*", files: filesArray };
             const pistonDirect = "https://emkc.org/api/v2/piston/execute";
             const pistonMirror = "https://piston.engineering.purdue.edu/api/v2/piston/execute";
+            const enc = encodeURIComponent;
             const endpoints = [
-                { name: "EMKC Primary API Hub", url: pistonDirect },
-                { name: "Purdue University Mirror", url: pistonMirror },
-                { name: "CORS-Proxied EMKC (corsproxy.io)", url: `https://corsproxy.io/?${pistonDirect}` },
-                { name: "CORS-Proxied Mirror (corsproxy.io)", url: `https://corsproxy.io/?${pistonMirror}` },
-                { name: "CORS-Proxied EMKC (allorigins)", url: `https://api.allorigins.win/raw?url=${encodeURIComponent(pistonDirect)}`, useRaw: true },
-                { name: "CORS-Proxied EMKC (cors.sh)", url: `https://cors.sh/${pistonDirect}` },
-                { name: "CORS-Proxied Mirror (cors.sh)", url: `https://cors.sh/${pistonMirror}` },
+                { name: "EMKC Primary",                   url: pistonDirect },
+                { name: "Purdue Mirror",                  url: pistonMirror },
+                { name: "corsproxy.io → EMKC",            url: `https://corsproxy.io/?${pistonDirect}` },
+                { name: "corsproxy.io → Purdue",          url: `https://corsproxy.io/?${pistonMirror}` },
+                { name: "allorigins → EMKC",              url: `https://api.allorigins.win/raw?url=${enc(pistonDirect)}`, useRaw: true },
+                { name: "allorigins → Purdue",            url: `https://api.allorigins.win/raw?url=${enc(pistonMirror)}`, useRaw: true },
+                { name: "cors.sh → EMKC",                 url: `https://cors.sh/${pistonDirect}`, corssh: true },
+                { name: "cors.sh → Purdue",               url: `https://cors.sh/${pistonMirror}`, corssh: true },
+                { name: "cors-anywhere → EMKC",           url: `https://cors-anywhere.herokuapp.com/${pistonDirect}` },
+                { name: "cors-anywhere → Purdue",         url: `https://cors-anywhere.herokuapp.com/${pistonMirror}` },
+                { name: "crossorigin.me → EMKC",          url: `https://crossorigin.me/${pistonDirect}` },
+                { name: "thingproxy → EMKC",              url: `https://thingproxy.freeboard.io/fetch/${pistonDirect}` },
+                { name: "thingproxy → Purdue",            url: `https://thingproxy.freeboard.io/fetch/${pistonMirror}` },
+                { name: "jsonp.afeld.me → EMKC",          url: `https://jsonp.afeld.me/?url=${enc(pistonDirect)}`, useRaw: true },
+                { name: "proxy.cors.st → EMKC",           url: `https://proxy.cors.st/${pistonDirect}` },
             ];
             let responseReceived = false, result = null, errorReports = [];
             for (let i = 0; i < endpoints.length; i++) {
@@ -977,7 +986,7 @@ class JungleRunner {
                 if (i > 0) { terminalViewBody.textContent += `\n⚠️ Node [${endpoints[i-1].name}] failed or blocked. Failover: Routing to ${currentTarget.name}...`; }
                 try {
                     const headers = { 'Content-Type': 'application/json' };
-                    if (currentTarget.url.includes('cors.sh')) headers['x-cors-api-key'] = 'temp_' + Math.random().toString(36).slice(2);
+                    if (currentTarget.corssh) headers['x-cors-api-key'] = 'temp_' + Math.random().toString(36).slice(2);
                     const response = await fetch(currentTarget.url, { method: 'POST', headers, body: JSON.stringify(payload) });
                     if (!response.ok) throw new Error(`HTTP ${response.status}`);
                     result = currentTarget.useRaw ? JSON.parse(await response.text()) : await response.json();
