@@ -379,7 +379,7 @@ class JungleScanner {
             const trimmed = line.trim();
             if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('#')) return;
             if (lang === 'Python') {
-                if (/^(if|elif|else|for|while|def|class|try|except|finally|with)\b/.test(trimmed) && !trimmed.endsWith(':')) {
+                if (/^(if|elif|else|for|while|def|class|try|except|finally|with)\b/.test(trimmed) && !trimmed.endsWith(':') && !trimmed.endsWith('\\')) {
                     errors.push(this.makeIssue(lineNum, "Python block statement is missing a trailing colon.", "Add ':' at the end of the line.", "Python syntax"));
                 }
                 if (/^print\s+[^(\s]/.test(trimmed)) {
@@ -390,6 +390,18 @@ class JungleScanner {
                 }
                 if (/\b(console\.log|let|const|var)\b/.test(trimmed)) {
                     errors.push(this.makeIssue(lineNum, "This looks like JavaScript inside a Python file.", "Switch the language to JavaScript or rewrite the line using Python syntax.", "Language mismatch"));
+                }
+                if (/^\s*def\s+\w+\([^)]*\)\s*$/.test(line) && !trimmed.endsWith(':')) {
+                    errors.push(this.makeIssue(lineNum, "Python function definition is missing a colon.", "Add ':' at the end of the def line.", "Python syntax"));
+                }
+                if (/\bxrange\s*\(/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "'xrange' does not exist in Python 3.", "Replace xrange(...) with range(...).", "Python syntax"));
+                }
+                if (/^\s*(return|yield)\s*$/.test(line) && idx + 1 < lines.length && lines[idx + 1].trim() !== '') {
+                    errors.push(this.makeIssue(lineNum, "Bare 'return' or 'yield' with no value — possible missing expression.", "If you intend to return a value, place it on the same line.", "Python syntax"));
+                }
+                if (/\b===/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "Python does not use '===' for comparison.", "Use '==' for equality in Python.", "Language mismatch"));
                 }
             } else if (lang === 'Javascript' || lang === 'TypeScript') {
                 const condition = trimmed.match(/\b(if|while)\s*\((.*)\)/);
@@ -405,8 +417,20 @@ class JungleScanner {
                 if (/^\s*(def|elif|print\s*\()\b/.test(line)) {
                     errors.push(this.makeIssue(lineNum, "This looks like Python inside a JavaScript file.", "Switch the language to Python or rewrite the line using JavaScript syntax.", "Language mismatch"));
                 }
+                if (/\bawait\b/.test(trimmed) && !/\basync\b/.test(lines.slice(0, idx).join('\n').slice(-500))) {
+                    errors.push(this.makeIssue(lineNum, "'await' used but no 'async' function found above.", "Make sure the enclosing function is declared with 'async'.", "JavaScript async"));
+                }
+                if (/==[^=]/.test(trimmed) && !/["'`].*==.*["'`]/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "Loose equality '==' used — this can cause unexpected type coercion.", "Prefer '===' for strict equality checks.", "JavaScript logic"));
+                }
+                if (/\bvar\b/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "'var' is function-scoped and can lead to hoisting bugs.", "Use 'const' for values that don't change, or 'let' for reassignable variables.", "JavaScript style"));
+                }
                 if (lang === 'TypeScript' && /\binterface\s+[A-Za-z_$][\w$]*\s*$/.test(trimmed)) {
                     errors.push(this.makeIssue(lineNum, "TypeScript interface declaration is missing a body.", "Add { ... } after the interface name.", "TypeScript syntax"));
+                }
+                if (lang === 'TypeScript' && /:\s*any\b/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "Type 'any' disables TypeScript type checking for this value.", "Replace 'any' with a specific type to get proper type safety.", "TypeScript style"));
                 }
             } else if (lang === 'Java') {
                 if (/public\s+class\s+([A-Za-z_][A-Za-z0-9_]*)/.test(trimmed) && !/\{/.test(trimmed)) {
@@ -415,12 +439,24 @@ class JungleScanner {
                 if (/System\.out\.print(?:ln)?\s+["']/.test(trimmed)) {
                     errors.push(this.makeIssue(lineNum, "Java print call is missing parentheses.", "Use System.out.println(...).", "Java syntax"));
                 }
+                if (/\bString\s+\w+\s*==\s*["']/.test(trimmed) || /["']\s*==\s*\w+/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "String comparison with '==' compares references, not values.", "Use .equals() to compare String content: str.equals(\"value\").", "Java logic"));
+                }
+                if (/^\s*[a-z][A-Za-z0-9]*\s+[a-z][A-Za-z0-9]*\s*=/.test(line) && !/^\s*(int|long|float|double|boolean|char|byte|short|String|var)\b/.test(line)) {
+                    errors.push(this.makeIssue(lineNum, "Variable declaration may be missing a type or import.", "Specify the type explicitly or import the class.", "Java syntax"));
+                }
             } else if (lang === 'C++' || lang === 'C') {
                 if (/^\s*#include\s+[A-Za-z0-9_./]+/.test(line)) {
                     errors.push(this.makeIssue(lineNum, "Include directive is missing angle brackets or quotes.", "Use #include <iostream> or #include \"file.h\".", "C/C++ syntax"));
                 }
                 if (/\b(int|float|double|char|bool|long|short|void)\s+\w+\s*\([^)]*\)\s*$/.test(trimmed)) {
                     errors.push(this.makeIssue(lineNum, "Function declaration or definition is missing ';' or '{'.", "Add ';' for a prototype or '{' for a function body.", "C/C++ syntax"));
+                }
+                if (/\bscanf\s*\(\s*["'][^"']*["']\s*,\s*[^&]/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "scanf argument may be missing '&' address operator.", "Pass the address of the variable: scanf(\"%d\", &var).", "C/C++ syntax"));
+                }
+                if (/\bmalloc\s*\(/.test(trimmed) && !/\bfree\s*\(/.test(lines.join('\n'))) {
+                    errors.push(this.makeIssue(lineNum, "malloc() called but no free() found in the file.", "Remember to free() every malloc() to avoid memory leaks.", "C/C++ memory"));
                 }
             } else if (lang === 'Go') {
                 if (/^\s*func\s+\w+\s*\([^)]*$/.test(line)) {
@@ -429,12 +465,38 @@ class JungleScanner {
                 if (/fmt\.Print(?:ln|f)?\s+["']/.test(trimmed)) {
                     errors.push(this.makeIssue(lineNum, "Go print call is missing parentheses.", "Use fmt.Println(...).", "Go syntax"));
                 }
+                if (/\b:=\b/.test(trimmed) && /^\s*(if|for|switch)\b/.test(line)) {
+                    errors.push(this.makeIssue(lineNum, "Short variable declaration ':=' inside control statement — variable will be scoped to the block.", "If you need the variable outside, declare it before the block with 'var'.", "Go scope"));
+                }
+                if (/\bimport\s+"/.test(trimmed) && !/\bfmt\b/.test(lines.join('\n')) && /\bfmt\./.test(lines.join('\n'))) {
+                    errors.push(this.makeIssue(lineNum, "fmt package is used but may not be imported.", "Add \"fmt\" to your import block.", "Go imports"));
+                }
             } else if (lang === 'Rust') {
                 if (/\bprintln\s*\(/.test(trimmed)) {
                     errors.push(this.makeIssue(lineNum, "Rust print macro is missing '!'.", "Use println!(...) instead of println(...).", "Rust syntax"));
                 }
                 if (/\bfn\s+\w+\s*\([^)]*\)\s*$/.test(trimmed)) {
                     errors.push(this.makeIssue(lineNum, "Rust function is missing a body.", "Add { ... } after the function signature.", "Rust syntax"));
+                }
+                if (/\blet\s+\w+\s*=/.test(trimmed) && !/\blet\s+mut\b/.test(trimmed) && /\w+\s*=\s*\w+/.test(lines.slice(idx + 1, idx + 5).join('\n').match(/^\s*\w+\s*=/) || '')) {
+                    errors.push(this.makeIssue(lineNum, "Variable declared without 'mut' — Rust variables are immutable by default.", "Use 'let mut' if you need to reassign this variable.", "Rust immutability"));
+                }
+                if (/\bunwrap\s*\(\s*\)/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "unwrap() will panic if the value is None or Err.", "Use match, if let, or unwrap_or_else() to handle the error case safely.", "Rust error handling"));
+                }
+            } else if (lang === 'PHP') {
+                if (/^\s*\$?\w+\s*=/.test(line) && !/^\s*\$/.test(line) && !/^\s*(if|else|for|while|foreach|function|class|return)\b/.test(line)) {
+                    errors.push(this.makeIssue(lineNum, "PHP variables must start with '$'.", "Change the variable to $variableName.", "PHP syntax"));
+                }
+                if (/\becho\s+\w+\s*$/.test(trimmed) && !trimmed.endsWith(';')) {
+                    errors.push(this.makeIssue(lineNum, "PHP statement may be missing a semicolon.", "Add ';' at the end of the line.", "PHP syntax"));
+                }
+            } else if (lang === 'Ruby') {
+                if (/\bdef\s+\w+/.test(trimmed) && !lines.slice(idx, idx + 20).some(l => /^\s*end\b/.test(l))) {
+                    errors.push(this.makeIssue(lineNum, "Ruby method defined with 'def' may be missing a closing 'end'.", "Add 'end' after the method body.", "Ruby syntax"));
+                }
+                if (/\bputs\s+\(/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "In Ruby, 'puts(...)' with parentheses is valid but 'puts ...' is idiomatic.", "You can drop the parentheses: puts value.", "Ruby style"));
                 }
             }
         });
@@ -491,22 +553,22 @@ class JungleRunner {
             const scanErrors = JungleScanner.scan(lang, code);
             if (scanErrors.length > 0) {
                 const primaryError = scanErrors[0];
-                const errorMsg = primaryError.msg;
-                const lineNo = primaryError.line;
                 switchView('terminal', false);
                 terminalStatus.textContent = "FAILED TO RUN";
                 terminalStatus.className = "text-rose-500 font-bold";
                 const p = JungleUI.getCurrentProject();
                 const errorDetails = {
                     file: (p && p.currentFile) || "main",
-                    lineNo: lineNo,
+                    lineNo: primaryError.line,
                     column: primaryError.column,
-                    errorMsg: errorMsg,
+                    errorMsg: primaryError.msg,
                     likelyCause: primaryError.kind,
-                    suggestion: primaryError.hint
+                    suggestion: primaryError.hint,
+                    additionalErrors: scanErrors.slice(1, 4)
                 };
                 this.printCrashAnalysis(errorDetails, "", "");
-                JungleUI.showToast("❌ Failed to run! Tap here to inspect terminal diagnostics.", () => {
+                const extra = scanErrors.length > 1 ? ` (+${scanErrors.length - 1} more)` : "";
+                JungleUI.showToast(`❌ ${scanErrors.length} issue${scanErrors.length > 1 ? 's' : ''} found${extra}. Tap to inspect.`, () => {
                     switchView('terminal', false);
                     this.printCrashAnalysis(errorDetails, "", "");
                 });
@@ -623,15 +685,24 @@ class JungleRunner {
     static explainError(errorMsg, lang, rawOutput) {
         const text = `${errorMsg}\n${rawOutput || ""}`.toLowerCase();
         const rules = [
+            { test: /unexpected end of input|unexpected eof/i, cause: "The file ends before all opened blocks or expressions are closed.", fix: "Look for unclosed braces {}, brackets [], parentheses (), or quotes at the end of the file." },
             { test: /syntaxerror|invalid syntax|unexpected token|expected/i, cause: "The parser found code that does not match the language grammar.", fix: "Check punctuation near the reported line: missing commas, colons, braces, or quotes are common causes." },
             { test: /indentationerror|expected an indented block|unexpected indent/i, cause: "Python indentation is inconsistent or a block has no body.", fix: "Align the block with spaces consistently and indent the statements under def/if/for/while." },
             { test: /nameerror|is not defined|referenceerror/i, cause: "The code uses a variable, function, or class name before it exists.", fix: "Check the spelling and make sure the value is declared before this line runs." },
+            { test: /cannot read propert(?:y|ies) of (null|undefined)/i, cause: "Trying to access a property on a value that is null or undefined.", fix: "Add a null check (e.g. if (obj) { ... }) before accessing properties, or use optional chaining: obj?.prop." },
             { test: /typeerror|cannot read properties|undefined is not a function|not a function/i, cause: "A value is being used with the wrong type or before it has the expected shape.", fix: "Inspect the value on the previous line and guard against null/undefined or convert it to the expected type." },
-            { test: /indexerror|rangeerror|out of range/i, cause: "The code tried to access an item outside the available range.", fix: "Check the array/list length before accessing that index." },
+            { test: /maximum call stack|stack overflow|recursion/i, cause: "Infinite or deeply nested recursion caused the call stack to overflow.", fix: "Make sure the recursive function has a base case that stops the recursion." },
+            { test: /indexerror|rangeerror|out of range|index out of bounds/i, cause: "The code tried to access an item outside the available range.", fix: "Check the array/list length before accessing that index. Remember indexes start at 0." },
+            { test: /keyerror/i, cause: "A dictionary key does not exist.", fix: "Use dict.get(key) or check 'if key in dict' before accessing it." },
+            { test: /attributeerror|has no attribute/i, cause: "An object does not have the property or method being accessed.", fix: "Check the spelling of the attribute and make sure the object is the expected type." },
+            { test: /zerodivision|divide by zero|division by zero/i, cause: "The program attempted to divide a number by zero.", fix: "Guard the division with a check: if (denominator !== 0) { ... }" },
             { test: /modulenotfounderror|cannot find module|package .* not found|no module named/i, cause: "A dependency or imported file is missing from the sandbox.", fix: "Add the missing file to the project or use a module available in the selected runtime." },
             { test: /permission denied|eacces/i, cause: "The runtime blocked a file or system operation.", fix: "Avoid writing to protected paths and keep file access inside the sandbox workspace." },
             { test: /time limit|timed out|timeout/i, cause: "The program ran too long, often because of an infinite loop or slow input handling.", fix: "Add a loop exit condition or reduce the amount of work done per run." },
-            { test: /segmentation fault|core dumped/i, cause: "Native code accessed invalid memory.", fix: "Check pointer usage, array bounds, and object lifetimes around the reported location." }
+            { test: /segmentation fault|core dumped/i, cause: "Native code accessed invalid memory.", fix: "Check pointer usage, array bounds, and object lifetimes around the reported location." },
+            { test: /overflow|integer overflow/i, cause: "A numeric value exceeded the maximum allowed size.", fix: "Use a larger numeric type or add bounds checking before performing the arithmetic." },
+            { test: /assertion.*failed|assertionerror/i, cause: "An assert statement in the code evaluated to false.", fix: "Check the condition being asserted and the values it compares at that point in the program." },
+            { test: /unicode|encoding|decode/i, cause: "A string or file contains characters that could not be decoded with the current encoding.", fix: "Specify an encoding explicitly (e.g. open(file, encoding='utf-8')) or sanitize the input." }
         ];
         const matched = rules.find(rule => rule.test.test(text));
         if (matched) return { likelyCause: matched.cause, suggestion: matched.fix };
@@ -664,7 +735,10 @@ class JungleRunner {
         const lineNo = details.lineNo || "Unknown";
         const errorKind = this.getSimpleErrorKind(details.errorMsg || "");
         const message = this.simplifyErrorMessage(details.errorMsg || "unknown error");
-        return `An error occured running your code, Line:${lineNo}\n${errorKind} << ${message} >>`;
+        let out = `An error occurred running your code — Line ${lineNo}\n${errorKind} << ${message} >>`;
+        if (details.likelyCause) out += `\n\nLikely cause: ${details.likelyCause}`;
+        if (details.suggestion) out += `\nSuggestion:   ${details.suggestion}`;
+        return out;
     }
     static getSimpleErrorKind(message) {
         const text = String(message).toLowerCase();
@@ -716,7 +790,19 @@ class JungleRunner {
         return text || "unknown error";
     }
     static printCrashAnalysis(details, stdout, stderr) {
-        terminalViewBody.textContent = this.formatSimpleReport(details);
+        let output = this.formatSimpleReport(details);
+        if (details.lineNo && details.lineNo !== "Unknown") {
+            const frame = this.getCodeFrame(details.file, details.lineNo, details.column);
+            if (frame) output += `\n\n${frame}`;
+        }
+        if (details.additionalErrors && details.additionalErrors.length > 0) {
+            output += `\n\n─── Additional issues found ───`;
+            details.additionalErrors.forEach(e => {
+                output += `\nLine ${e.line}: [${e.kind}] ${e.msg}`;
+                if (e.hint) output += `\n  → ${e.hint}`;
+            });
+        }
+        terminalViewBody.textContent = output;
         terminalViewBody.scrollTop = 0;
     }
 }
