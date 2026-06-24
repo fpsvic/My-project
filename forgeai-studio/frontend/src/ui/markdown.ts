@@ -112,10 +112,20 @@ export function formatMarkdown(text: string): string {
         cleanCode.includes('ballDX') ||
         cleanCode.includes('makeMove'));
 
+    const isApp =
+      !isGame &&
+      displayLang === 'HTML' &&
+      (cleanCode.includes('<!DOCTYPE html>') || cleanCode.includes('<html'));
+
     const playBtn = isGame
       ? `<button type="button" onclick="window.openSandboxFromCode(this)"
            class="hover:text-white text-indigo-400 font-semibold transition flex items-center space-x-1.5 border border-indigo-500/30 hover:border-indigo-400/50 bg-indigo-950/20 px-2.5 py-1 rounded-md">
            <i class="fa-solid fa-gamepad text-[10px]"></i><span class="text-[9px]">Play Game</span>
+         </button>`
+      : isApp
+      ? `<button type="button" onclick="window.openSandboxFromCode(this)"
+           class="hover:text-white text-emerald-400 font-semibold transition flex items-center space-x-1.5 border border-emerald-500/30 hover:border-emerald-400/50 bg-emerald-950/20 px-2.5 py-1 rounded-md">
+           <i class="fa-solid fa-rocket text-[10px]"></i><span class="text-[9px]">Launch App</span>
          </button>`
       : '';
 
