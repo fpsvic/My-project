@@ -1636,8 +1636,13 @@ runBtn.onclick = () => {
 tabPreview.onclick = runBtn.onclick;
 tabTerminalBtn.onclick = () => { switchView('terminal', true); JungleUI.showToast("Switched output channel to Terminal Console view."); };
 projectTitleBtn.onclick = () => { switchView('editor'); };
-languageBtn.onclick = (e) => { e.stopPropagation(); languageMenu.classList.toggle('show'); };
-window.onclick = () => { languageMenu.classList.remove('show'); };
+const langPickerScreen = document.getElementById('lang-picker-screen');
+const langPickerBack = document.getElementById('lang-picker-back');
+const langPickerSearch = document.getElementById('lang-picker-search');
+const langPickerGrid = document.getElementById('lang-picker-grid');
+languageBtn.onclick = () => { langPickerScreen.classList.add('visible'); langPickerSearch.value = ''; renderLangPickerGrid(''); langPickerSearch.focus(); };
+langPickerBack.onclick = () => langPickerScreen.classList.remove('visible');
+langPickerSearch.oninput = () => renderLangPickerGrid(langPickerSearch.value.toLowerCase());
 const templatePanelToggle = document.getElementById('template-panel-toggle');
 const templatePanelBody = document.getElementById('template-panel-body');
 const templateToggleArrow = document.getElementById('template-toggle-arrow');
@@ -1834,17 +1839,33 @@ editor.onkeydown = (e) => {
         editor.oninput();
     }
 };
-window.onload = () => {
-    projects = JungleStorage.getProjects();
-    const langs = ["Assembly","Bash","C","C#","C++","Clojure","COBOL","D","Dart","Elixir","Erlang","F#","Fortran","Go","Haskell","HTML","Java","Javascript","Julia","Kotlin","Lisp","Lua","Nim","OCaml","Pascal","Perl","PHP","Prolog","Python","R","Ruby","Rust","Scala","Swift","TypeScript","Zig"];
-    languageListDropdown.innerHTML = langs.map(l => `<li data-lang="${l === 'HTML' ? 'HTML' : l}">${l === 'HTML' ? 'HTML / Webpage' : l}</li>`).join('');
-    document.querySelectorAll('#language-list-dropdown li').forEach(item => {
-        item.onclick = (e) => {
-            const targetLang = item.getAttribute('data-lang');
+const LANG_ICONS = {
+    'Assembly': '⚙️', 'Bash': '🐚', 'C': '🔵', 'C#': '💜', 'C++': '🔷',
+    'Clojure': '🟢', 'COBOL': '🏢', 'D': '🔶', 'Dart': '🎯', 'Elixir': '💧',
+    'Erlang': '📡', 'F#': '🟣', 'Fortran': '🧮', 'Go': '🐹', 'Haskell': '🟡',
+    'HTML': '🌐', 'Java': '☕', 'Javascript': '⚡', 'Julia': '🔴', 'Kotlin': '🟠',
+    'Lisp': '🌀', 'Lua': '🌙', 'Nim': '👑', 'OCaml': '🐪', 'Pascal': '🏛️',
+    'Perl': '🐪', 'PHP': '🐘', 'Prolog': '🧠', 'Python': '🐍', 'R': '📊',
+    'Ruby': '💎', 'Rust': '🦀', 'Scala': '⚖️', 'Swift': '🕊️', 'TypeScript': '🔷',
+    'Zig': '⚡'
+};
+const ALL_LANGS = ["Assembly","Bash","C","C#","C++","Clojure","COBOL","D","Dart","Elixir","Erlang","F#","Fortran","Go","Haskell","HTML","Java","Javascript","Julia","Kotlin","Lisp","Lua","Nim","OCaml","Pascal","Perl","PHP","Prolog","Python","R","Ruby","Rust","Scala","Swift","TypeScript","Zig"];
+function renderLangPickerGrid(filter) {
+    const current = selectedLanguages[0] || '';
+    const filtered = filter ? ALL_LANGS.filter(l => l.toLowerCase().includes(filter)) : ALL_LANGS;
+    langPickerGrid.innerHTML = filtered.map(l => {
+        const icon = LANG_ICONS[l] || '📄';
+        const label = l === 'HTML' ? 'HTML / Web' : l;
+        const sel = l === current ? ' selected' : '';
+        return `<div class="lang-picker-card${sel}" data-lang="${l}"><span class="lang-picker-icon">${icon}</span><span class="lang-picker-name">${label}</span></div>`;
+    }).join('');
+    langPickerGrid.querySelectorAll('.lang-picker-card').forEach(card => {
+        card.onclick = () => {
+            const targetLang = card.getAttribute('data-lang');
             selectedLanguages = [targetLang];
             manualLanguageOverride = true;
             currentLanguageText.textContent = `Language: ${targetLang}`;
-            languageMenu.classList.remove('show');
+            langPickerScreen.classList.remove('visible');
             const p = JungleUI.getCurrentProject();
             if (p) {
                 p.lang = targetLang;
@@ -1864,4 +1885,7 @@ window.onload = () => {
             }
         };
     });
+}
+window.onload = () => {
+    projects = JungleStorage.getProjects();
 };
