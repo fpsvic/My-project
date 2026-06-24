@@ -1533,6 +1533,147 @@ tabTerminalBtn.onclick = () => { switchView('terminal', true); JungleUI.showToas
 projectTitleBtn.onclick = () => { switchView('editor'); };
 languageBtn.onclick = (e) => { e.stopPropagation(); languageMenu.classList.toggle('show'); };
 window.onclick = () => { languageMenu.classList.remove('show'); };
+const templateBtn = document.getElementById('template-btn');
+const templateMenu = document.getElementById('template-menu');
+const TEMPLATES = {
+    web: {
+        lang: 'HTML',
+        files: {
+            'index.html': `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Web Page</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .card { text-align: center; padding: 3rem; background: #1e293b; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+        h1 { font-size: 2.5rem; margin-bottom: 0.75rem; color: #7dd3c0; }
+        p { color: #94a3b8; margin-bottom: 2rem; }
+        button { background: #2dd4bf; color: #0f172a; border: none; padding: 12px 32px; border-radius: 8px; font-size: 1rem; font-weight: 700; cursor: pointer; transition: transform 0.15s, background 0.15s; }
+        button:hover { background: #5eead4; transform: translateY(-2px); }
+        #counter { font-size: 3rem; font-weight: 800; color: #7dd3c0; margin-top: 1.5rem; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Hello World</h1>
+        <p>Click the button to count up.</p>
+        <button onclick="increment()">Click Me</button>
+        <div id="counter">0</div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>`,
+            'script.js': `let count = 0;
+
+function increment() {
+    count++;
+    document.getElementById('counter').textContent = count;
+}`
+        },
+        currentFile: 'index.html'
+    },
+    python: {
+        lang: 'Python',
+        files: {
+            'main.py': `def greet(name):
+    return f"Hello, {name}!"
+
+def add(a, b):
+    return a + b
+
+def fizzbuzz(n):
+    for i in range(1, n + 1):
+        if i % 15 == 0:
+            print("FizzBuzz")
+        elif i % 3 == 0:
+            print("Fizz")
+        elif i % 5 == 0:
+            print("Buzz")
+        else:
+            print(i)
+
+def main():
+    print(greet("World"))
+    print(f"3 + 7 = {add(3, 7)}")
+    print("\\nFizzBuzz up to 20:")
+    fizzbuzz(20)
+
+main()
+`
+        },
+        currentFile: 'main.py'
+    },
+    javascript: {
+        lang: 'Javascript',
+        files: {
+            'main.js': `// JavaScript App Starter
+
+function greet(name) {
+    return \`Hello, \${name}!\`;
+}
+
+function sum(numbers) {
+    return numbers.reduce((acc, n) => acc + n, 0);
+}
+
+function bubbleSort(arr) {
+    const a = [...arr];
+    for (let i = 0; i < a.length; i++) {
+        for (let j = 0; j < a.length - i - 1; j++) {
+            if (a[j] > a[j + 1]) [a[j], a[j + 1]] = [a[j + 1], a[j]];
+        }
+    }
+    return a;
+}
+
+async function fetchJoke() {
+    try {
+        const res = await fetch('https://official-joke-api.appspot.com/random_joke');
+        const joke = await res.json();
+        console.log(\`Joke: \${joke.setup} ... \${joke.punchline}\`);
+    } catch (e) {
+        console.log('Could not fetch joke:', e.message);
+    }
+}
+
+async function main() {
+    console.log(greet('World'));
+    const nums = [5, 3, 8, 1, 9, 2, 7];
+    console.log('Unsorted:', nums.join(', '));
+    console.log('Sorted:  ', bubbleSort(nums).join(', '));
+    console.log('Sum:', sum(nums));
+    await fetchJoke();
+}
+
+main();
+`
+        },
+        currentFile: 'main.js'
+    }
+};
+templateBtn.onclick = (e) => { e.stopPropagation(); templateMenu.classList.toggle('show'); };
+templateMenu.querySelectorAll('.template-item').forEach(item => {
+    item.onclick = () => {
+        const p = JungleUI.getCurrentProject();
+        if (!p) { JungleUI.showToast('Open a project first to load a template.'); templateMenu.classList.remove('show'); return; }
+        const t = TEMPLATES[item.getAttribute('data-template')];
+        if (!t) return;
+        Object.assign(p.files, t.files);
+        p.currentFile = t.currentFile;
+        p.lang = t.lang;
+        selectedLanguages = [t.lang];
+        manualLanguageOverride = true;
+        JungleStorage.saveProjects(projects);
+        JungleUI.renderFilesList();
+        JungleUI.switchToFile(t.currentFile);
+        templateMenu.classList.remove('show');
+        JungleUI.showToast(`Loaded ${item.textContent.trim()} template.`);
+    };
+});
+window.addEventListener('click', () => templateMenu.classList.remove('show'));
 headerCopyCodeBtn.onclick = () => {
     const p = JungleUI.getCurrentProject();
     if (!p || !p.currentFile) return;

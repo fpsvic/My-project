@@ -93,6 +93,12 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .modal-btn.cancel:hover { background-color: #232d2a; color: #ffffff; }
 .modal-btn.confirm { background-color: #4b7a69; color: #ffffff; }
 .modal-btn.confirm:hover { background-color: #385c4f; }
+.template-selector-wrapper { position: relative; display: inline-block; }
+.template-menu { display: none; position: absolute; top: calc(100% + 5px); right: 0; width: 200px; background-color: #141917; border: 1px solid #232d2a; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.6); overflow: hidden; z-index: 100; }
+.template-menu.show { display: block; }
+.template-item { padding: 11px 15px; font-size: 0.85rem; color: #a4b3b0; cursor: pointer; border-bottom: 1px solid #1c2321; transition: all 0.15s; }
+.template-item:last-child { border-bottom: none; }
+.template-item:hover { background-color: #1c2522; color: #ffffff; }
 #toast-container { position: fixed; bottom: 25px; right: 25px; z-index: 10005; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
 .jungle-toast { background-color: #111413; border: 1px solid #4b7a69; color: #e2f1ec; padding: 12px 24px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.5); transform: translateY(50px); opacity: 0; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); pointer-events: auto; }
 .jungle-toast.show { transform: translateY(0); opacity: 1; }
