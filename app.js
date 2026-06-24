@@ -234,17 +234,41 @@ class JungleIntelligence {
 class JungleScanner {
     static scan(lang, code) {
         const lines = code.split('\n');
-        const errors = [
+        const issues = [
             ...this.scanDelimiters(lines),
             ...this.scanLanguagePatterns(lang, lines)
         ];
-        if (lang === 'HTML') {
-            errors.push(...this.scanHtmlTags(lines));
-        }
-        return errors;
+        if (lang === 'HTML') issues.push(...this.scanHtmlTags(lines));
+        if (lang === 'Python') issues.push(...this.scanPythonIndentation(lines));
+        const order = { error: 0, warning: 1, info: 2 };
+        issues.sort((a, b) => (order[a.severity] ?? 1) - (order[b.severity] ?? 1) || a.line - b.line);
+        return issues;
     }
-    static makeIssue(line, msg, hint = "", kind = "Static analysis", column = null) {
-        return { line, msg, hint, kind, column };
+    static scanPythonIndentation(lines) {
+        const issues = [];
+        const indentStack = [0];
+        let prevIndent = 0;
+        let expectIndent = false;
+        for (let i = 0; i < lines.length; i++) {
+            const raw = lines[i];
+            const trimmed = raw.trim();
+            if (!trimmed || trimmed.startsWith('#')) continue;
+            const indent = raw.match(/^(\s*)/)[1].length;
+            const hasTabs = raw.match(/^\t+/);
+            const hasSpaces = raw.match(/^ +/);
+            if (hasTabs && hasSpaces) {
+                issues.push(this.makeIssue(i + 1, "Mixed tabs and spaces for indentation.", "Use only spaces (PEP 8 recommends 4 spaces per level).", "Python indentation", 1, "error"));
+            }
+            if (expectIndent && indent <= prevIndent) {
+                issues.push(this.makeIssue(i + 1, "Expected an indented block after ':'.", "Indent the next line with 4 spaces to begin the block body.", "Python indentation", 1, "error"));
+            }
+            expectIndent = /:\s*(#.*)?$/.test(trimmed) && !/^#/.test(trimmed);
+            prevIndent = indent;
+        }
+        return issues;
+    }
+    static makeIssue(line, msg, hint = "", kind = "Static analysis", column = null, severity = "error") {
+        return { line, msg, hint, kind, column, severity };
     }
     static scanDelimiters(lines) {
         const errors = [];
@@ -339,134 +363,181 @@ class JungleScanner {
         return errors;
     }
     static scanLanguagePatterns(lang, lines) {
-        const errors = [];
+        const issues = [];
+        const fullCode = lines.join('\n');
+        const e = (ln, msg, hint, kind, sev = "error") => issues.push(this.makeIssue(ln, msg, hint, kind, null, sev));
         lines.forEach((line, idx) => {
             const lineNum = idx + 1;
             const trimmed = line.trim();
             if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('#')) return;
             if (lang === 'Python') {
-                if (/^(if|elif|else|for|while|def|class|try|except|finally|with)\b/.test(trimmed) && !trimmed.endsWith(':') && !trimmed.endsWith('\\')) {
-                    errors.push(this.makeIssue(lineNum, "Python block statement is missing a trailing colon.", "Add ':' at the end of the line.", "Python syntax"));
+                if (/^(if|elif|else|for|while|def|class|try|except|finally|with)\b/.test(trimmed) && !trimmed.endsWith(':') && !trimmed.endsWith('\\') && !trimmed.includes('#')) {
+                    e(lineNum, "Python block statement is missing a trailing colon.", "Add ':' at the end of the line.", "Python syntax");
                 }
                 if (/^print\s+[^(\s]/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "Python print statement is missing parentheses.", "Use print(...) in Python 3.", "Python syntax"));
-                }
-                if (/[=+\-*/%]$/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "Python expression ends with an operator.", "Finish the expression after the operator or remove it.", "Python syntax"));
-                }
-                if (/\b(console\.log|let|const|var)\b/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "This looks like JavaScript inside a Python file.", "Switch the language to JavaScript or rewrite the line using Python syntax.", "Language mismatch"));
-                }
-                if (/^\s*def\s+\w+\([^)]*\)\s*$/.test(line) && !trimmed.endsWith(':')) {
-                    errors.push(this.makeIssue(lineNum, "Python function definition is missing a colon.", "Add ':' at the end of the def line.", "Python syntax"));
+                    e(lineNum, "print statement is missing parentheses (Python 3).", "Use print(...) with parentheses.", "Python syntax");
                 }
                 if (/\bxrange\s*\(/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "'xrange' does not exist in Python 3.", "Replace xrange(...) with range(...).", "Python syntax"));
-                }
-                if (/^\s*(return|yield)\s*$/.test(line) && idx + 1 < lines.length && lines[idx + 1].trim() !== '') {
-                    errors.push(this.makeIssue(lineNum, "Bare 'return' or 'yield' with no value — possible missing expression.", "If you intend to return a value, place it on the same line.", "Python syntax"));
+                    e(lineNum, "'xrange' does not exist in Python 3.", "Replace xrange(...) with range(...).", "Python syntax");
                 }
                 if (/\b===/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "Python does not use '===' for comparison.", "Use '==' for equality in Python.", "Language mismatch"));
+                    e(lineNum, "Python does not use '===' for comparison.", "Use '==' for equality in Python.", "Language mismatch");
+                }
+                if (/\b(console\.log|let\s+\w+\s*=|const\s+\w+\s*=|var\s+\w+\s*=)\b/.test(trimmed)) {
+                    e(lineNum, "This looks like JavaScript syntax inside a Python file.", "Switch to JavaScript or rewrite using Python syntax.", "Language mismatch");
+                }
+                if (/^\s*def\s+\w+\s*\([^)]*\)\s*$/.test(line)) {
+                    e(lineNum, "Python function definition is missing a colon.", "Add ':' after the closing parenthesis.", "Python syntax");
+                }
+                if (/^except\s+\w+\s*,\s*\w+/.test(trimmed)) {
+                    e(lineNum, "Python 2 'except X, e:' syntax is not valid in Python 3.", "Use 'except X as e:' instead.", "Python syntax");
+                }
+                if (/\bexec\s+["']/.test(trimmed)) {
+                    e(lineNum, "'exec' is a function in Python 3, not a statement.", "Use exec(...) with parentheses.", "Python syntax");
+                }
+                if (/[=+\-*/%&|]$/.test(trimmed) && !/\\$/.test(trimmed)) {
+                    e(lineNum, "Line ends with an operator — expression appears incomplete.", "Finish the expression or use a backslash to continue on the next line.", "Python syntax", "warning");
+                }
+                if (/\beval\s*\(/.test(trimmed)) {
+                    e(lineNum, "eval() can execute arbitrary code and is a security risk.", "Avoid eval(); parse data explicitly instead.", "Python security", "warning");
+                }
+                if (/\btype\s*\(\s*\w+\s*\)\s*==/.test(trimmed)) {
+                    e(lineNum, "Comparing types with type() == is fragile.", "Use isinstance(obj, Type) for type checking.", "Python style", "info");
                 }
             } else if (lang === 'Javascript' || lang === 'TypeScript') {
-                const condition = trimmed.match(/\b(if|while)\s*\((.*)\)/);
-                if (condition && /(^|[^=!<>])=([^=>]|$)/.test(condition[2])) {
-                    errors.push(this.makeIssue(lineNum, "Possible assignment inside a condition.", "Use '===' for comparison unless you intentionally meant assignment.", "JavaScript logic"));
+                const condMatch = trimmed.match(/\b(if|while)\s*\((.*)\)/);
+                if (condMatch && /(^|[^=!<>])=([^=>]|$)/.test(condMatch[2])) {
+                    e(lineNum, "Possible assignment '=' inside a condition — did you mean '==='?", "Use '===' for comparison, or wrap '(x = val)' in extra parens if intentional.", "JavaScript logic", "warning");
                 }
                 if (/\b(const|let|var)\s+[A-Za-z_$][\w$]*\s*=$/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "Variable declaration is missing a value after '='.", "Add the value or remove the assignment.", "JavaScript syntax"));
+                    e(lineNum, "Variable declaration is missing a value after '='.", "Add the assigned value or remove the '='.", "JavaScript syntax");
                 }
-                if (/^\s*(if|while|for)\s+[^(]/.test(line)) {
-                    errors.push(this.makeIssue(lineNum, "JavaScript control statement is missing parentheses.", "Wrap the condition in parentheses.", "JavaScript syntax"));
+                if (/^\s*(if|while|for)\s+[^(\s]/.test(line)) {
+                    e(lineNum, "Control statement condition must be wrapped in parentheses.", "Add ( ) around the condition.", "JavaScript syntax");
                 }
-                if (/^\s*(def|elif|print\s*\()\b/.test(line)) {
-                    errors.push(this.makeIssue(lineNum, "This looks like Python inside a JavaScript file.", "Switch the language to Python or rewrite the line using JavaScript syntax.", "Language mismatch"));
+                if (/^\s*(def|elif)\b/.test(line)) {
+                    e(lineNum, "This looks like Python syntax inside a JavaScript file.", "Switch to Python or rewrite using JavaScript syntax.", "Language mismatch");
                 }
-                if (/\bawait\b/.test(trimmed) && !/\basync\b/.test(lines.slice(0, idx).join('\n').slice(-500))) {
-                    errors.push(this.makeIssue(lineNum, "'await' used but no 'async' function found above.", "Make sure the enclosing function is declared with 'async'.", "JavaScript async"));
+                if (/\bawait\b/.test(trimmed) && !/\basync\b/.test(fullCode.slice(0, fullCode.indexOf(trimmed)).slice(-600))) {
+                    e(lineNum, "'await' used outside an async function.", "Mark the enclosing function with 'async'.", "JavaScript async", "warning");
                 }
-                if (/==[^=]/.test(trimmed) && !/["'`].*==.*["'`]/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "Loose equality '==' used — this can cause unexpected type coercion.", "Prefer '===' for strict equality checks.", "JavaScript logic"));
+                if (/(?<![=!<>])={1}(?![=>])/.test(trimmed.replace(/"[^"]*"|'[^']*'|`[^`]*`/g, '')) && /==[^=]/.test(trimmed)) {
+                    e(lineNum, "Loose equality '==' can cause unexpected type coercion.", "Prefer '===' for strict comparison.", "JavaScript logic", "warning");
                 }
                 if (/\bvar\b/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "'var' is function-scoped and can lead to hoisting bugs.", "Use 'const' for values that don't change, or 'let' for reassignable variables.", "JavaScript style"));
+                    e(lineNum, "'var' is function-scoped and hoisted — can cause subtle bugs.", "Use 'const' or 'let' instead.", "JavaScript style", "warning");
+                }
+                if (/\bdocument\.write\s*\(/.test(trimmed)) {
+                    e(lineNum, "document.write() can erase the whole page when called after load.", "Use DOM methods like appendChild or innerHTML instead.", "JavaScript security", "warning");
+                }
+                if (/\beval\s*\(/.test(trimmed)) {
+                    e(lineNum, "eval() executes arbitrary code and is a security risk.", "Find a safer alternative — JSON.parse, Function constructor, or a proper parser.", "JavaScript security", "warning");
+                }
+                if (/\bnew\s+Array\s*\(\d+\)/.test(trimmed)) {
+                    e(lineNum, "new Array(n) creates a sparse array, not n copies of a value.", "Use Array.from({length: n}, () => val) or Array(n).fill(val) for filled arrays.", "JavaScript style", "info");
                 }
                 if (lang === 'TypeScript' && /\binterface\s+[A-Za-z_$][\w$]*\s*$/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "TypeScript interface declaration is missing a body.", "Add { ... } after the interface name.", "TypeScript syntax"));
+                    e(lineNum, "TypeScript interface declaration is missing a body.", "Add { ... } after the interface name.", "TypeScript syntax");
                 }
                 if (lang === 'TypeScript' && /:\s*any\b/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "Type 'any' disables TypeScript type checking for this value.", "Replace 'any' with a specific type to get proper type safety.", "TypeScript style"));
+                    e(lineNum, "Type 'any' disables type checking for this value.", "Replace 'any' with a specific type.", "TypeScript style", "warning");
+                }
+                if (lang === 'TypeScript' && /\bas\s+any\b/.test(trimmed)) {
+                    e(lineNum, "'as any' type assertion bypasses TypeScript safety.", "Use a more specific type assertion or narrow the type properly.", "TypeScript style", "warning");
                 }
             } else if (lang === 'Java') {
-                if (/public\s+class\s+([A-Za-z_][A-Za-z0-9_]*)/.test(trimmed) && !/\{/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "Java class declaration is missing an opening brace.", "Add '{' after the class declaration.", "Java syntax"));
+                if (/public\s+class\s+[A-Za-z_]\w*/.test(trimmed) && !/[{;]/.test(trimmed)) {
+                    e(lineNum, "Java class declaration is missing an opening brace.", "Add '{' after the class name.", "Java syntax");
                 }
                 if (/System\.out\.print(?:ln)?\s+["']/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "Java print call is missing parentheses.", "Use System.out.println(...).", "Java syntax"));
+                    e(lineNum, "Java print call is missing parentheses.", "Use System.out.println(...).", "Java syntax");
                 }
                 if (/\bString\s+\w+\s*==\s*["']/.test(trimmed) || /["']\s*==\s*\w+/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "String comparison with '==' compares references, not values.", "Use .equals() to compare String content: str.equals(\"value\").", "Java logic"));
+                    e(lineNum, "String comparison with '==' compares references, not content.", "Use .equals() or .equalsIgnoreCase() to compare String values.", "Java logic", "warning");
                 }
-                if (/^\s*[a-z][A-Za-z0-9]*\s+[a-z][A-Za-z0-9]*\s*=/.test(line) && !/^\s*(int|long|float|double|boolean|char|byte|short|String|var)\b/.test(line)) {
-                    errors.push(this.makeIssue(lineNum, "Variable declaration may be missing a type or import.", "Specify the type explicitly or import the class.", "Java syntax"));
+                if (/\bcatch\s*\(\s*Exception\s+\w+\s*\)/.test(trimmed)) {
+                    e(lineNum, "Catching 'Exception' is too broad and hides real errors.", "Catch the specific exception type your code can throw.", "Java style", "info");
+                }
+                if (/\bnew\s+\w+\s*\(\s*\)\s*$/.test(trimmed) && !/^\s*(return|=)/.test(trimmed)) {
+                    e(lineNum, "Object created with 'new' but result is not used.", "Assign the object to a variable or remove the statement.", "Java logic", "warning");
                 }
             } else if (lang === 'C++' || lang === 'C') {
-                if (/^\s*#include\s+[A-Za-z0-9_./]+/.test(line)) {
-                    errors.push(this.makeIssue(lineNum, "Include directive is missing angle brackets or quotes.", "Use #include <iostream> or #include \"file.h\".", "C/C++ syntax"));
+                if (/^\s*#include\s+[A-Za-z0-9_./]+\s*$/.test(line) && !/</.test(line) && !/"/.test(line)) {
+                    e(lineNum, "Include directive is missing angle brackets or quotes.", "Use #include <header> for system headers or #include \"file.h\" for local files.", "C/C++ syntax");
                 }
                 if (/\b(int|float|double|char|bool|long|short|void)\s+\w+\s*\([^)]*\)\s*$/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "Function declaration or definition is missing ';' or '{'.", "Add ';' for a prototype or '{' for a function body.", "C/C++ syntax"));
+                    e(lineNum, "Function declaration or definition is missing ';' or '{'.", "Add ';' for a prototype or '{...}' for a function body.", "C/C++ syntax");
                 }
                 if (/\bscanf\s*\(\s*["'][^"']*["']\s*,\s*[^&]/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "scanf argument may be missing '&' address operator.", "Pass the address of the variable: scanf(\"%d\", &var).", "C/C++ syntax"));
+                    e(lineNum, "scanf argument may be missing '&' address-of operator.", "Pass the address of the variable: scanf(\"%d\", &var).", "C/C++ syntax");
                 }
-                if (/\bmalloc\s*\(/.test(trimmed) && !/\bfree\s*\(/.test(lines.join('\n'))) {
-                    errors.push(this.makeIssue(lineNum, "malloc() called but no free() found in the file.", "Remember to free() every malloc() to avoid memory leaks.", "C/C++ memory"));
+                if (/\bmalloc\s*\(/.test(trimmed) && !/\bfree\s*\(/.test(fullCode)) {
+                    e(lineNum, "malloc() called but no matching free() found in the file.", "Always free() every malloc() allocation to prevent memory leaks.", "C/C++ memory", "warning");
+                }
+                if (lang === 'C++' && /\bgets\s*\(/.test(trimmed)) {
+                    e(lineNum, "gets() is unsafe and removed in C11.", "Use fgets(buf, size, stdin) instead.", "C/C++ security", "warning");
+                }
+                if (lang === 'C++' && /\bnew\b/.test(trimmed) && !/\bdelete\b/.test(fullCode)) {
+                    e(lineNum, "'new' used but no 'delete' found — possible memory leak.", "Match every 'new' with a 'delete' or use smart pointers (unique_ptr).", "C++ memory", "warning");
                 }
             } else if (lang === 'Go') {
                 if (/^\s*func\s+\w+\s*\([^)]*$/.test(line)) {
-                    errors.push(this.makeIssue(lineNum, "Go function signature looks incomplete.", "Close the parameter list and add an opening brace.", "Go syntax"));
+                    e(lineNum, "Go function signature appears incomplete.", "Close the parameter list with ')' and add the opening brace.", "Go syntax");
                 }
                 if (/fmt\.Print(?:ln|f)?\s+["']/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "Go print call is missing parentheses.", "Use fmt.Println(...).", "Go syntax"));
+                    e(lineNum, "Go print call is missing parentheses.", "Use fmt.Println(...).", "Go syntax");
                 }
                 if (/\b:=\b/.test(trimmed) && /^\s*(if|for|switch)\b/.test(line)) {
-                    errors.push(this.makeIssue(lineNum, "Short variable declaration ':=' inside control statement — variable will be scoped to the block.", "If you need the variable outside, declare it before the block with 'var'.", "Go scope"));
+                    e(lineNum, "Variable declared with ':=' inside a control statement is block-scoped.", "Declare the variable before the block with 'var' if you need it outside.", "Go scope", "warning");
                 }
-                if (/\bimport\s+"/.test(trimmed) && !/\bfmt\b/.test(lines.join('\n')) && /\bfmt\./.test(lines.join('\n'))) {
-                    errors.push(this.makeIssue(lineNum, "fmt package is used but may not be imported.", "Add \"fmt\" to your import block.", "Go imports"));
+                if (/\bfmt\./.test(fullCode) && !/\bfmt\b/.test((fullCode.match(/import\s*\(([^)]*)\)/) || ['', ''])[1])) {
+                    e(lineNum, "fmt package may not be imported.", "Add \"fmt\" to your import block.", "Go imports", "warning");
+                }
+                if (/\berr\b/.test(trimmed) && /,\s*err\s*:=/.test(trimmed) && !/if\s+err/.test(lines.slice(idx + 1, idx + 3).join(' '))) {
+                    e(lineNum, "Error return value 'err' may not be checked.", "Add 'if err != nil { ... }' after this call.", "Go error handling", "warning");
                 }
             } else if (lang === 'Rust') {
-                if (/\bprintln\s*\(/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "Rust print macro is missing '!'.", "Use println!(...) instead of println(...).", "Rust syntax"));
+                if (/\bprintln\s*\(/.test(trimmed) && !/\bprintln!\s*\(/.test(trimmed)) {
+                    e(lineNum, "Rust macros require '!' — use println!(...) not println(...).", "Add '!' after println.", "Rust syntax");
+                }
+                if (/\bpanic\s*\(/.test(trimmed) && !/\bpanic!\s*\(/.test(trimmed)) {
+                    e(lineNum, "panic is a macro in Rust — use panic!(...).", "Add '!' after panic.", "Rust syntax");
                 }
                 if (/\bfn\s+\w+\s*\([^)]*\)\s*$/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "Rust function is missing a body.", "Add { ... } after the function signature.", "Rust syntax"));
-                }
-                if (/\blet\s+\w+\s*=/.test(trimmed) && !/\blet\s+mut\b/.test(trimmed) && /\w+\s*=\s*\w+/.test(lines.slice(idx + 1, idx + 5).join('\n').match(/^\s*\w+\s*=/) || '')) {
-                    errors.push(this.makeIssue(lineNum, "Variable declared without 'mut' — Rust variables are immutable by default.", "Use 'let mut' if you need to reassign this variable.", "Rust immutability"));
+                    e(lineNum, "Rust function is missing a body.", "Add { ... } after the function signature.", "Rust syntax");
                 }
                 if (/\bunwrap\s*\(\s*\)/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "unwrap() will panic if the value is None or Err.", "Use match, if let, or unwrap_or_else() to handle the error case safely.", "Rust error handling"));
+                    e(lineNum, "unwrap() will panic if the value is None or Err.", "Use match, if let, or unwrap_or_else() to handle errors safely.", "Rust error handling", "warning");
+                }
+                if (/\bclone\s*\(\s*\)/.test(trimmed)) {
+                    e(lineNum, "Calling clone() — make sure this is necessary and not avoidable with borrowing.", "Consider passing a reference (&val) instead of cloning if ownership isn't required.", "Rust performance", "info");
                 }
             } else if (lang === 'PHP') {
-                if (/^\s*\$?\w+\s*=/.test(line) && !/^\s*\$/.test(line) && !/^\s*(if|else|for|while|foreach|function|class|return)\b/.test(line)) {
-                    errors.push(this.makeIssue(lineNum, "PHP variables must start with '$'.", "Change the variable to $variableName.", "PHP syntax"));
+                if (/^\s*[A-Za-z_]\w*\s*=/.test(line) && !/^\s*\$/.test(line) && !/^\s*(if|else|for|while|foreach|function|class|return|echo|namespace|use)\b/.test(line)) {
+                    e(lineNum, "PHP variables must start with '$'.", "Change 'name' to '$name'.", "PHP syntax");
                 }
-                if (/\becho\s+\w+\s*$/.test(trimmed) && !trimmed.endsWith(';')) {
-                    errors.push(this.makeIssue(lineNum, "PHP statement may be missing a semicolon.", "Add ';' at the end of the line.", "PHP syntax"));
+                if (!/;\s*$/.test(trimmed) && /^\s*(echo|print|return|\$\w+\s*=)/.test(line)) {
+                    e(lineNum, "PHP statement may be missing a semicolon.", "Add ';' at the end of the line.", "PHP syntax");
+                }
+                if (/\bmysql_/.test(trimmed)) {
+                    e(lineNum, "mysql_*() functions are removed in PHP 7+.", "Use mysqli_*() or PDO instead.", "PHP syntax");
+                }
+                if (/\beval\s*\(/.test(trimmed)) {
+                    e(lineNum, "eval() is dangerous in PHP and can lead to remote code execution.", "Avoid eval(); use safer alternatives.", "PHP security", "warning");
                 }
             } else if (lang === 'Ruby') {
-                if (/\bdef\s+\w+/.test(trimmed) && !lines.slice(idx, idx + 20).some(l => /^\s*end\b/.test(l))) {
-                    errors.push(this.makeIssue(lineNum, "Ruby method defined with 'def' may be missing a closing 'end'.", "Add 'end' after the method body.", "Ruby syntax"));
+                if (/\bdef\s+\w+/.test(trimmed) && !lines.slice(idx, idx + 30).some(l => /^\s*end\b/.test(l))) {
+                    e(lineNum, "Ruby method defined with 'def' may be missing a closing 'end'.", "Add 'end' after the method body.", "Ruby syntax");
                 }
-                if (/\bputs\s+\(/.test(trimmed)) {
-                    errors.push(this.makeIssue(lineNum, "In Ruby, 'puts(...)' with parentheses is valid but 'puts ...' is idiomatic.", "You can drop the parentheses: puts value.", "Ruby style"));
+                if (/\bputs\s*\(/.test(trimmed)) {
+                    e(lineNum, "'puts(...)' with parentheses is valid but 'puts ...' is idiomatic Ruby.", "Drop the parentheses: puts value.", "Ruby style", "info");
+                }
+                if (/\brescue\s*$/.test(trimmed)) {
+                    e(lineNum, "Bare 'rescue' catches all exceptions including system errors.", "Rescue a specific exception class: rescue SomeError => e.", "Ruby style", "warning");
                 }
             }
         });
-        return errors;
+        return issues;
     }
     // Instant recognition from a single unmistakable token — runs before full scoring
     static earlyHint(code) {
@@ -809,14 +880,29 @@ class JungleScanner {
         if (/\bvar\b/i.test(code) && /\binteger\b|\bstring\b|\breal\b/i.test(code)) add('Pascal', 18);
         if (/\bprocedure\s+\w+/i.test(code)) add('Pascal', 18);
 
+        // Negative scoring: penalize languages when clear contradicting signals are present
+        const sub = (lang, pts) => { scores[lang] = (scores[lang] || 0) - pts; };
+        if (/\bconsole\.log\b/.test(code) || /\bdocument\.\w/.test(code)) { sub('Python', 20); sub('Java', 10); sub('Go', 10); }
+        if (/\bSystem\.out\.print\b/.test(code)) { sub('Javascript', 15); sub('Python', 15); sub('Go', 10); }
+        if (/\bdef\s+\w+\s*\(/.test(code) && /\bself\b/.test(code)) { sub('Javascript', 10); sub('Ruby', 10); }
+        if (/\belif\b/.test(code)) { sub('Javascript', 15); sub('Java', 15); sub('Go', 15); }
+        if (/<\?php/.test(code)) { sub('Javascript', 20); sub('Python', 20); }
+        if (/\bfn\s+main\b/.test(code) && /\blet\s+mut\b/.test(code)) { sub('Javascript', 15); sub('Go', 15); }
+        if (/\bpackage\s+main\b/.test(code) && /\bfunc\b/.test(code)) { sub('Rust', 10); sub('Javascript', 10); }
+        if (/\bimport\s+java\.\w/.test(code)) { sub('Kotlin', 5); sub('Scala', 5); sub('C#', 10); }
+        if (/\busing\s+System\b/.test(code)) { sub('Java', 15); sub('Javascript', 10); }
+        if (/\bprintln!\s*\(/.test(code)) { sub('Kotlin', 10); sub('Javascript', 10); }
+        // Clamp negative scores to 0
+        Object.keys(scores).forEach(k => { if (scores[k] < 0) scores[k] = 0; });
+
         const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
         if (sorted.length === 0) return null;
         const [topLang, topScore] = sorted[0];
         const runnerUp = sorted[1] ? sorted[1][1] : 0;
 
-        // Tentative: early hint fired, single pattern matched (low score)
         if (topScore >= 10 && topScore - runnerUp >= 8) {
-            const confidence = topScore >= 30 ? 'confirmed' : 'tentative';
+            const confidence = topScore >= 35 ? 'confirmed' : topScore >= 18 ? 'tentative' : null;
+            if (!confidence) return null;
             return { lang: topLang, score: topScore, confidence, ext: JungleIntelligence.getDefaultExtension(topLang) || '.txt' };
         }
         return null;
@@ -825,7 +911,9 @@ class JungleScanner {
 class JungleRunner {
     static async execute(lang, code, files) {
         try {
-            const scanErrors = JungleScanner.scan(lang, code);
+            const scanIssues = JungleScanner.scan(lang, code);
+            const scanErrors = scanIssues.filter(i => i.severity === 'error');
+            const scanWarnings = scanIssues.filter(i => i.severity !== 'error');
             if (scanErrors.length > 0) {
                 const primaryError = scanErrors[0];
                 switchView('terminal', false);
@@ -839,15 +927,25 @@ class JungleRunner {
                     errorMsg: primaryError.msg,
                     likelyCause: primaryError.kind,
                     suggestion: primaryError.hint,
-                    additionalErrors: scanErrors.slice(1, 4)
+                    severity: primaryError.severity,
+                    additionalErrors: scanIssues.slice(1, 5)
                 };
                 this.printCrashAnalysis(errorDetails, "", "");
-                const extra = scanErrors.length > 1 ? ` (+${scanErrors.length - 1} more)` : "";
-                JungleUI.showToast(`❌ ${scanErrors.length} issue${scanErrors.length > 1 ? 's' : ''} found${extra}. Tap to inspect.`, () => {
+                const extra = scanIssues.length > 1 ? ` (+${scanIssues.length - 1} more)` : "";
+                JungleUI.showToast(`⛔ ${scanErrors.length} error${scanErrors.length > 1 ? 's' : ''} found${extra}. Tap to inspect.`, () => {
                     switchView('terminal', false);
                     this.printCrashAnalysis(errorDetails, "", "");
                 });
                 return;
+            }
+            if (scanWarnings.length > 0) {
+                const warnLines = scanWarnings.map(w => {
+                    const icon = w.severity === 'info' ? 'ℹ️' : '⚠️';
+                    return `${icon} Line ${w.line} [${w.kind}]: ${w.msg}`;
+                }).join('\n');
+                switchView('terminal', false);
+                terminalViewBody.textContent = `Warnings detected (code will still run):\n\n${warnLines}\n\n${'─'.repeat(50)}\n`;
+                JungleUI.showToast(`⚠️ ${scanWarnings.length} warning${scanWarnings.length > 1 ? 's' : ''} — running anyway.`, null);
             }
             switchView('terminal', false);
             terminalViewBody.textContent = "Connecting to Piston API...";
@@ -1015,11 +1113,17 @@ class JungleRunner {
         }
         return frame.join('\n');
     }
+    static severityIcon(sev) {
+        if (sev === 'warning') return '⚠️';
+        if (sev === 'info') return 'ℹ️';
+        return '⛔';
+    }
     static formatSimpleReport(details) {
         const lineNo = details.lineNo || "Unknown";
         const errorKind = this.getSimpleErrorKind(details.errorMsg || "");
         const message = this.simplifyErrorMessage(details.errorMsg || "unknown error");
-        let out = `An error occurred running your code — Line ${lineNo}\n${errorKind} << ${message} >>`;
+        const icon = this.severityIcon(details.severity);
+        let out = `${icon} Error on Line ${lineNo} — ${errorKind}\n   ${message}`;
         if (details.likelyCause) out += `\n\nLikely cause: ${details.likelyCause}`;
         if (details.suggestion) out += `\nSuggestion:   ${details.suggestion}`;
         return out;
@@ -1080,10 +1184,11 @@ class JungleRunner {
             if (frame) output += `\n\n${frame}`;
         }
         if (details.additionalErrors && details.additionalErrors.length > 0) {
-            output += `\n\n─── Additional issues found ───`;
+            output += `\n\n─── Additional issues ───`;
             details.additionalErrors.forEach(e => {
-                output += `\nLine ${e.line}: [${e.kind}] ${e.msg}`;
-                if (e.hint) output += `\n  → ${e.hint}`;
+                const icon = this.severityIcon(e.severity);
+                output += `\n${icon} Line ${e.line} [${e.kind}]: ${e.msg}`;
+                if (e.hint) output += `\n      → ${e.hint}`;
             });
         }
         terminalViewBody.textContent = output;
