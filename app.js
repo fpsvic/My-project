@@ -34,6 +34,7 @@ let projects = [];
 let currentProjectId = null;
 let selectedLanguages = ['Javascript'];
 let activeView = 'editor'; // 'editor', 'preview', 'terminal'
+let manualLanguageOverride = false;
 class JungleStorage {
     static getProjects() {
         const data = localStorage.getItem('jungle_sandbox_projects');
@@ -503,48 +504,174 @@ class JungleScanner {
         return errors;
     }
     static detectLanguage(code) {
-        if (!code || code.trim().length < 5) return null;
-        let pyScore = 0, jsScore = 0, htmlScore = 0, cppScore = 0, javaScore = 0, tsScore = 0, goScore = 0, rustScore = 0;
-        if (code.includes('def ') && code.includes(':')) pyScore += 15;
-        if (code.includes('elif ')) pyScore += 10;
-        if (code.includes('import ') && !code.includes('from') && !code.includes('import {')) pyScore += 5;
-        if (code.includes('print(') && !code.includes('System.out') && !code.includes('console.log')) pyScore += 5;
-        if ((code.match(/(^|\n)\s*#/g) || []).length > 0) pyScore += 10;
-        if (code.includes('const ') || code.includes('let ')) jsScore += 12;
-        if (code.includes('console.log')) jsScore += 15;
-        if (code.includes('function ') && !code.includes('def ')) jsScore += 8;
-        if (code.includes('=>') && !code.includes('==>')) jsScore += 10;
-        if (code.includes('document.get') || code.includes('window.')) jsScore += 10;
-        if (/\b(interface|type)\s+[A-Z_a-z]/.test(code)) tsScore += 20;
-        if (/\b(const|let|var)\s+[A-Za-z_$][\w$]*\s*:\s*[A-Za-z_$]/.test(code)) tsScore += 20;
-        if (/\)\s*:\s*[A-Za-z_$][\w$<>[\]| ]*\s*=>/.test(code) || /function\s+\w+\([^)]*\)\s*:\s*/.test(code)) tsScore += 15;
-        if (code.toLowerCase().includes('<!doctype html>')) htmlScore += 25;
-        if (code.toLowerCase().includes('<html') || code.toLowerCase().includes('<body')) htmlScore += 20;
-        if (code.toLowerCase().includes('</div>') || code.toLowerCase().includes('</p>')) htmlScore += 15;
-        if (code.includes('#include <')) cppScore += 25;
-        if (code.includes('std::cout') || code.includes('cout <<')) cppScore += 20;
-        if (code.includes('int main()')) cppScore += 15;
-        if (code.includes('public class ') && code.includes('{')) javaScore += 20;
-        if (code.includes('public static void main')) javaScore += 25;
-        if (code.includes('System.out.print')) javaScore += 20;
-        if (/package\s+main/.test(code)) goScore += 20;
-        if (/func\s+main\s*\(\)/.test(code)) goScore += 20;
-        if (/fmt\.Print/.test(code)) goScore += 10;
-        if (/fn\s+main\s*\(\)/.test(code)) rustScore += 25;
-        if (/println!\s*\(/.test(code)) rustScore += 15;
-        if (/\blet\s+mut\b/.test(code)) rustScore += 15;
-        let scores = [
-            { lang: 'Python', score: pyScore, ext: '.py' },
-            { lang: 'Javascript', score: jsScore, ext: '.js' },
-            { lang: 'TypeScript', score: tsScore, ext: '.ts' },
-            { lang: 'HTML', score: htmlScore, ext: '.html' },
-            { lang: 'C++', score: cppScore, ext: '.cpp' },
-            { lang: 'Java', score: javaScore, ext: '.java' },
-            { lang: 'Go', score: goScore, ext: '.go' },
-            { lang: 'Rust', score: rustScore, ext: '.rs' }
-        ];
-        scores.sort((a, b) => b.score - a.score);
-        return scores[0].score >= 8 ? scores[0] : null;
+        if (!code || code.trim().length < 8) return null;
+        const scores = {};
+        const add = (lang, pts) => { scores[lang] = (scores[lang] || 0) + pts; };
+
+        // --- Python ---
+        if (/^\s*def\s+\w+\s*\(/m.test(code)) add('Python', 20);
+        if (/^\s*class\s+\w+.*:/m.test(code)) add('Python', 15);
+        if (/\belif\b/.test(code)) add('Python', 18);
+        if (/^\s*from\s+\w+\s+import\b/m.test(code)) add('Python', 18);
+        if (/\bimport\s+\w+(?!\s*\{)/m.test(code) && !/from\s+['"]/.test(code)) add('Python', 8);
+        if (/\bprint\s*\(/.test(code) && !/console\./.test(code) && !/System\.out/.test(code)) add('Python', 10);
+        if (/\bself\b/.test(code)) add('Python', 15);
+        if (/\bNone\b/.test(code) && !/\/\//.test(code)) add('Python', 10);
+        if (/\bTrue\b|\bFalse\b/.test(code) && !/\/\//.test(code)) add('Python', 8);
+        if (/\bxrange\b|\belif\b|\blambda\b/.test(code)) add('Python', 12);
+        if (/#[^!]/.test(code)) add('Python', 5);
+
+        // --- JavaScript ---
+        if (/\bconsole\.log\b/.test(code)) add('Javascript', 22);
+        if (/\bdocument\.\w+|\bwindow\.\w+/.test(code)) add('Javascript', 18);
+        if (/\bmodule\.exports\b/.test(code)) add('Javascript', 22);
+        if (/\brequire\s*\(['"]/.test(code)) add('Javascript', 18);
+        if (/\bPromise\b|\basync\s+function\b/.test(code)) add('Javascript', 12);
+        if (/\bconst\b|\blet\b/.test(code) && !/:\s*(string|number|boolean)/.test(code)) add('Javascript', 8);
+        if (/\bfunction\s+\w+\s*\(/.test(code) && !/\bdef\b/.test(code)) add('Javascript', 10);
+        if (/=>\s*[{(]/.test(code)) add('Javascript', 10);
+        if (/\bnull\b/.test(code) && /\bundefined\b/.test(code)) add('Javascript', 8);
+
+        // --- TypeScript ---
+        if (/\binterface\s+[A-Z]/.test(code)) add('TypeScript', 28);
+        if (/\btype\s+[A-Z]\w*\s*=/.test(code)) add('TypeScript', 25);
+        if (/\benum\s+\w+\s*\{/.test(code)) add('TypeScript', 25);
+        if (/:\s*(string|number|boolean|void|never|unknown|any)\b/.test(code)) add('TypeScript', 18);
+        if (/\bReadonly<|\bPartial<|\bRequired<|\bRecord</.test(code)) add('TypeScript', 28);
+        if (/\)\s*:\s*[A-Za-z][\w<>[\]| ]+\s*(=>|\{)/.test(code)) add('TypeScript', 18);
+        if (/<[A-Z]\w*>/.test(code) && /\binterface\b|\btype\b/.test(code)) add('TypeScript', 12);
+
+        // --- HTML ---
+        if (/<!DOCTYPE\s+html>/i.test(code)) add('HTML', 45);
+        if (/<html[\s>]/i.test(code)) add('HTML', 28);
+        if (/<\/?(div|span|body|head|script|style|meta|link)\b/i.test(code)) add('HTML', 20);
+        if (/<\/\w+>/.test(code) && /<\w[\w-]*\s/.test(code)) add('HTML', 15);
+
+        // --- C++ ---
+        if (/#include\s*<\w+>/.test(code)) add('C++', 28);
+        if (/\bstd::/.test(code)) add('C++', 28);
+        if (/\bcout\s*<</.test(code)) add('C++', 28);
+        if (/\btemplate\s*</.test(code)) add('C++', 28);
+        if (/\bvector\s*<|\bmap\s*<|\bunordered_map\s*</.test(code)) add('C++', 22);
+        if (/\bnew\s+\w+\s*\(/.test(code) && /::/.test(code)) add('C++', 12);
+        if (/\bint\s+main\s*\(\s*\)/.test(code) && /#include/.test(code)) add('C++', 15);
+
+        // --- C ---
+        if (/#include\s*<stdio\.h>/.test(code)) add('C', 32);
+        if (/\bprintf\s*\(/.test(code) && !/#include\s*<iostream>/.test(code)) add('C', 22);
+        if (/\bscanf\s*\(/.test(code)) add('C', 22);
+        if (/\bmalloc\s*\(|\bcalloc\s*\(|\bfree\s*\(/.test(code)) add('C', 22);
+        if (/\bint\s+main\s*\(\s*void\s*\)/.test(code)) add('C', 22);
+        if (/#include\s*<string\.h>/.test(code)) add('C', 15);
+
+        // --- Java ---
+        if (/\bpublic\s+static\s+void\s+main\s*\(/.test(code)) add('Java', 35);
+        if (/\bSystem\.out\.print/.test(code)) add('Java', 28);
+        if (/\bpublic\s+class\s+[A-Z]/.test(code)) add('Java', 22);
+        if (/\bimport\s+java\./.test(code)) add('Java', 28);
+        if (/@Override\b/.test(code)) add('Java', 22);
+        if (/\bArrayList\b|\bHashMap\b|\bLinkedList\b/.test(code)) add('Java', 18);
+        if (/\bthrows\s+\w+Exception\b/.test(code)) add('Java', 20);
+
+        // --- C# ---
+        if (/\bConsole\.Write(?:Line)?\s*\(/.test(code)) add('C#', 28);
+        if (/\busing\s+System\b/.test(code)) add('C#', 28);
+        if (/\bnamespace\s+\w+/.test(code)) add('C#', 22);
+        if (/\bpublic\s+static\s+void\s+Main\s*\(/.test(code)) add('C#', 25);
+        if (/\bList<\w+>\b|\bDictionary</.test(code)) add('C#', 18);
+        if (/\bforeach\s*\(/.test(code) && /\bvar\b/.test(code)) add('C#', 15);
+        if (/\[Serializable\]|\[HttpGet\]/.test(code)) add('C#', 25);
+
+        // --- Go ---
+        if (/^package\s+\w+/m.test(code)) add('Go', 28);
+        if (/\bfunc\s+main\s*\(\)/.test(code)) add('Go', 28);
+        if (/\bfmt\.Print(?:ln|f)?/.test(code)) add('Go', 22);
+        if (/:=/.test(code)) add('Go', 15);
+        if (/\bgoroutine\b|\bchan\b|\bselect\b/.test(code)) add('Go', 25);
+        if (/\bimport\s+\(/.test(code)) add('Go', 18);
+
+        // --- Rust ---
+        if (/\bfn\s+main\s*\(\)/.test(code)) add('Rust', 28);
+        if (/\bprintln!\s*\(/.test(code)) add('Rust', 28);
+        if (/\blet\s+mut\b/.test(code)) add('Rust', 22);
+        if (/\bimpl\s+\w+/.test(code)) add('Rust', 22);
+        if (/\bSome\(|\bNone\b|\bOk\(|\bErr\(/.test(code)) add('Rust', 18);
+        if (/\buse\s+std::/.test(code)) add('Rust', 22);
+        if (/\bmatch\s+\w+\s*\{/.test(code)) add('Rust', 15);
+        if (/\bunwrap\s*\(\)/.test(code)) add('Rust', 12);
+
+        // --- PHP ---
+        if (/<\?php/.test(code)) add('PHP', 45);
+        if (/\$[a-zA-Z_]\w*/.test(code) && /\becho\b/.test(code)) add('PHP', 22);
+        if (/\bforeach\s*\(\s*\$/.test(code)) add('PHP', 22);
+        if (/\barray\s*\(/.test(code) && /\$/.test(code)) add('PHP', 15);
+
+        // --- Ruby ---
+        if (/^\s*end\s*$/m.test(code)) add('Ruby', 18);
+        if (/\bputs\s+/.test(code) && /^\s*end\s*$/m.test(code)) add('Ruby', 22);
+        if (/\bdo\s*\|[\w,\s]+\|/.test(code)) add('Ruby', 25);
+        if (/\battr_(reader|writer|accessor)\b/.test(code)) add('Ruby', 28);
+        if (/\brequire\s+['"]/.test(code) && /\.rb['"]/.test(code)) add('Ruby', 20);
+        if (/=~\s*\//.test(code)) add('Ruby', 18);
+
+        // --- Swift ---
+        if (/\bimport\s+(Foundation|UIKit|SwiftUI)\b/.test(code)) add('Swift', 35);
+        if (/\bguard\s+let\b|\bif\s+let\b/.test(code)) add('Swift', 25);
+        if (/@State\b|@Binding\b|@Published\b|@ObservedObject\b/.test(code)) add('Swift', 35);
+        if (/\bvar\s+\w+\s*:\s*[A-Z]/.test(code) && /\bfunc\b/.test(code)) add('Swift', 18);
+        if (/\boptional\b|\?\s*\{/.test(code)) add('Swift', 12);
+
+        // --- Kotlin ---
+        if (/\bfun\s+main\s*\(/.test(code)) add('Kotlin', 28);
+        if (/\bprintln\s*\(/.test(code) && /\bval\b|\bvar\b/.test(code)) add('Kotlin', 22);
+        if (/\bdata\s+class\s+\w+/.test(code)) add('Kotlin', 28);
+        if (/\bwhen\s*\(/.test(code)) add('Kotlin', 22);
+        if (/\bnullable\b|\?\s*:/.test(code)) add('Kotlin', 15);
+
+        // --- Bash ---
+        if (/^#!\/bin\/(bash|sh)/m.test(code)) add('Bash', 45);
+        if (/\$\{[^}]+\}/.test(code) && /\bfi\b/.test(code)) add('Bash', 22);
+        if (/\[\[.*\]\]/.test(code)) add('Bash', 25);
+        if (/\bfi\b/.test(code) && /\bthen\b/.test(code)) add('Bash', 22);
+        if (/\bdone\b/.test(code) && /\bdo\b/.test(code) && /\bfor\b/.test(code)) add('Bash', 18);
+
+        // --- R ---
+        if (/<-\s*\w/.test(code)) add('R', 22);
+        if (/\blibrary\s*\(/.test(code)) add('R', 22);
+        if (/\bggplot\s*\(|\bdplyr\b|\btidyr\b/.test(code)) add('R', 28);
+        if (/\bdata\.frame\s*\(/.test(code)) add('R', 22);
+        if (/\bc\s*\([\d.,\s]+\)/.test(code)) add('R', 12);
+
+        // --- Lua ---
+        if (/\blocal\s+\w+\s*=/.test(code) && /\bend\b/.test(code)) add('Lua', 22);
+        if (/\bipairs\s*\(|\bpairs\s*\(/.test(code)) add('Lua', 25);
+        if (/\bfunction\s+\w+\s*\(/.test(code) && /\bend\b/.test(code) && !/\bdef\b/.test(code)) add('Lua', 18);
+        if (/--[^\n]/.test(code) && /\blocal\b/.test(code)) add('Lua', 12);
+
+        // --- Scala ---
+        if (/\bobject\s+\w+\s+extends\b/.test(code)) add('Scala', 28);
+        if (/\bcase\s+class\b/.test(code)) add('Scala', 28);
+        if (/\bdef\s+\w+\s*\(/.test(code) && /\bval\b|\bvar\b/.test(code)) add('Scala', 15);
+        if (/\bprintln\s*\(/.test(code) && /\bval\b/.test(code) && /\bdef\b/.test(code)) add('Scala', 15);
+
+        // --- Haskell ---
+        if (/\bmain\s*=\s*do\b/.test(code)) add('Haskell', 35);
+        if (/\bputStrLn\b|\bputStr\b/.test(code)) add('Haskell', 28);
+        if (/\bimport\s+Data\./.test(code)) add('Haskell', 22);
+        if (/\s->\s/.test(code) && /\b(where|let|in)\b/.test(code)) add('Haskell', 18);
+
+        // --- Dart ---
+        if (/\bvoid\s+main\s*\(\s*\)/.test(code) && /\bprint\s*\(/.test(code)) add('Dart', 25);
+        if (/\bimport\s+'package:flutter/.test(code)) add('Dart', 40);
+        if (/\bWidget\b|\bStatefulWidget\b|\bStatelessWidget\b/.test(code)) add('Dart', 35);
+
+        const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+        if (sorted.length === 0 || sorted[0][1] < 12) return null;
+        const [topLang, topScore] = sorted[0];
+        const runnerUp = sorted[1] ? sorted[1][1] : 0;
+        // Require clear winner — top must be meaningfully ahead of runner-up
+        if (topScore - runnerUp < 8 && topScore < 30) return null;
+        return { lang: topLang, score: topScore, ext: JungleIntelligence.getDefaultExtension(topLang) || '.txt' };
     }
 }
 class JungleRunner {
@@ -1062,6 +1189,7 @@ class JungleUI {
     static switchToFile(filename) {
         const p = this.getCurrentProject();
         if (!p) return;
+        manualLanguageOverride = false;
         p.currentFile = filename;
         currentFileLabel.textContent = filename;
         editor.value = p.files[filename] || '';
@@ -1274,24 +1402,26 @@ editor.oninput = () => {
     p.files[p.currentFile] = editor.value;
     JungleUI.updateLinesOfCodeCount();
     JungleStorage.saveProjects(projects);
-    const code = editor.value, detection = JungleScanner.detectLanguage(code);
-    if (detection) {
-        const detectedLang = detection.lang;
-        if (detectedLang !== selectedLanguages[0]) {
-            selectedLanguages = [detectedLang];
-            p.lang = detectedLang;
-            currentLanguageText.textContent = `Language: ${detectedLang}`;
-            const newFilename = JungleIntelligence.renameFileForLanguage(p.currentFile, detectedLang, p.files);
-            if (newFilename !== p.currentFile) {
-                const fileContent = p.files[p.currentFile];
-                delete p.files[p.currentFile];
-                p.files[newFilename] = fileContent;
-                p.currentFile = newFilename;
-                currentFileLabel.textContent = newFilename;
-                JungleUI.renderFilesList();
+    if (!manualLanguageOverride) {
+        const code = editor.value, detection = JungleScanner.detectLanguage(code);
+        if (detection) {
+            const detectedLang = detection.lang;
+            if (detectedLang !== selectedLanguages[0]) {
+                selectedLanguages = [detectedLang];
+                p.lang = detectedLang;
+                currentLanguageText.textContent = `Language: ${detectedLang}`;
+                const newFilename = JungleIntelligence.renameFileForLanguage(p.currentFile, detectedLang, p.files);
+                if (newFilename !== p.currentFile) {
+                    const fileContent = p.files[p.currentFile];
+                    delete p.files[p.currentFile];
+                    p.files[newFilename] = fileContent;
+                    p.currentFile = newFilename;
+                    currentFileLabel.textContent = newFilename;
+                    JungleUI.renderFilesList();
+                }
+                JungleStorage.saveProjects(projects);
+                JungleUI.showToast(`Auto-detected: ${detectedLang} — tap language button to override.`);
             }
-            JungleStorage.saveProjects(projects);
-            JungleUI.showToast(`Auto-detected environment: swapped to ${detectedLang}!`);
         }
     }
     JungleUI.updateCodeHighlight();
@@ -1314,6 +1444,7 @@ window.onload = () => {
         item.onclick = (e) => {
             const targetLang = item.getAttribute('data-lang');
             selectedLanguages = [targetLang];
+            manualLanguageOverride = true;
             currentLanguageText.textContent = `Language: ${targetLang}`;
             languageMenu.classList.remove('show');
             const p = JungleUI.getCurrentProject();
