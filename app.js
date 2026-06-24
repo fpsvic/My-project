@@ -587,20 +587,27 @@ class JungleRunner {
                 if (filename !== p.currentFile) { filesArray.push({ name: filename, content: p.files[filename] }); }
             });
             const payload = { language: pistonLang, version: "*", files: filesArray };
+            const pistonDirect = "https://emkc.org/api/v2/piston/execute";
+            const pistonMirror = "https://piston.engineering.purdue.edu/api/v2/piston/execute";
             const endpoints = [
-                { name: "EMKC Primary API Hub", url: "https://emkc.org/api/v2/piston/execute" },
-                { name: "Purdue University Mirror", url: "https://piston.engineering.purdue.edu/api/v2/piston/execute" },
-                { name: "CORS-Proxied EMKC Node", url: "https://corsproxy.io/?https://emkc.org/api/v2/piston/execute" },
-                { name: "CORS-Proxied Purdue Node", url: "https://corsproxy.io/?https://piston.engineering.purdue.edu/api/v2/piston/execute" }
+                { name: "EMKC Primary API Hub", url: pistonDirect },
+                { name: "Purdue University Mirror", url: pistonMirror },
+                { name: "CORS-Proxied EMKC (corsproxy.io)", url: `https://corsproxy.io/?${pistonDirect}` },
+                { name: "CORS-Proxied Mirror (corsproxy.io)", url: `https://corsproxy.io/?${pistonMirror}` },
+                { name: "CORS-Proxied EMKC (allorigins)", url: `https://api.allorigins.win/raw?url=${encodeURIComponent(pistonDirect)}`, useRaw: true },
+                { name: "CORS-Proxied EMKC (cors.sh)", url: `https://cors.sh/${pistonDirect}` },
+                { name: "CORS-Proxied Mirror (cors.sh)", url: `https://cors.sh/${pistonMirror}` },
             ];
             let responseReceived = false, result = null, errorReports = [];
             for (let i = 0; i < endpoints.length; i++) {
                 const currentTarget = endpoints[i];
                 if (i > 0) { terminalViewBody.textContent += `\n⚠️ Node [${endpoints[i-1].name}] failed or blocked. Failover: Routing to ${currentTarget.name}...`; }
                 try {
-                    const response = await fetch(currentTarget.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const headers = { 'Content-Type': 'application/json' };
+                    if (currentTarget.url.includes('cors.sh')) headers['x-cors-api-key'] = 'temp_' + Math.random().toString(36).slice(2);
+                    const response = await fetch(currentTarget.url, { method: 'POST', headers, body: JSON.stringify(payload) });
                     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                    result = await response.json();
+                    result = currentTarget.useRaw ? JSON.parse(await response.text()) : await response.json();
                     responseReceived = true;
                     break;
                 } catch (err) { errorReports.push(`${currentTarget.name}: ${err.message}`); }
@@ -628,7 +635,9 @@ class JungleRunner {
                 terminalStatus.className = "text-rose-500 font-bold";
                 terminalViewBody.textContent = this.formatSimpleReport({
                     lineNo: "Unknown",
-                    errorMsg: "compiler service unavailable"
+                    errorMsg: "all compiler endpoints unreachable",
+                    likelyCause: "All API endpoints and CORS proxies were blocked by the browser's security policy or are currently offline.",
+                    suggestion: "Try a different network, disable browser extensions that block requests, or check if the site is served over HTTPS."
                 });
             }
         } catch (globalErr) { this.handleGlobalFailure(globalErr); }
