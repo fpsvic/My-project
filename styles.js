@@ -1,9 +1,9 @@
+var jungleStyles = `
 body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; background-color: #0b0d10; color: #d1d5db; display: flex; height: 100vh; overflow: hidden; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: #0b0d10; }
 ::-webkit-scrollbar-thumb { background: #1b2221; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #528b74; }
-/* === Splash Screen Styles === */
 .splash-screen { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: radial-gradient(circle at center, #101715 0%, #040608 100%); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.4s; opacity: 1; visibility: visible; }
 .splash-screen.fade-out { opacity: 0; visibility: hidden; }
 .splash-content { text-align: center; max-width: 500px; padding: 2rem; display: flex; flex-direction: column; align-items: center; }
@@ -13,7 +13,6 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .enter-btn { background-color: #2f443a; color: #e2f1ec; border: 1px solid #415c4f; padding: 14px 44px; font-size: 1rem; font-weight: 600; border-radius: 50px; cursor: pointer; box-shadow: 0 8px 24px rgba(47, 68, 58, 0.25); transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s, border-color 0.2s; outline: none; }
 .enter-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(47, 68, 58, 0.4); background-color: #385246; border-color: #528b74; }
 .enter-btn:active { transform: translateY(1px); }
-/* === Projects Dashboard Screen Styles === */
 .projects-dashboard { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #0b0d10; z-index: 9000; display: flex; flex-direction: column; box-sizing: border-box; padding: 40px 60px; overflow-y: auto; transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.4s; opacity: 0; visibility: hidden; }
 .projects-dashboard.show { opacity: 1; visibility: visible; }
 .dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; border-bottom: 1px solid #1c2321; padding-bottom: 20px; flex-wrap: wrap; gap: 20px; }
@@ -30,7 +29,6 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .new-project-card:hover { border-color: #74a896; background-color: rgba(116, 168, 150, 0.03); }
 .new-project-card .plus-icon { font-size: 2.5rem; color: #74a896; margin-bottom: 10px; line-height: 1; }
 .new-project-card span { font-weight: 600; font-size: 1rem; color: #7b8e87; }
-/* === Workspace Sidebar Styles === */
 .workspace-container { display: flex; width: 100vw; height: 100vh; overflow: hidden; }
 .sidebar { width: 260px; background-color: #111413; border-right: 1px solid #1c2321; display: flex; flex-direction: column; }
 .sidebar-tabs { display: flex; background-color: #161a19; }
@@ -48,7 +46,6 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .action-btn { background: none; border: none; color: #5c6875; cursor: pointer; padding: 0 2px; font-size: 0.85rem; transition: color 0.15s, transform 0.1s; }
 .action-btn:hover { color: #ffffff; transform: scale(1.15); }
 .action-btn.delete:hover { color: #cf6679; }
-/* === Main Content Area Styles === */
 .main-content { flex: 1; display: flex; flex-direction: column; background-color: #0b0d10; position: relative; }
 .editor-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background-color: #111413; border-bottom: 1px solid #1c2321; }
 .editor-header h2 { margin: 0; font-size: 0.95rem; font-weight: 600; color: #aed9cb; }
@@ -57,7 +54,6 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .exit-hub-btn { background-color: #161c1a; color: #a4b3b0; border: 1px solid #232d2a; padding: 8px 16px; font-size: 0.85rem; font-weight: 600; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s ease; }
 .exit-hub-btn:hover { background-color: #1c2522; color: #ffffff; border-color: #74a896; box-shadow: 0 0 10px rgba(116, 168, 150, 0.25); }
 #loc-display { color: #849690; font-size: 0.85rem; font-family: monospace; background: #0b0d10; padding: 4px 8px; border-radius: 4px; border: 1px solid #1c2321; white-space: nowrap; }
-/* Language Selector Dropdown Styles */
 .language-selector-wrapper { position: relative; display: inline-block; }
 .language-btn { padding: 7px 12px; background-color: #161c1a; color: #a4b3b0; border: 1px solid #232d2a; border-radius: 6px; cursor: pointer; text-align: left; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; width: 170px; gap: 5px; transition: all 0.2s; }
 .language-btn:hover { background-color: #1c2522; color: #ffffff; border-color: #415c4f; }
@@ -69,7 +65,6 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .language-menu li:last-child { border-bottom: none; }
 .language-menu li:hover { background-color: #1c2522; color: #ffffff; }
 .language-menu li.selected { background-color: #15221e; color: #74a896; font-weight: bold; }
-/* === Code Editor & Line Gutter Integration === */
 .editor-wrapper { display: flex; flex: 1; position: relative; overflow: hidden; background-color: #0b0d10; }
 #line-gutter { padding: 20px 10px 20px 15px; background-color: #080a0d; color: #35453e; font-family: 'Fira Code', 'Consolas', monospace; font-size: 14px; line-height: 22px; text-align: right; user-select: none; border-right: 1px solid #1c2321; min-width: 45px; white-space: pre; overflow: hidden; box-sizing: border-box; }
 #editor-container { position: relative; flex: 1; height: 100%; overflow: hidden; }
@@ -79,13 +74,11 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 #code-editor::-webkit-scrollbar-track { background: #080a0d; }
 #code-editor::-webkit-scrollbar-thumb { background: #1c2522; border: 2px solid #080a0d; border-radius: 5px; }
 #code-editor::-webkit-scrollbar-thumb:hover { background: #528b74; }
-/* Syntax Highlight Overlays */
 .token-keyword { color: #d3738b; font-weight: bold; }
 .token-string { color: #8cb695; }
 .token-comment { color: #4e6559; font-style: italic; }
 .token-number { color: #e5b367; }
 .token-type { color: #5fb8a6; }
-/* === Custom Modals Styling === */
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.85); display: none; justify-content: center; align-items: center; z-index: 10000; backdrop-filter: blur(6px); }
 .modal-overlay.show { display: flex; }
 .modal-card { background-color: #111413; border: 1px solid #232d2a; border-radius: 12px; width: 360px; padding: 25px; box-shadow: 0 15px 40px rgba(0,0,0,0.8); animation: modalScale 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
@@ -100,11 +93,60 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .modal-btn.cancel:hover { background-color: #232d2a; color: #ffffff; }
 .modal-btn.confirm { background-color: #4b7a69; color: #ffffff; }
 .modal-btn.confirm:hover { background-color: #385c4f; }
-/* === Toast Message System === */
 #toast-container { position: fixed; bottom: 25px; right: 25px; z-index: 10005; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
 .jungle-toast { background-color: #111413; border: 1px solid #4b7a69; color: #e2f1ec; padding: 12px 24px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.5); transform: translateY(50px); opacity: 0; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); pointer-events: auto; }
 .jungle-toast.show { transform: translateY(0); opacity: 1; }
-/* === Terminal / Console Views === */
 #terminal-view-container { flex: 1; display: none; flex-direction: column; background-color: #06090c; font-family: 'Fira Code', 'Consolas', monospace; padding: 24px; box-sizing: border-box; overflow: hidden; cursor: text; }
 #terminal-view-header { color: #528b74; font-size: 0.8rem; letter-spacing: 1.5px; border-bottom: 1px solid #14201b; padding-bottom: 12px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; font-weight: bold; }
 #terminal-view-body { margin: 0; color: #9cb5a9; font-size: 14px; line-height: 22px; white-space: pre-wrap; word-break: break-all; flex: 1; overflow-y: auto; }
+.flex { display: flex; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.flex-1 { flex: 1; }
+.shrink-0 { flex-shrink: 0; }
+.hidden { display: none; }
+.gap-2 { gap: 0.5rem; }
+.gap-4 { gap: 1rem; }
+.ml-2 { margin-left: 0.5rem; }
+.ml-4 { margin-left: 1rem; }
+.mt-2 { margin-top: 0.5rem; }
+.pl-3 { padding-left: 0.75rem; }
+.pr-16 { padding-right: 4rem; }
+.pt-2 { padding-top: 0.5rem; }
+.border-t { border-top-width: 1px; border-top-style: solid; }
+.border-l { border-left-width: 1px; border-left-style: solid; }
+.border-none { border: none; }
+.bg-transparent { background-color: transparent; }
+.outline-none { outline: none; }
+.font-mono { font-family: 'Fira Code', 'Consolas', monospace; }
+.font-bold { font-weight: 700; }
+.uppercase { text-transform: uppercase; }
+.text-sm { font-size: 0.875rem; }
+.select-none { user-select: none; }
+.cursor-pointer { cursor: pointer; }
+.overflow-hidden { overflow: hidden; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pointer-events-auto { pointer-events: auto; }
+.text-rose-500 { color: #f43f5e; }
+.text-emerald-400 { color: #34d399; }
+.text-teal-300 { color: #5eead4; }
+.animate-pulse { animation: junglePulse 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+@keyframes junglePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.bg-\\[\\#1c2522\\] { background-color: #1c2522; }
+.text-\\[\\#74a896\\] { color: #74a896; }
+.text-\\[\\#aed9cb\\] { color: #aed9cb; }
+.text-\\[10px\\] { font-size: 10px; }
+.border-\\[\\#528b74\\] { border-color: #528b74; }
+.border-\\[\\#14201b\\] { border-color: #14201b; }
+.border-\\[\\#2e3c37\\] { border-color: #2e3c37; }
+.hover\\:bg-\\[\\#1a2320\\]:hover { background-color: #1a2320; }
+`;
+
+function installJungleStyles(cssText) {
+    var styleElement = document.createElement('style');
+    styleElement.setAttribute('data-source', 'styles.ts');
+    styleElement.textContent = cssText;
+    document.head.appendChild(styleElement);
+}
+
+installJungleStyles(jungleStyles);

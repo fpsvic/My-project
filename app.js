@@ -284,7 +284,10 @@ class JungleRunner {
             } else {
                 terminalStatus.textContent = "CLUSTER OFFLINE";
                 terminalStatus.className = "text-rose-500 font-bold";
-                terminalViewBody.textContent = "=========================================================\n❌ JUNGLE COMPILER CLUSTER REJECTION ERROR (CORS BLOCK)\n=========================================================\nFailover routes attempted:\n" + errorReports.map((report, idx) => `  [Node ${idx + 1}] ${report}`).join('\n') + "\n\nDIAGNOSIS:\nStrict Iframe Sandbox Content Security Policies (CSP) blocked the connection streams to the remote container sandbox. Try running inside a separate browser tab or local instance to unlock secure remote compilation API segments.\n=========================================================";
+                terminalViewBody.textContent = this.formatSimpleReport({
+                    lineNo: "Unknown",
+                    errorMsg: "compiler service unavailable"
+                });
             }
         } catch (globalErr) { this.handleGlobalFailure(globalErr); }
         terminalViewBody.scrollTop = terminalViewBody.scrollHeight;
@@ -293,7 +296,10 @@ class JungleRunner {
         switchView('terminal', false);
         terminalStatus.textContent = "FAILED TO RUN";
         terminalStatus.className = "text-rose-500 font-bold";
-        terminalViewBody.textContent = "=========================================================\n❌ JUNGLE CRASH REPORT GENERATOR (ENVIRONMENT FAILURE)\n=========================================================\nFAILED TO COMPILE OR EXECUTE LOGIC STREAMS\nDetails: " + (err.message || err) + "\n=========================================================\n";
+        terminalViewBody.textContent = this.formatSimpleReport({
+            lineNo: "Unknown",
+            errorMsg: err.message || err || "environment failure"
+        });
         JungleUI.showToast("❌ Failed to run! Tap here to inspect terminal diagnostics.", () => { switchView('terminal', false); });
     }
     static parseError(stderr, stdout, lang) {
@@ -368,25 +374,41 @@ class JungleRunner {
         }
         return frame.join('\n');
     }
+    static formatSimpleReport(details) {
+        const lineNo = details.lineNo || "Unknown";
+        const errorKind = this.getSimpleErrorKind(details.errorMsg || "");
+        const message = this.simplifyErrorMessage(details.errorMsg || "unknown error");
+        return `An error occured running your code, Line:${lineNo}\n${errorKind} << ${message} >>`;
+    }
+    static getSimpleErrorKind(message) {
+        const text = String(message).toLowerCase();
+        if (/syntax|unexpected|mismatched|unclosed|expected|invalid|missing|closing tag|html tag/.test(text)) return "Syntax error";
+        if (/typeerror|type error|not a function|cannot read/.test(text)) return "Type error";
+        if (/referenceerror|nameerror|not defined|is undefined/.test(text)) return "Reference error";
+        if (/module|import|package|no module/.test(text)) return "Import error";
+        if (/timeout|timed out|time limit/.test(text)) return "Timeout error";
+        return "Error";
+    }
+    static simplifyErrorMessage(message) {
+        let text = String(message || "unknown error").trim();
+        const closingBracket = text.match(/(?:Unexpected token|unexpected|Mismatched closing bracket)\s*['"`]?([}\])])['"`]?/i);
+        if (closingBracket) return `unexpected ${closingBracket[1]}`;
+        const unclosed = text.match(/Unclosed bracket or delimiter\s*['"`]?([({[])['"`]?/i);
+        if (unclosed) {
+            const closers = { '(': ')', '[': ']', '{': '}' };
+            return `missing ${closers[unclosed[1]] || unclosed[1]}`;
+        }
+        const expected = text.match(/expected\s+['"`]?([^'"`.,\n]+)['"`]?/i);
+        if (expected) return `expected ${expected[1].trim()}`;
+        text = text
+            .replace(/^syntaxerror:\s*/i, "")
+            .replace(/^error:\s*/i, "")
+            .replace(/\s+/g, " ")
+            .replace(/[.。]+$/, "");
+        return text || "unknown error";
+    }
     static printCrashAnalysis(details, stdout, stderr) {
-        const location = `File "${details.file}", Line ${details.lineNo}${details.column ? `, Col ${details.column}` : ""}`;
-        const frame = this.getCodeFrame(details.file, details.lineNo, details.column);
-        const rawOutput = details.rawOutput || [stderr, stdout].filter(Boolean).join('\n').trim();
-        terminalViewBody.textContent =
-            "=========================================================\n" +
-            "❌ JUNGLE CRASH REPORT GENERATOR\n" +
-            "=========================================================\n" +
-            "WHAT WENT WRONG: " + details.errorMsg + "\n" +
-            "WHERE IT IS:     " + location + "\n" +
-            "LIKELY CAUSE:    " + (details.likelyCause || "Needs manual inspection.") + "\n" +
-            "TRY THIS:        " + (details.suggestion || "Check the highlighted line and rerun after fixing it.") + "\n" +
-            "=========================================================\n";
-        if (frame) {
-            terminalViewBody.textContent += "SOURCE CONTEXT:\n" + frame + "\n=========================================================\n";
-        }
-        if (rawOutput) {
-            terminalViewBody.textContent += "RAW RUNTIME OUTPUT:\n" + rawOutput + "\n=========================================================\n";
-        }
+        terminalViewBody.textContent = this.formatSimpleReport(details);
         terminalViewBody.scrollTop = 0;
     }
 }
