@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ForgeAI Studio</title>
+    <!-- Tailwind CSS for modern layouts -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="js/tailwind-config.js"></script>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="bg-white text-slate-800 font-sans min-h-screen flex overflow-hidden antialiased grid-bg">
+
+    <!-- Beginning Splash Onboarding Screen - White Light Theme -->
+    <div id="splashScreen" class="fixed inset-0 bg-white flex flex-col items-center justify-center z-50 text-slate-800 select-none transition-all duration-700 ease-in-out overflow-hidden">
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.08)_0%,transparent_60%)] pointer-events-none"></div>
+        <div class="absolute -inset-[10px] bg-white bg-opacity-40 backdrop-blur-sm pointer-events-none"></div>
+
+        <div class="relative max-w-sm w-full px-6 flex flex-col items-center text-center space-y-8">
+            <!-- Glowing Forge Logo Symbol -->
+            <div class="relative group">
+                <div class="absolute -inset-1.5 bg-gradient-to-r from-indigo-500/20 to-pink-500/20 rounded-3xl blur opacity-70 animate-pulse"></div>
+                <div class="relative h-20 w-20 bg-white rounded-3xl flex items-center justify-center border border-slate-200 shadow-2xl">
+                    <i class="fa-solid fa-wand-magic-sparkles text-3xl text-indigo-600"></i>
+                </div>
+            </div>
+
+            <!-- Title & Specifications -->
+            <div class="space-y-1.5 animate-fadeIn">
+                <h1 class="text-3xl font-extrabold tracking-tight text-slate-900">ForgeAI Studio</h1>
+                <p class="text-xs text-indigo-600 font-mono tracking-widest uppercase">Hybrid Reasoning Engine v3.1</p>
+            </div>
+
+            <!-- Diagnostic Progress Bar & System Checks -->
+            <div class="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-5 text-left font-mono text-[10px] text-slate-500 space-y-3">
+                <div class="flex justify-between items-center">
+                    <span>COGNITIVE CORE STATUS</span>
+                    <span class="text-emerald-600 font-bold">SECURE</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span>LOCAL COGNITIVE INDEX</span>
+                    <span class="text-indigo-600 font-bold">READY</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span>OFFLINE REASONING MATRIX</span>
+                    <span class="text-emerald-600 font-bold">ACTIVE</span>
+                </div>
+                <!-- Loading Progress bar -->
+                <div class="w-full bg-slate-200 rounded-full h-1 overflow-hidden">
+                    <div id="splashProgressBar" class="bg-gradient-to-r from-indigo-500 to-pink-500 h-full w-full" style="width: 100%"></div>
+                </div>
+            </div>
+
+            <!-- CTA Trigger (Now active instantly by default) -->
+            <button id="btnEnterStudio" class="w-full py-3 px-6 bg-indigo-600 hover:bg-indigo-500 border border-indigo-500 text-white rounded-xl text-xs font-bold tracking-wide uppercase transition-all duration-300 shadow-lg flex items-center justify-center space-x-2 hover:scale-[1.01] shadow-[0_0_20px_rgba(99,102,241,0.3)]">
+                <i class="fa-solid fa-right-to-bracket mr-2" id="splashBtnIcon"></i>
+                <span id="splashBtnText">Enter Workspace</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Left Sidebar: Session History -->
+    <aside id="sidebarPanel" class="sidebar-drawer fixed md:static z-40 top-0 left-0 h-screen w-[240px] bg-slate-50 border-r border-slate-200/80 flex flex-col shrink-0">
+        <div class="p-4 border-b border-slate-200/60 flex items-center justify-between shrink-0 bg-slate-50">
+            <div class="flex items-center space-x-2">
+                <div class="h-6 w-6 bg-slate-900 rounded flex items-center justify-center shadow-sm">
+                    <i class="fa-solid fa-code text-white text-[11px]"></i>
+                </div>
+                <span class="font-bold text-xs tracking-wider uppercase text-slate-700">ForgeAI Studio</span>
+            </div>
+            <button id="btnMobileSidebarClose" class="md:hidden text-slate-400 hover:text-slate-900 p-1 rounded-lg hover:bg-slate-200/50">
+                <i class="fa-solid fa-xmark text-sm"></i>
+            </button>
+        </div>
+
+        <div class="p-4 flex items-center justify-between shrink-0 bg-slate-50/50">
+            <span class="font-semibold text-[11px] tracking-wider uppercase text-slate-400">Chats</span>
+            <button id="btnNewSession" class="h-7 w-7 flex items-center justify-center bg-white hover:bg-slate-100 border border-slate-200 hover:border-slate-300 text-slate-700 rounded-lg transition shadow-sm" title="New Session">
+                <i class="fa-solid fa-plus text-xs"></i>
+            </button>
+        </div>
+
+        <div class="flex-1 w-full overflow-y-auto px-2 pb-4 space-y-1" id="sessionListContainer"></div>
+
+        <div class="mt-auto p-4 border-t border-slate-200/60 bg-slate-100/40 shrink-0">
+            <div class="flex items-center justify-between">
+                <span class="text-[9px] font-mono text-slate-400 tracking-wider">ENGINE STATUS:</span>
+                <span id="engineStatusIndicator" class="text-[9px] font-mono font-medium text-emerald-600 bg-emerald-50 border border-emerald-200/50 px-1.5 py-0.5 rounded flex items-center space-x-1">
+                    <span class="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                    <span id="engineStatusText">COGNITIVE ACTIVE</span>
+                </span>
+            </div>
+        </div>
+    </aside>
+
+    <div id="sidebarBackdrop" class="fixed inset-0 bg-slate-900/10 backdrop-blur-sm z-30 hidden md:hidden"></div>
+
+    <!-- Main Content Frame -->
+    <main class="flex-1 h-screen flex flex-col overflow-hidden bg-white/70">
+        <header class="border-b border-slate-200/60 bg-white/90 backdrop-blur-md py-3 px-6 flex items-center justify-between shrink-0">
+            <div class="flex items-center space-x-3">
+                <button id="btnMobileSidebarToggle" class="md:hidden text-slate-500 hover:text-slate-900 p-1.5 rounded hover:bg-slate-100">
+                    <i class="fa-solid fa-bars text-sm"></i>
+                </button>
+                <div class="flex items-center space-x-2">
+                    <span class="font-bold text-slate-900 text-base tracking-tight">ForgeAI</span>
+                    <span class="text-[10px] text-indigo-500 font-mono bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200/40">Offline Cognitive Engine v3.1</span>
+                </div>
+            </div>
+            <button id="btnReturnToSplash" class="text-xs text-slate-500 hover:text-indigo-600 px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:border-indigo-200 transition flex items-center space-x-1.5 shadow-sm" title="Return to welcome screen">
+                <i class="fa-solid fa-circle-info text-[10px]"></i>
+                <span class="font-medium">Welcome Screen</span>
+            </button>
+        </header>
+
+        <div id="chatFeed" class="flex-1 overflow-y-auto py-6 px-6 space-y-6 max-w-3xl mx-auto w-full">
+            <!-- Welcomer messages populate dynamically -->
+        </div>
+
+        <footer class="border-t border-slate-200/60 bg-white py-4 px-4 shrink-0">
+            <div class="max-w-3xl mx-auto">
+                <form id="chatForm" class="relative bg-slate-50 border border-slate-200 focus-within:border-slate-400 focus-within:bg-white rounded-xl transition shadow-inner flex flex-col animate-fadeIn">
+                    <textarea id="userInput" rows="2" class="w-full bg-transparent px-4 pt-3.5 pb-1 text-sm text-slate-800 placeholder-slate-400 focus:outline-none resize-none rounded-t-xl" placeholder="Ask to build games, evaluate complex calculus/trigonometry, or test science systems..."></textarea>
+                    
+                    <div class="flex items-center justify-between px-3 pb-2.5 bg-transparent shrink-0 rounded-b-xl">
+                        <div></div>
+
+                        <div class="flex items-center space-x-2">
+                            <div class="relative">
+                                <button type="button" id="btnModeSelector" class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-600 hover:text-slate-900 rounded-lg text-xs font-medium shadow-sm transition">
+                                    <i class="fa-solid fa-code text-[10px] text-indigo-500"></i>
+                                    <span id="currentModeText">Forge code 2.5</span>
+                                    <i class="fa-solid fa-chevron-up text-[9px] text-slate-400"></i>
+                                </button>
+                                <div id="modeMenu" class="absolute bottom-full right-0 mb-2 w-56 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 hidden z-50 text-left">
+                                    <button type="button" data-mode="forge_code" class="w-full px-3 py-2 text-xs text-indigo-600 bg-indigo-50/40 flex items-center space-x-2.5 transition font-semibold">
+                                        <i class="fa-solid fa-code text-indigo-500 w-4 text-center"></i>
+                                        <span>Forge code 2.5</span>
+                                    </button>
+                                    <button type="button" data-mode="forge_thinking" class="w-full px-3 py-2 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 flex items-center space-x-2.5 transition font-medium">
+                                        <i class="fa-solid fa-brain text-amber-500 w-4 text-center"></i>
+                                        <span>Forge thinking 2.6</span>
+                                    </button>
+                                    <button type="button" data-mode="forge_instant" class="w-full px-3 py-2 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 flex items-center space-x-2.5 transition font-medium">
+                                        <i class="fa-solid fa-bolt text-emerald-500 w-4 text-center"></i>
+                                        <span>Forge instant 2.5</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <button type="submit" id="btnSubmit" class="h-8 w-8 bg-slate-900 hover:bg-slate-800 text-white rounded-lg flex items-center justify-center shadow transition-all duration-150 hover:scale-[1.01]" title="Submit request">
+                                <i class="fa-solid fa-arrow-up text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+                <div class="flex items-center justify-between mt-2 text-[9px] text-slate-400 px-1 font-mono">
+                    <span>100% SECURE DYNAMIC COGNITIVE LINK • SYSTEM DRIVEN ARCHITECTURE</span>
+                </div>
+            </div>
+        </footer>
+    </main>
+
+    <!-- Interactive Playable Sandbox Overlay Modal -->
+    <div id="sandboxModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fadeIn">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 bg-slate-950/50 border-b border-slate-800 flex justify-between items-center shrink-0">
+                <div class="flex items-center space-x-2">
+                    <span class="h-2 w-2 bg-emerald-500 rounded-full animate-ping animate-pulse mr-1"></span>
+                    <span class="text-xs font-bold text-white tracking-widest uppercase font-mono">LIVE ARCADE SANDBOX</span>
+                </div>
+                <button onclick="closeSandbox()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+            <!-- Iframe Viewport -->
+            <div class="flex-1 bg-slate-950 relative">
+                <iframe id="sandboxFrame" class="w-full h-full border-none" sandbox="allow-scripts allow-popups"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/knowledge-base.js"></script>
+    <script src="js/game-templates.js"></script>
+    <script src="js/language-data.js"></script>
+    <script src="js/core-knowledge.js"></script>
+    <script src="js/game-compiler.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
