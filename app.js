@@ -1533,8 +1533,9 @@ tabTerminalBtn.onclick = () => { switchView('terminal', true); JungleUI.showToas
 projectTitleBtn.onclick = () => { switchView('editor'); };
 languageBtn.onclick = (e) => { e.stopPropagation(); languageMenu.classList.toggle('show'); };
 window.onclick = () => { languageMenu.classList.remove('show'); };
-const templateBtn = document.getElementById('template-btn');
-const templateMenu = document.getElementById('template-menu');
+const templatePanelToggle = document.getElementById('template-panel-toggle');
+const templatePanelBody = document.getElementById('template-panel-body');
+const templateToggleArrow = document.getElementById('template-toggle-arrow');
 const TEMPLATES = {
     web: {
         lang: 'HTML',
@@ -1654,12 +1655,15 @@ main();
         currentFile: 'main.js'
     }
 };
-templateBtn.onclick = (e) => { e.stopPropagation(); templateMenu.classList.toggle('show'); };
-templateMenu.querySelectorAll('.template-item').forEach(item => {
-    item.onclick = () => {
+templatePanelToggle.onclick = () => {
+    const open = templatePanelBody.classList.toggle('open');
+    templateToggleArrow.textContent = open ? '▼' : '▲';
+};
+document.querySelectorAll('.template-card').forEach(card => {
+    card.onclick = () => {
         const p = JungleUI.getCurrentProject();
-        if (!p) { JungleUI.showToast('Open a project first to load a template.'); templateMenu.classList.remove('show'); return; }
-        const t = TEMPLATES[item.getAttribute('data-template')];
+        if (!p) { JungleUI.showToast('Open a project first to load a template.'); return; }
+        const t = TEMPLATES[card.getAttribute('data-template')];
         if (!t) return;
         Object.assign(p.files, t.files);
         p.currentFile = t.currentFile;
@@ -1669,11 +1673,11 @@ templateMenu.querySelectorAll('.template-item').forEach(item => {
         JungleStorage.saveProjects(projects);
         JungleUI.renderFilesList();
         JungleUI.switchToFile(t.currentFile);
-        templateMenu.classList.remove('show');
-        JungleUI.showToast(`Loaded ${item.textContent.trim()} template.`);
+        templatePanelBody.classList.remove('open');
+        templateToggleArrow.textContent = '▲';
+        JungleUI.showToast(`Loaded ${card.querySelector('.template-card-name').textContent} template.`);
     };
 });
-window.addEventListener('click', () => templateMenu.classList.remove('show'));
 headerCopyCodeBtn.onclick = () => {
     const p = JungleUI.getCurrentProject();
     if (!p || !p.currentFile) return;

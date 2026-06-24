@@ -102,14 +102,6 @@
                     </div>
                 </div>
                 <div class="header-right flex items-center gap-2">
-                    <div class="template-selector-wrapper">
-                        <button class="exit-hub-btn" id="template-btn" title="Load a starter template">⚡ Templates ▼</button>
-                        <div class="template-menu" id="template-menu">
-                            <div class="template-item" data-template="web">🌐 Web Page</div>
-                            <div class="template-item" data-template="python">🐍 Python Script</div>
-                            <div class="template-item" data-template="javascript">⚡ JavaScript App</div>
-                        </div>
-                    </div>
                     <button class="exit-hub-btn" id="tab-terminal-btn" title="Open Workspace Console Terminal">🖥️ Terminal Console</button>
                     <button class="exit-hub-btn" id="header-copy-code-btn" title="Copy Current File Contents to Clipboard">📋 Copy Code</button>
                 </div>
@@ -120,6 +112,30 @@
                 <div id="editor-container">
                     <pre id="highlight-overlay"></pre>
                     <textarea id="code-editor" spellcheck="false"></textarea>
+                </div>
+                <!-- Collapsible Template Panel -->
+                <div id="template-panel">
+                    <div id="template-panel-toggle">
+                        <span id="template-toggle-label">⚡ Templates</span>
+                        <span id="template-toggle-arrow">▲</span>
+                    </div>
+                    <div id="template-panel-body">
+                        <div class="template-card" data-template="web">
+                            <div class="template-card-icon">🌐</div>
+                            <div class="template-card-name">Web Page</div>
+                            <div class="template-card-desc">HTML + CSS + JS starter with a styled counter</div>
+                        </div>
+                        <div class="template-card" data-template="python">
+                            <div class="template-card-icon">🐍</div>
+                            <div class="template-card-name">Python Script</div>
+                            <div class="template-card-desc">Functions, FizzBuzz, and a main() entry point</div>
+                        </div>
+                        <div class="template-card" data-template="javascript">
+                            <div class="template-card-icon">⚡</div>
+                            <div class="template-card-name">JavaScript App</div>
+                            <div class="template-card-desc">Sorting, async fetch, and modern JS patterns</div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <!-- Webview Frame Panel -->
