@@ -38,12 +38,216 @@ class JungleStorage {
     static getProjects() {
         const data = localStorage.getItem('jungle_sandbox_projects');
         if (data) {
-            try { return JSON.parse(data); } catch(e) { return this.getDefaultProjects(); }
+            try { return this.normalizeProjects(JSON.parse(data)); } catch(e) { return this.getDefaultProjects(); }
         }
         return this.getDefaultProjects();
     }
     static saveProjects(list) { localStorage.setItem('jungle_sandbox_projects', JSON.stringify(list)); }
     static getDefaultProjects() { return []; }
+    static normalizeProjects(list) {
+        if (!Array.isArray(list)) return [];
+        return list.map((project, index) => {
+            const files = project && project.files && typeof project.files === 'object' ? project.files : { 'index.html': '' };
+            if (Object.keys(files).length === 0) files['index.html'] = '';
+            const fileNames = Object.keys(files);
+            const currentFile = project && files[project.currentFile] !== undefined ? project.currentFile : fileNames[0];
+            const lang = (project && project.lang) || JungleIntelligence.languageFromFilename(currentFile, 'HTML');
+            return {
+                id: (project && project.id) || `proj_${Date.now()}_${index}`,
+                name: (project && project.name) || `Project ${index + 1}`,
+                files,
+                currentFile,
+                lang
+            };
+        });
+    }
+}
+class JungleIntelligence {
+    static languageExtensions = {
+        'HTML': '.html',
+        'Javascript': '.js',
+        'TypeScript': '.ts',
+        'Python': '.py',
+        'C++': '.cpp',
+        'C': '.c',
+        'Java': '.java',
+        'C#': '.cs',
+        'Ruby': '.rb',
+        'Go': '.go',
+        'Rust': '.rs',
+        'PHP': '.php',
+        'Swift': '.swift',
+        'Kotlin': '.kt',
+        'Scala': '.scala',
+        'R': '.r',
+        'Perl': '.pl',
+        'Haskell': '.hs',
+        'Julia': '.jl',
+        'Lua': '.lua',
+        'Clojure': '.clj',
+        'Elixir': '.ex',
+        'Erlang': '.erl',
+        'OCaml': '.ml',
+        'F#': '.fs',
+        'Dart': '.dart',
+        'Bash': '.sh',
+        'Fortran': '.f90',
+        'COBOL': '.cob',
+        'D': '.d',
+        'Zig': '.zig',
+        'Nim': '.nim',
+        'Assembly': '.asm',
+        'Lisp': '.lisp',
+        'Prolog': '.pl',
+        'Pascal': '.pas'
+    };
+    static extensionLanguages = {
+        '.html': 'HTML',
+        '.htm': 'HTML',
+        '.js': 'Javascript',
+        '.mjs': 'Javascript',
+        '.cjs': 'Javascript',
+        '.ts': 'TypeScript',
+        '.py': 'Python',
+        '.cpp': 'C++',
+        '.cc': 'C++',
+        '.cxx': 'C++',
+        '.c': 'C',
+        '.java': 'Java',
+        '.cs': 'C#',
+        '.rb': 'Ruby',
+        '.go': 'Go',
+        '.rs': 'Rust',
+        '.php': 'PHP',
+        '.swift': 'Swift',
+        '.kt': 'Kotlin',
+        '.scala': 'Scala',
+        '.r': 'R',
+        '.pl': 'Perl',
+        '.hs': 'Haskell',
+        '.jl': 'Julia',
+        '.lua': 'Lua',
+        '.clj': 'Clojure',
+        '.ex': 'Elixir',
+        '.erl': 'Erlang',
+        '.ml': 'OCaml',
+        '.fs': 'F#',
+        '.dart': 'Dart',
+        '.sh': 'Bash',
+        '.bash': 'Bash',
+        '.f90': 'Fortran',
+        '.cob': 'COBOL',
+        '.d': 'D',
+        '.zig': 'Zig',
+        '.nim': 'Nim',
+        '.asm': 'Assembly',
+        '.s': 'Assembly',
+        '.lisp': 'Lisp',
+        '.pas': 'Pascal'
+    };
+    static getExtension(name) {
+        const match = String(name || '').toLowerCase().match(/(\.[a-z0-9+#]+)$/);
+        return match ? match[1] : "";
+    }
+    static getDefaultExtension(lang) {
+        return this.languageExtensions[lang] || '.txt';
+    }
+    static languageFromFilename(filename, fallback = 'Javascript') {
+        return this.extensionLanguages[this.getExtension(filename)] || fallback;
+    }
+    static sanitizeFileName(input, lang = 'Javascript', existingFiles = {}) {
+        let name = String(input || '').trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-');
+        name = name.replace(/^-+|-+$/g, '');
+        if (!name) name = 'main';
+        if (!this.getExtension(name)) name += this.getDefaultExtension(lang);
+        const base = name.replace(/(\.[^.]+)$/, '');
+        const ext = this.getExtension(name);
+        let candidate = name;
+        let counter = 2;
+        while (Object.prototype.hasOwnProperty.call(existingFiles, candidate)) {
+            candidate = `${base}-${counter}${ext}`;
+            counter++;
+        }
+        return candidate;
+    }
+    static guessProjectLanguage(name) {
+        const text = String(name || '').toLowerCase();
+        if (/python|py|data|math|ai|ml/.test(text)) return 'Python';
+        if (/type|ts|typescript/.test(text)) return 'TypeScript';
+        if (/html|web|site|page|frontend|browser/.test(text)) return 'HTML';
+        if (/java\b|android/.test(text)) return 'Java';
+        if (/c\+\+|cpp|game|engine/.test(text)) return 'C++';
+        if (/\bc\b|clang/.test(text)) return 'C';
+        if (/go|golang/.test(text)) return 'Go';
+        if (/rust|rs/.test(text)) return 'Rust';
+        return 'HTML';
+    }
+    static createStarterProject(id, name) {
+        const lang = this.guessProjectLanguage(name);
+        const templates = {
+            'HTML': {
+                files: {
+                    'index.html': '<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n    <title>Jungle Project</title>\n</head>\n<body>\n    <h1>Hello from Jungle Editor</h1>\n    <script src="script.js"></script>\n</body>\n</html>',
+                    'script.js': 'console.log("Jungle project ready.");'
+                },
+                currentFile: 'index.html'
+            },
+            'Python': {
+                files: { 'main.py': 'def main():\n    print("Hello from Jungle Editor")\n\nmain()\n' },
+                currentFile: 'main.py'
+            },
+            'TypeScript': {
+                files: { 'main.ts': 'const message: string = "Hello from Jungle Editor";\nconsole.log(message);\n' },
+                currentFile: 'main.ts'
+            },
+            'Java': {
+                files: { 'Main.java': 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Jungle Editor");\n    }\n}\n' },
+                currentFile: 'Main.java'
+            },
+            'C++': {
+                files: { 'main.cpp': '#include <iostream>\n\nint main() {\n    std::cout << "Hello from Jungle Editor" << std::endl;\n    return 0;\n}\n' },
+                currentFile: 'main.cpp'
+            },
+            'C': {
+                files: { 'main.c': '#include <stdio.h>\n\nint main(void) {\n    printf("Hello from Jungle Editor\\n");\n    return 0;\n}\n' },
+                currentFile: 'main.c'
+            },
+            'Go': {
+                files: { 'main.go': 'package main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello from Jungle Editor")\n}\n' },
+                currentFile: 'main.go'
+            },
+            'Rust': {
+                files: { 'main.rs': 'fn main() {\n    println!("Hello from Jungle Editor");\n}\n' },
+                currentFile: 'main.rs'
+            }
+        };
+        const template = templates[lang] || templates.HTML;
+        return { id, name, files: { ...template.files }, currentFile: template.currentFile, lang };
+    }
+    static renameFileForLanguage(filename, lang, files) {
+        const desiredExt = this.getDefaultExtension(lang);
+        if (!desiredExt || filename.toLowerCase().endsWith(desiredExt)) return filename;
+        const next = filename.replace(/(\.[^.]+)?$/, desiredExt);
+        if (!Object.prototype.hasOwnProperty.call(files, next)) return next;
+        return filename;
+    }
+    static injectProjectAssetsIntoHtml(html, files) {
+        let output = html;
+        Object.keys(files).forEach(filename => {
+            const lower = filename.toLowerCase();
+            if (lower.endsWith('.css')) {
+                const linkPattern = new RegExp(`<link[^>]+href=["']${this.escapeRegExp(filename)}["'][^>]*>`, 'i');
+                output = output.replace(linkPattern, `<style data-jungle-file="${filename}">\n${files[filename]}\n</style>`);
+            } else if (lower.endsWith('.js')) {
+                const scriptPattern = new RegExp(`<script[^>]+src=["']${this.escapeRegExp(filename)}["'][^>]*>\\s*<\\/script>`, 'i');
+                output = output.replace(scriptPattern, `<script data-jungle-file="${filename}">\n${files[filename]}\n<\\/script>`);
+            }
+        });
+        return output;
+    }
+    static escapeRegExp(value) {
+        return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
 }
 // --- Smart Code Analysis and Error Diagnostic Modules ---
 class JungleScanner {
@@ -168,13 +372,21 @@ class JungleScanner {
                 if (/^\s*#include\s+[A-Za-z0-9_./]+/.test(line)) {
                     errors.push(this.makeIssue(lineNum, "Include directive is missing angle brackets or quotes.", "Use #include <iostream> or #include \"file.h\".", "C/C++ syntax"));
                 }
+            } else if (lang === 'Go') {
+                if (/^\s*func\s+\w+\s*\([^)]*$/.test(line)) {
+                    errors.push(this.makeIssue(lineNum, "Go function signature looks incomplete.", "Close the parameter list and add an opening brace.", "Go syntax"));
+                }
+            } else if (lang === 'Rust') {
+                if (/\bprintln\s*\(/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "Rust print macro is missing '!'.", "Use println!(...) instead of println(...).", "Rust syntax"));
+                }
             }
         });
         return errors;
     }
     static detectLanguage(code) {
         if (!code || code.trim().length < 5) return null;
-        let pyScore = 0, jsScore = 0, htmlScore = 0, cppScore = 0, javaScore = 0;
+        let pyScore = 0, jsScore = 0, htmlScore = 0, cppScore = 0, javaScore = 0, tsScore = 0, goScore = 0, rustScore = 0;
         if (code.includes('def ') && code.includes(':')) pyScore += 15;
         if (code.includes('elif ')) pyScore += 10;
         if (code.includes('import ') && !code.includes('from') && !code.includes('import {')) pyScore += 5;
@@ -185,6 +397,9 @@ class JungleScanner {
         if (code.includes('function ') && !code.includes('def ')) jsScore += 8;
         if (code.includes('=>') && !code.includes('==>')) jsScore += 10;
         if (code.includes('document.get') || code.includes('window.')) jsScore += 10;
+        if (/\b(interface|type)\s+[A-Z_a-z]/.test(code)) tsScore += 20;
+        if (/\b(const|let|var)\s+[A-Za-z_$][\w$]*\s*:\s*[A-Za-z_$]/.test(code)) tsScore += 20;
+        if (/\)\s*:\s*[A-Za-z_$][\w$<>[\]| ]*\s*=>/.test(code) || /function\s+\w+\([^)]*\)\s*:\s*/.test(code)) tsScore += 15;
         if (code.toLowerCase().includes('<!doctype html>')) htmlScore += 25;
         if (code.toLowerCase().includes('<html') || code.toLowerCase().includes('<body')) htmlScore += 20;
         if (code.toLowerCase().includes('</div>') || code.toLowerCase().includes('</p>')) htmlScore += 15;
@@ -194,12 +409,21 @@ class JungleScanner {
         if (code.includes('public class ') && code.includes('{')) javaScore += 20;
         if (code.includes('public static void main')) javaScore += 25;
         if (code.includes('System.out.print')) javaScore += 20;
+        if (/package\s+main/.test(code)) goScore += 20;
+        if (/func\s+main\s*\(\)/.test(code)) goScore += 20;
+        if (/fmt\.Print/.test(code)) goScore += 10;
+        if (/fn\s+main\s*\(\)/.test(code)) rustScore += 25;
+        if (/println!\s*\(/.test(code)) rustScore += 15;
+        if (/\blet\s+mut\b/.test(code)) rustScore += 15;
         let scores = [
             { lang: 'Python', score: pyScore, ext: '.py' },
             { lang: 'Javascript', score: jsScore, ext: '.js' },
+            { lang: 'TypeScript', score: tsScore, ext: '.ts' },
             { lang: 'HTML', score: htmlScore, ext: '.html' },
             { lang: 'C++', score: cppScore, ext: '.cpp' },
-            { lang: 'Java', score: javaScore, ext: '.java' }
+            { lang: 'Java', score: javaScore, ext: '.java' },
+            { lang: 'Go', score: goScore, ext: '.go' },
+            { lang: 'Rust', score: rustScore, ext: '.rs' }
         ];
         scores.sort((a, b) => b.score - a.score);
         return scores[0].score >= 8 ? scores[0] : null;
@@ -417,7 +641,7 @@ function executeTerminalCommand(cmdLine) {
     terminalViewBody.textContent += `\njungle:~# ${cmdLine}\n`;
     const parts = cmdLine.split(' '), command = parts[0].toLowerCase(), args = parts.slice(1), p = JungleUI.getCurrentProject();
     switch (command) {
-        case 'help': terminalViewBody.textContent += "Available shell commands:\n  run          - Compile and run active file inside sandbox\n  ls           - List all project file nodes\n  clear        - Clear console workspace output streams\n  cat [file]   - Output the file text data lines\n  info         - Inspect environment compiler metadata\n"; break;
+        case 'help': terminalViewBody.textContent += "Available shell commands:\n  run           - Compile and run active file inside sandbox\n  analyze       - Run Jungle static checks on the active file\n  ls            - List all project file nodes\n  open [file]   - Switch editor focus to a project file\n  clear         - Clear console workspace output streams\n  cat [file]    - Output the file text data lines\n  info          - Inspect environment compiler metadata\n"; break;
         case 'clear': terminalViewBody.textContent = "Console output cleared."; break;
         case 'ls':
             if (!p) { terminalViewBody.textContent += "Error: No project open.\n"; } else {
@@ -426,6 +650,23 @@ function executeTerminalCommand(cmdLine) {
             break;
         case 'run':
             if (!p) { terminalViewBody.textContent += "Error: Load a project first.\n"; } else { JungleRunner.execute(selectedLanguages[0], p.files[p.currentFile], p.files); }
+            break;
+        case 'analyze':
+            if (!p) {
+                terminalViewBody.textContent += "Error: Load a project first.\n";
+            } else {
+                const issues = JungleScanner.scan(selectedLanguages[0], p.files[p.currentFile]);
+                if (issues.length === 0) {
+                    terminalViewBody.textContent += "No obvious run-stopping issues found.\n";
+                } else {
+                    terminalViewBody.textContent += JungleRunner.formatSimpleReport({ lineNo: issues[0].line, errorMsg: issues[0].msg }) + "\n";
+                }
+            }
+            break;
+        case 'open':
+            if (args.length === 0) { terminalViewBody.textContent += "Usage: open [filename]\n"; }
+            else if (!p || !p.files[args[0]]) { terminalViewBody.textContent += `Error: File '${args[0]}' not found.\n`; }
+            else { JungleUI.switchToFile(args[0]); terminalViewBody.textContent += `Opened ${args[0]}\n`; }
             break;
         case 'cat':
             if (args.length === 0) { terminalViewBody.textContent += "Usage: cat [filename]\n"; }
@@ -587,13 +828,7 @@ class JungleUI {
                 onConfirm: (name) => {
                     if (!name) return;
                     const newId = 'proj_' + Date.now();
-                    const newProj = {
-                        id: newId,
-                        name: name,
-                        files: { 'index.html': '' },
-                        currentFile: 'index.html',
-                        lang: 'HTML'
-                    };
+                    const newProj = JungleIntelligence.createStarterProject(newId, name);
                     projects.push(newProj);
                     JungleStorage.saveProjects(projects);
                     this.renderProjectsDashboard();
@@ -625,15 +860,17 @@ class JungleUI {
             };
             actions.appendChild(deleteBtn);
             li.appendChild(title);
-            if (filename !== 'index.html' && filename !== 'main.py') {
-                li.appendChild(actions);
-            }
+            li.appendChild(actions);
             fileListContainer.appendChild(li);
         });
     }
     static deleteFile(name) {
         const p = this.getCurrentProject();
         if (!p) return;
+        if (Object.keys(p.files).length <= 1) {
+            this.showToast("A project needs at least one file.");
+            return;
+        }
         delete p.files[name];
         if (p.currentFile === name) {
             p.currentFile = Object.keys(p.files)[0];
@@ -654,19 +891,8 @@ class JungleUI {
             if (cleanName === filename) item.classList.add('active');
             else item.classList.remove('active');
         });
-        if (filename.endsWith('.py')) {
-            selectedLanguages = ['Python'];
-        } else if (filename.endsWith('.html') || filename.endsWith('.htm')) {
-            selectedLanguages = ['HTML'];
-        } else if (filename.endsWith('.cpp')) {
-            selectedLanguages = ['C++'];
-        } else if (filename.endsWith('.java')) {
-            selectedLanguages = ['Java'];
-        } else if (filename.endsWith('.ts')) {
-            selectedLanguages = ['TypeScript'];
-        } else {
-            selectedLanguages = ['Javascript'];
-        }
+        selectedLanguages = [JungleIntelligence.languageFromFilename(filename, p.lang || selectedLanguages[0])];
+        p.lang = selectedLanguages[0];
         currentLanguageText.textContent = `Language: ${selectedLanguages[0]}`;
         switchView('editor');
         this.updateCodeHighlight();
@@ -757,16 +983,17 @@ exitToHubHeaderBtn.onclick = () => { workspaceContainer.style.display = 'none'; 
 addFileBtn.onclick = () => {
     JungleUI.showCustomModal({
         title: "Create Project File",
-        placeholder: "e.g., helpers.py, styles.css",
+        placeholder: "e.g., helpers.py, styles.js",
         onConfirm: (name) => {
             if (!name) return;
             const p = JungleUI.getCurrentProject();
             if (!p) return;
-            p.files[name] = '';
+            const fileName = JungleIntelligence.sanitizeFileName(name, selectedLanguages[0], p.files);
+            p.files[fileName] = '';
             JungleUI.renderFilesList();
-            JungleUI.switchToFile(name);
+            JungleUI.switchToFile(fileName);
             JungleStorage.saveProjects(projects);
-            JungleUI.showToast(`File ${name} created`);
+            JungleUI.showToast(`File ${fileName} created`);
         }
     });
 };
@@ -777,13 +1004,7 @@ addProjectBtnDash.onclick = () => {
         onConfirm: (name) => {
             if (!name) return;
             const newId = 'proj_' + Date.now();
-            const newProj = {
-                id: newId,
-                name: name,
-                files: { 'index.html': '' },
-                currentFile: 'index.html',
-                lang: 'HTML'
-            };
+            const newProj = JungleIntelligence.createStarterProject(newId, name);
             projects.push(newProj);
             JungleStorage.saveProjects(projects);
             JungleUI.renderProjectsDashboard();
@@ -824,7 +1045,8 @@ runBtn.onclick = () => {
             let frameCompileError = false;
             iframeWin.onerror = function(message, source, lineno, colno) { frameCompileError = true; window.handleIframeError(message, source, lineno, colno); return true; };
             doc.open();
-            const errorBubbleInjectedCode = `<script>window.onerror = function(m, s, l, c) { if (window.parent && window.parent.handleIframeError) { window.parent.handleIframeError(m, s, l, c); } return true; };<\/script>` + p.files[p.currentFile];
+            const htmlWithAssets = JungleIntelligence.injectProjectAssetsIntoHtml(p.files[p.currentFile], p.files);
+            const errorBubbleInjectedCode = `<script>window.onerror = function(m, s, l, c) { if (window.parent && window.parent.handleIframeError) { window.parent.handleIframeError(m, s, l, c); } return true; };<\/script>` + htmlWithAssets;
             doc.write(errorBubbleInjectedCode);
             doc.close();
             setTimeout(() => { if (!frameCompileError) JungleUI.showToast("Webpage loaded successfully in Preview panel."); }, 150);
@@ -833,7 +1055,7 @@ runBtn.onclick = () => {
             switchView('terminal', false);
             terminalStatus.textContent = "FAILED TO RUN";
             terminalStatus.className = "text-rose-500 font-bold";
-            terminalViewBody.textContent = `Failed to write preview frame container: ${e.message}`;
+            terminalViewBody.textContent = JungleRunner.formatSimpleReport({ lineNo: "Unknown", errorMsg: e.message });
             JungleUI.showToast("❌ Failed to run! Tap here to inspect terminal diagnostics.", () => { switchView('terminal', false); });
         }
     } else { JungleRunner.execute(selectedLanguages[0], p.files[p.currentFile], p.files); }
@@ -865,9 +1087,9 @@ editor.oninput = () => {
         const detectedLang = detection.lang;
         if (detectedLang !== selectedLanguages[0]) {
             selectedLanguages = [detectedLang];
+            p.lang = detectedLang;
             currentLanguageText.textContent = `Language: ${detectedLang}`;
-            const filenameNoExt = p.currentFile.split('.')[0] || 'main';
-            const newFilename = filenameNoExt + detection.ext;
+            const newFilename = JungleIntelligence.renameFileForLanguage(p.currentFile, detectedLang, p.files);
             if (newFilename !== p.currentFile) {
                 const fileContent = p.files[p.currentFile];
                 delete p.files[p.currentFile];
@@ -876,6 +1098,7 @@ editor.oninput = () => {
                 currentFileLabel.textContent = newFilename;
                 JungleUI.renderFilesList();
             }
+            JungleStorage.saveProjects(projects);
             JungleUI.showToast(`Auto-detected environment: swapped to ${detectedLang}!`);
         }
     }
@@ -903,13 +1126,20 @@ window.onload = () => {
             languageMenu.classList.remove('show');
             const p = JungleUI.getCurrentProject();
             if (p) {
-                if (targetLang === 'Python' && !p.currentFile.endsWith('.py')) {
-                    const firstPy = Object.keys(p.files).find(f => f.endsWith('.py'));
-                    if (firstPy) JungleUI.switchToFile(firstPy);
-                } else if (targetLang === 'HTML' && !p.currentFile.endsWith('.html')) {
-                    const firstHtml = Object.keys(p.files).find(f => f.endsWith('.html'));
-                    if (firstHtml) JungleUI.switchToFile(firstHtml);
+                p.lang = targetLang;
+                const firstMatch = Object.keys(p.files).find(f => JungleIntelligence.languageFromFilename(f, '') === targetLang);
+                if (firstMatch) {
+                    JungleUI.switchToFile(firstMatch);
+                } else {
+                    const newFilename = JungleIntelligence.renameFileForLanguage(p.currentFile, targetLang, p.files);
+                    if (newFilename !== p.currentFile) {
+                        p.files[newFilename] = p.files[p.currentFile];
+                        delete p.files[p.currentFile];
+                        JungleUI.renderFilesList();
+                        JungleUI.switchToFile(newFilename);
+                    }
                 }
+                JungleStorage.saveProjects(projects);
             }
         };
     });
