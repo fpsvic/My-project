@@ -245,6 +245,21 @@ class JungleIntelligence {
         });
         return output;
     }
+    static findMissingHtmlAssets(html, files) {
+        const missing = [];
+        const assetRegex = /<(script|link)[^>]+(?:src|href)=["']([^"']+)["'][^>]*>/gi;
+        let match;
+        while ((match = assetRegex.exec(html)) !== null) {
+            const assetPath = match[2];
+            if (/^(https?:)?\/\//i.test(assetPath) || assetPath.startsWith('data:') || assetPath.startsWith('#')) continue;
+            const cleanPath = assetPath.replace(/^\.\//, '').split(/[?#]/)[0];
+            if (!Object.prototype.hasOwnProperty.call(files, cleanPath)) {
+                const line = html.slice(0, match.index).split('\n').length;
+                missing.push({ file: cleanPath, line });
+            }
+        }
+        return missing;
+    }
     static escapeRegExp(value) {
         return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
@@ -272,6 +287,8 @@ class JungleScanner {
         const matchingPairs = { ')': '(', ']': '[', '}': '{' };
         let inBlockComment = false;
         let inString = null;
+        let blockCommentStart = null;
+        let stringStart = null;
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             const lineNum = i + 1;
@@ -288,8 +305,9 @@ class JungleScanner {
                     continue;
                 }
                 if (char === '/' && next === '/') break;
-                if (char === '/' && next === '*') { inBlockComment = true; j++; continue; }
-                if (char === '"' || char === "'" || char === '`') { inString = char; continue; }
+                if (char === '/' && next === '*') { inBlockComment = true; blockCommentStart = { line: lineNum, column: j + 1 }; j++; continue; }
+                if ((char === '"' || char === "'") && line.slice(j, j + 3) === char.repeat(3)) { j += 2; continue; }
+                if (char === '"' || char === "'" || char === '`') { inString = char; stringStart = { line: lineNum, column: j + 1 }; continue; }
                 if (bracketPairs[char]) {
                     stack.push({ char, line: lineNum, column: j + 1 });
                 } else if (matchingPairs[char]) {
@@ -303,6 +321,17 @@ class JungleScanner {
                     }
                 }
             }
+            if (inString && inString !== '`' && !line.trimEnd().endsWith('\\')) {
+                errors.push(this.makeIssue(stringStart.line, `Unclosed string literal starting with ${inString}.`, `Add a closing ${inString} before the end of the line.`, "String check", stringStart.column));
+                inString = null;
+                stringStart = null;
+            }
+        }
+        if (inBlockComment && blockCommentStart) {
+            errors.push(this.makeIssue(blockCommentStart.line, "Unclosed block comment detected.", "Add */ to close this block comment.", "Comment check", blockCommentStart.column));
+        }
+        if (inString && stringStart) {
+            errors.push(this.makeIssue(stringStart.line, `Unclosed string literal starting with ${inString}.`, `Add a closing ${inString}.`, "String check", stringStart.column));
         }
         while (stack.length > 0) {
             const unclosed = stack.pop();
@@ -353,6 +382,12 @@ class JungleScanner {
                 if (/^(if|elif|else|for|while|def|class|try|except|finally|with)\b/.test(trimmed) && !trimmed.endsWith(':')) {
                     errors.push(this.makeIssue(lineNum, "Python block statement is missing a trailing colon.", "Add ':' at the end of the line.", "Python syntax"));
                 }
+                if (/^print\s+[^(\s]/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "Python print statement is missing parentheses.", "Use print(...) in Python 3.", "Python syntax"));
+                }
+                if (/[=+\-*/%]$/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "Python expression ends with an operator.", "Finish the expression after the operator or remove it.", "Python syntax"));
+                }
                 if (/\b(console\.log|let|const|var)\b/.test(trimmed)) {
                     errors.push(this.makeIssue(lineNum, "This looks like JavaScript inside a Python file.", "Switch the language to JavaScript or rewrite the line using Python syntax.", "Language mismatch"));
                 }
@@ -361,24 +396,45 @@ class JungleScanner {
                 if (condition && /(^|[^=!<>])=([^=>]|$)/.test(condition[2])) {
                     errors.push(this.makeIssue(lineNum, "Possible assignment inside a condition.", "Use '===' for comparison unless you intentionally meant assignment.", "JavaScript logic"));
                 }
+                if (/\b(const|let|var)\s+[A-Za-z_$][\w$]*\s*=$/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "Variable declaration is missing a value after '='.", "Add the value or remove the assignment.", "JavaScript syntax"));
+                }
+                if (/^\s*(if|while|for)\s+[^(]/.test(line)) {
+                    errors.push(this.makeIssue(lineNum, "JavaScript control statement is missing parentheses.", "Wrap the condition in parentheses.", "JavaScript syntax"));
+                }
                 if (/^\s*(def|elif|print\s*\()\b/.test(line)) {
                     errors.push(this.makeIssue(lineNum, "This looks like Python inside a JavaScript file.", "Switch the language to Python or rewrite the line using JavaScript syntax.", "Language mismatch"));
+                }
+                if (lang === 'TypeScript' && /\binterface\s+[A-Za-z_$][\w$]*\s*$/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "TypeScript interface declaration is missing a body.", "Add { ... } after the interface name.", "TypeScript syntax"));
                 }
             } else if (lang === 'Java') {
                 if (/public\s+class\s+([A-Za-z_][A-Za-z0-9_]*)/.test(trimmed) && !/\{/.test(trimmed)) {
                     errors.push(this.makeIssue(lineNum, "Java class declaration is missing an opening brace.", "Add '{' after the class declaration.", "Java syntax"));
                 }
+                if (/System\.out\.print(?:ln)?\s+["']/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "Java print call is missing parentheses.", "Use System.out.println(...).", "Java syntax"));
+                }
             } else if (lang === 'C++' || lang === 'C') {
                 if (/^\s*#include\s+[A-Za-z0-9_./]+/.test(line)) {
                     errors.push(this.makeIssue(lineNum, "Include directive is missing angle brackets or quotes.", "Use #include <iostream> or #include \"file.h\".", "C/C++ syntax"));
+                }
+                if (/\b(int|float|double|char|bool|long|short|void)\s+\w+\s*\([^)]*\)\s*$/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "Function declaration or definition is missing ';' or '{'.", "Add ';' for a prototype or '{' for a function body.", "C/C++ syntax"));
                 }
             } else if (lang === 'Go') {
                 if (/^\s*func\s+\w+\s*\([^)]*$/.test(line)) {
                     errors.push(this.makeIssue(lineNum, "Go function signature looks incomplete.", "Close the parameter list and add an opening brace.", "Go syntax"));
                 }
+                if (/fmt\.Print(?:ln|f)?\s+["']/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "Go print call is missing parentheses.", "Use fmt.Println(...).", "Go syntax"));
+                }
             } else if (lang === 'Rust') {
                 if (/\bprintln\s*\(/.test(trimmed)) {
                     errors.push(this.makeIssue(lineNum, "Rust print macro is missing '!'.", "Use println!(...) instead of println(...).", "Rust syntax"));
+                }
+                if (/\bfn\s+\w+\s*\([^)]*\)\s*$/.test(trimmed)) {
+                    errors.push(this.makeIssue(lineNum, "Rust function is missing a body.", "Add { ... } after the function signature.", "Rust syntax"));
                 }
             }
         });
@@ -548,6 +604,12 @@ class JungleRunner {
         } else if (lang === 'C++' || lang === 'Java') {
             const match = combined.match(/([^:\n]+):(\d+):(?:(\d+):)?\s+(?:fatal\s+)?error:\s+(.+)/i);
             if (match) { file = match[1]; lineNo = match[2]; column = match[3] || null; errorMsg = match[4]; }
+            if (lang === 'Java') {
+                const exception = combined.match(/Exception in thread "[^"]+"\s+([^\n]+)/i);
+                const javaFrame = combined.match(/\bat\s+.*\(([^():]+):(\d+)\)/);
+                if (exception) errorMsg = exception[1].trim();
+                if (javaFrame) { file = javaFrame[1]; lineNo = javaFrame[2]; }
+            }
         } else {
             const generic = combined.match(/([^:\n]+):(\d+):(?:(\d+):)?\s*(.+)/);
             if (generic) { file = generic[1]; lineNo = generic[2]; column = generic[3] || null; errorMsg = generic[4]; }
@@ -606,15 +668,22 @@ class JungleRunner {
     }
     static getSimpleErrorKind(message) {
         const text = String(message).toLowerCase();
+        if (/indentation|expected an indented block|unexpected indent/.test(text)) return "Indentation error";
         if (/syntax|unexpected|mismatched|unclosed|expected|invalid|missing|closing tag|html tag/.test(text)) return "Syntax error";
         if (/typeerror|type error|not a function|cannot read/.test(text)) return "Type error";
+        if (/attributeerror|has no attribute|undefined property/.test(text)) return "Attribute error";
         if (/referenceerror|nameerror|not defined|is undefined/.test(text)) return "Reference error";
-        if (/module|import|package|no module/.test(text)) return "Import error";
+        if (/module|import|package|no module|missing file|file not found/.test(text)) return "Import error";
+        if (/valueerror|invalid literal|nan|numberformat/.test(text)) return "Value error";
+        if (/indexerror|rangeerror|out of range|index out of bounds/.test(text)) return "Index error";
+        if (/zerodivision|divide by zero|division by zero/.test(text)) return "Math error";
+        if (/nullpointer|null pointer|nullreference/.test(text)) return "Null error";
         if (/timeout|timed out|time limit/.test(text)) return "Timeout error";
         return "Error";
     }
     static simplifyErrorMessage(message) {
         let text = String(message || "unknown error").trim();
+        if (/Unexpected end of input/i.test(text)) return "unexpected end of input";
         const closingBracket = text.match(/(?:Unexpected token|unexpected|Mismatched closing bracket)\s*['"`]?([}\])])['"`]?/i);
         if (closingBracket) return `unexpected ${closingBracket[1]}`;
         const unclosed = text.match(/Unclosed bracket or delimiter\s*['"`]?([({[])['"`]?/i);
@@ -624,9 +693,24 @@ class JungleRunner {
         }
         const expected = text.match(/expected\s+['"`]?([^'"`.,\n]+)['"`]?/i);
         if (expected) return `expected ${expected[1].trim()}`;
+        const notDefined = text.match(/([A-Za-z_$][\w$]*)\s+(?:is not defined|is undefined)/i);
+        if (notDefined) return `${notDefined[1]} is not defined`;
+        const noModule = text.match(/(?:No module named|Cannot find module)\s+['"]?([^'"\n]+)['"]?/i);
+        if (noModule) return `missing module ${noModule[1].trim()}`;
+        const noAttribute = text.match(/has no attribute\s+['"]([^'"]+)['"]/i);
+        if (noAttribute) return `missing attribute ${noAttribute[1]}`;
+        const cannotRead = text.match(/Cannot read (?:properties|property) of (undefined|null)(?: \(reading ['"]([^'"]+)['"]\))?/i);
+        if (cannotRead) return cannotRead[2] ? `cannot read ${cannotRead[2]} of ${cannotRead[1]}` : `cannot read value of ${cannotRead[1]}`;
+        const invalidLiteral = text.match(/invalid literal .*?:\s*['"]([^'"]+)['"]/i);
+        if (invalidLiteral) return `invalid number ${invalidLiteral[1]}`;
         text = text
             .replace(/^syntaxerror:\s*/i, "")
             .replace(/^error:\s*/i, "")
+            .replace(/^typeerror:\s*/i, "")
+            .replace(/^referenceerror:\s*/i, "")
+            .replace(/^nameerror:\s*/i, "")
+            .replace(/^valueerror:\s*/i, "")
+            .replace(/^attributeerror:\s*/i, "")
             .replace(/\s+/g, " ")
             .replace(/[.。]+$/, "");
         return text || "unknown error";
@@ -1038,6 +1122,19 @@ runBtn.onclick = () => {
     const isHtml = p.currentFile.endsWith('.html') || p.currentFile.endsWith('.htm');
     if (isHtml) {
         try {
+            const missingAssets = JungleIntelligence.findMissingHtmlAssets(p.files[p.currentFile], p.files);
+            if (missingAssets.length > 0) {
+                const missing = missingAssets[0];
+                switchView('terminal', false);
+                terminalStatus.textContent = "FAILED TO RUN";
+                terminalStatus.className = "text-rose-500 font-bold";
+                terminalViewBody.textContent = JungleRunner.formatSimpleReport({
+                    lineNo: missing.line,
+                    errorMsg: `missing file ${missing.file}`
+                });
+                JungleUI.showToast("❌ Failed to run! Tap here to inspect terminal diagnostics.", () => { switchView('terminal', false); });
+                return;
+            }
             terminalStatus.textContent = "READY";
             terminalStatus.className = "text-[#74a896]";
             switchView('preview');
