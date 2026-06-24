@@ -185,45 +185,10 @@ class JungleIntelligence {
     }
     static createStarterProject(id, name) {
         const lang = this.guessProjectLanguage(name);
-        const templates = {
-            'HTML': {
-                files: {
-                    'index.html': '<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n    <title>Jungle Project</title>\n</head>\n<body>\n    <h1>Hello from Jungle Editor</h1>\n    <script src="script.js"></script>\n</body>\n</html>',
-                    'script.js': 'console.log("Jungle project ready.");'
-                },
-                currentFile: 'index.html'
-            },
-            'Python': {
-                files: { 'main.py': 'def main():\n    print("Hello from Jungle Editor")\n\nmain()\n' },
-                currentFile: 'main.py'
-            },
-            'TypeScript': {
-                files: { 'main.ts': 'const message: string = "Hello from Jungle Editor";\nconsole.log(message);\n' },
-                currentFile: 'main.ts'
-            },
-            'Java': {
-                files: { 'Main.java': 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Jungle Editor");\n    }\n}\n' },
-                currentFile: 'Main.java'
-            },
-            'C++': {
-                files: { 'main.cpp': '#include <iostream>\n\nint main() {\n    std::cout << "Hello from Jungle Editor" << std::endl;\n    return 0;\n}\n' },
-                currentFile: 'main.cpp'
-            },
-            'C': {
-                files: { 'main.c': '#include <stdio.h>\n\nint main(void) {\n    printf("Hello from Jungle Editor\\n");\n    return 0;\n}\n' },
-                currentFile: 'main.c'
-            },
-            'Go': {
-                files: { 'main.go': 'package main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello from Jungle Editor")\n}\n' },
-                currentFile: 'main.go'
-            },
-            'Rust': {
-                files: { 'main.rs': 'fn main() {\n    println!("Hello from Jungle Editor");\n}\n' },
-                currentFile: 'main.rs'
-            }
-        };
-        const template = templates[lang] || templates.HTML;
-        return { id, name, files: { ...template.files }, currentFile: template.currentFile, lang };
+        const defaultFile = JungleIntelligence.getDefaultExtension(lang)
+            ? `main${JungleIntelligence.getDefaultExtension(lang)}`
+            : (lang === 'HTML' ? 'index.html' : 'main.txt');
+        return { id, name, files: { [defaultFile]: '' }, currentFile: defaultFile, lang };
     }
     static renameFileForLanguage(filename, lang, files) {
         const desiredExt = this.getDefaultExtension(lang);
