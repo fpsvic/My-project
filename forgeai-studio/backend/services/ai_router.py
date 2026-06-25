@@ -23,6 +23,10 @@ from data.knowledge_base import (
     GENERAL_KNOWLEDGE,
     CODING_HELP,
 )
+try:
+    from data.knowledge_base import LANG_EXAMPLES
+except ImportError:
+    LANG_EXAMPLES = {}
 from services.math_engine import generate_math_response
 from services.space_engine import generate_space_response
 from services.earth_engine import generate_earth_response
@@ -352,8 +356,23 @@ _PROG_LANGS = set(LANG_HISTORY.keys()) | {
     "python", "javascript", "typescript", "java", "golang", "go",
     "cpp", "c++", "csharp", "c#", "rust", "swift", "kotlin", "lua",
     "luau", "ruby", "php", "sql", "html", "css", "haskell", "scala",
-    "elixir", "matlab", "r lang",
+    "elixir", "matlab", "r lang", "dart", "js", "ts",
 }
+
+# Maps concept keywords (in query) → canonical concept keys (used in LANG_EXAMPLES)
+_PROG_CONCEPTS_MAP: dict[str, str] = {
+    "function": "function", "functions": "function", "method": "function", "def": "function",
+    "class": "class", "classes": "class", "object": "class", "oop": "class",
+    "loop": "loop", "loops": "loop", "for loop": "loop", "while loop": "loop", "iterate": "loop",
+    "error": "error_handling", "exception": "error_handling", "try catch": "error_handling",
+    "error handling": "error_handling",
+    "async": "async", "await": "async", "asynchronous": "async", "concurrency": "async",
+    "list": "list_ops", "array": "list_ops", "slice": "list_ops", "vector": "list_ops",
+    "closure": "closures", "closures": "closures", "lambda": "closures",
+    "arrow function": "closures",
+    "file": "file_io", "read file": "file_io", "write file": "file_io", "io": "file_io",
+}
+
 _PROG_CONCEPTS = {
     "variable", "function", "loop", "recursion", "algorithm",
     "data structure", "array", "linked list", "binary tree", "hash map",
@@ -373,21 +392,80 @@ _PROG_QUESTION_WORDS = {
 }
 
 
+def _detect_lang_and_concept(q: str) -> tuple[str, str]:
+    """Scan q for a programming language and a concept keyword.
+
+    Returns (canonical_lang, canonical_concept) or ("", "") if either is absent.
+    Language aliases are normalised to the key used in LANG_HISTORY / LANG_EXAMPLES.
+    """
+    _LANG_ALIASES: dict[str, str] = {
+        "c++": "cpp",
+        "c#": "csharp",
+        "go ": "golang",   # trailing space avoids matching "go" mid-word
+        "golang": "golang",
+        "js": "javascript",
+        "ts": "typescript",
+    }
+
+    detected_lang = ""
+    # Check aliases first (they must take priority over shorter raw tokens)
+    for alias, canonical in _LANG_ALIASES.items():
+        if alias.rstrip() in q:          # strip the sentinel space for the check
+            detected_lang = canonical
+            break
+
+    if not detected_lang:
+        for lang in _PROG_LANGS:
+            if lang in q:
+                # Normalise to the canonical key
+                detected_lang = _LANG_ALIASES.get(lang, lang)
+                break
+
+    detected_concept = ""
+    # Check multi-word concept keywords first (longest-match priority)
+    for keyword in sorted(_PROG_CONCEPTS_MAP, key=len, reverse=True):
+        if keyword in q:
+            detected_concept = _PROG_CONCEPTS_MAP[keyword]
+            break
+
+    if detected_lang and detected_concept:
+        return detected_lang, detected_concept
+    return "", ""
+
+
 def _score_programming(q: str) -> int:
     score = 0
     lang_match = any(lang in q for lang in _PROG_LANGS)
     concept_match = any(c in q for c in _PROG_CONCEPTS)
+    concept_map_match = any(kw in q for kw in _PROG_CONCEPTS_MAP)
     question_match = any(q.startswith(w) or w in q for w in _PROG_QUESTION_WORDS)
 
     if lang_match and any(w in q for w in ("history", "origin", "created", "hello world", "syntax", "example")):
         score += 95
+
+    # Per-language concept query patterns — highest priority signals
+    detected_lang, detected_concept = _detect_lang_and_concept(q)
+    if detected_lang and detected_concept:
+        # "show me a class in Rust", "show me loops in Go"
+        if "show me" in q:
+            score += 85
+        # "how do you do async in Go", "how do you handle errors in Swift"
+        elif re.search(r"how do you", q) and "in" in q:
+            score += 80
+        # "X in Y" — concept then lang, e.g. "loops in Kotlin"
+        elif re.search(r"\bin\b", q):
+            score += 70
+        else:
+            # lang + concept together without a specific pattern
+            score += 60
+
     if lang_match and concept_match:
         score += 75
     if concept_match and question_match:
         score += 70
     if lang_match:
         score += 30
-    if concept_match:
+    if concept_match or concept_map_match:
         score += 25
     # CODING_HELP exact match
     for key in CODING_HELP:
@@ -500,39 +578,54 @@ def _dispatch_update(query: str, history: list, mode: str) -> str:
 def _dispatch_programming(query: str, mode: str) -> str:
     q = query.lower()
 
-    # Hello-world / syntax
-    for lang, hw in LANG_HELLO_WORLD.items():
-        if lang in q and any(w in q for w in (
+    # ── Per-language concept lookup (highest priority) ────────────────────────
+    lang, concept = _detect_lang_and_concept(q)
+    if lang and concept:
+        lang_examples = LANG_EXAMPLES.get(lang, {})
+        if concept in lang_examples:
+            snippet = lang_examples[concept]
+            display_lang = lang.replace("golang", "Go").replace("cpp", "C++").replace("csharp", "C#")
+            display_lang = display_lang.capitalize() if display_lang == lang else display_lang
+            display_concept = concept.replace("_", " ").title()
+            return (
+                f"### {display_lang} — {display_concept}\n\n"
+                f"```{lang}\n{snippet}\n```"
+            )
+
+    # ── Hello-world / syntax ──────────────────────────────────────────────────
+    for lang_key, hw in LANG_HELLO_WORLD.items():
+        if lang_key in q and any(w in q for w in (
             "hello world", "syntax", "example", "how to write", "sample", "print"
         )):
             return (
-                f"### {lang.capitalize()} — Hello World\n\n"
-                f"```{lang}\n{hw}\n```\n\n"
-                + LANG_HISTORY.get(lang, "")
+                f"### {lang_key.capitalize()} — Hello World\n\n"
+                f"```{lang_key}\n{hw}\n```\n\n"
+                + LANG_HISTORY.get(lang_key, "")
             )
 
-    # Language history
-    for lang, history in LANG_HISTORY.items():
-        if lang in q and any(w in q for w in (
+    # ── Language history ──────────────────────────────────────────────────────
+    for lang_key, history in LANG_HISTORY.items():
+        if lang_key in q and any(w in q for w in (
             "history", "origin", "created", "designed", "who made",
             "when", "invented", "by whom", "who built", "who wrote",
         )):
-            hw = LANG_HELLO_WORLD.get(lang, "")
-            block = f"\n\n```{lang}\n{hw}\n```" if hw else ""
-            return f"### {lang.capitalize()} Language Origin\n\n{history}{block}"
+            hw = LANG_HELLO_WORLD.get(lang_key, "")
+            block = f"\n\n```{lang_key}\n{hw}\n```" if hw else ""
+            return f"### {lang_key.capitalize()} Language Origin\n\n{history}{block}"
 
-    # CODING_HELP lookup
+    # ── CODING_HELP lookup ────────────────────────────────────────────────────
     for key, answer in CODING_HELP.items():
         if key in q:
             return answer
 
-    # Generic programming fallback
+    # ── Generic programming fallback ──────────────────────────────────────────
     return (
         "### Programming Help\n\n"
         "I can explain concepts, show language histories, and give code examples.\n\n"
         "Try asking:\n"
         "- `history of Python` · `Rust hello world` · `what is recursion`\n"
-        "- `explain async/await` · `what is Big O notation` · `how does git work`"
+        "- `explain async/await` · `what is Big O notation` · `how does git work`\n"
+        "- `show me a class in Rust` · `loops in Kotlin` · `async in Go`"
     )
 
 
