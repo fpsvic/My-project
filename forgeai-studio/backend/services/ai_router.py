@@ -517,6 +517,19 @@ _ANIMAL_NAMES = {
     # Aquatic
     "fish", "salmon", "tuna", "clownfish", "anglerfish", "pufferfish",
     "lobster", "crab", "starfish", "seahorse", "manta ray", "stingray",
+    # Reptiles & snakes (new)
+    "cobra", "cobras", "python", "pythons", "anaconda", "anacondas",
+    "reticulated python", "burmese python", "king cobra", "spitting cobra",
+    # Prehistoric (new)
+    "t-rex", "t rex", "tyrannosaurus", "tyrannosaurus rex",
+    "velociraptor", "velociraptors", "raptor", "raptors",
+    "mammoth", "mammoths", "woolly mammoth",
+    # Additional large mammals (new)
+    "snow leopard", "snow leopards",
+    "blue whale", "blue whales",
+    "hammerhead", "hammerhead shark", "hammerhead sharks",
+    "manta", "manta rays",
+    "bald eagle", "bald eagles",
 }
 
 _ANIMAL_QUESTION_PREFIXES = (
