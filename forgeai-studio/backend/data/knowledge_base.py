@@ -491,6 +491,162 @@ GENERAL_KNOWLEDGE: dict[str, str] = {
     "octopus predators": "what eats octopuses",
     "what eats komodo dragons": "Adult Komodo dragons are **apex predators** on their islands with no natural enemies. Juveniles, however, are vulnerable — **adult Komodo dragons themselves** will cannibalize young ones, which is why juveniles live in trees. Feral pigs may occasionally compete with or harm juveniles. Habitat loss and reduced prey availability are the main conservation threats.",
     "komodo dragon predators": "what eats komodo dragons",
+
+    # ── Animal habitat / home knowledge ───────────────────────────────────────
+    "where do lions live": "Lions live in **sub-Saharan Africa**, with a small relict population in the Gir Forest of northwestern India. They inhabit open **savannas, grasslands, and scrublands** — one of the few big cats that live in social groups (prides) rather than alone.",
+    "habitat of lions": "where do lions live",
+    "lion habitat": "where do lions live",
+    "where is a lion found": "where do lions live",
+
+    "where do tigers live": "Tigers are found across **South and Southeast Asia**, from India and Bangladesh to Sumatra and the Russian Far East. They inhabit diverse biomes including **tropical rainforests, mangrove swamps, grasslands, and boreal forests**, always requiring dense cover and proximity to water.",
+    "habitat of tigers": "where do tigers live",
+    "tiger habitat": "where do tigers live",
+    "where is a tiger found": "where do tigers live",
+
+    "where do wolves live": "Gray wolves inhabit **North America, Europe, and Asia** — from Arctic tundra and boreal forests to mountains and grasslands. They have the widest natural range of any large land mammal, thriving wherever large prey and sufficient territory exist.",
+    "habitat of wolves": "where do wolves live",
+    "wolf habitat": "where do wolves live",
+    "where is a wolf found": "where do wolves live",
+
+    "where do sharks live": "Sharks inhabit **every ocean on Earth**, from shallow coastal reefs and mangroves to the open deep ocean. Different species occupy vastly different habitats: great whites prefer temperate coastal waters, whale sharks cruise tropical open oceans, and some species even enter freshwater rivers.",
+    "habitat of sharks": "where do sharks live",
+    "shark habitat": "where do sharks live",
+    "where is a shark found": "where do sharks live",
+
+    "where do elephants live": "African elephants roam **sub-Saharan Africa** across savannas, forests, and deserts, while Asian elephants live in the forests and grasslands of **South and Southeast Asia** (India, Sri Lanka, Thailand, Borneo). They require vast ranges with access to water, sometimes walking up to 80 km per day.",
+    "habitat of elephants": "where do elephants live",
+    "elephant habitat": "where do elephants live",
+    "where is an elephant found": "where do elephants live",
+
+    "where do dolphins live": "Dolphins are found in **every ocean and many large rivers worldwide**. Most species prefer warm coastal and offshore **marine waters**, but river dolphins (Amazon river dolphin, Ganges river dolphin) live in freshwater. Bottlenose dolphins inhabit warm coastal bays and are highly adaptable.",
+    "habitat of dolphins": "where do dolphins live",
+    "dolphin habitat": "where do dolphins live",
+    "where is a dolphin found": "where do dolphins live",
+
+    "where do eagles live": "Eagles are found on **every continent except Antarctica**, from Arctic tundra (bald eagles) and high mountain ranges (golden eagles) to tropical rainforests (harpy eagles) and coastlines. They require open hunting grounds and tall trees or cliff ledges for nesting.",
+    "habitat of eagles": "where do eagles live",
+    "eagle habitat": "where do eagles live",
+    "where is an eagle found": "where do eagles live",
+
+    "where do gorillas live": "Gorillas live exclusively in the **tropical and subtropical forests of central Africa**. Western gorillas inhabit the Congo Basin rainforests of Cameroon, Gabon, and the DRC, while eastern gorillas (including mountain gorillas) live in the dense forests and highland volcanic slopes of Uganda, Rwanda, and the DRC.",
+    "habitat of gorillas": "where do gorillas live",
+    "gorilla habitat": "where do gorillas live",
+    "where is a gorilla found": "where do gorillas live",
+
+    "where do cheetahs live": "Cheetahs are found primarily in **sub-Saharan Africa**, with a tiny isolated population (~40 individuals) surviving in Iran. They favor open **savannas, grasslands, and semi-arid scrublands** where their speed can be fully used — dense forests impair their ability to chase prey.",
+    "habitat of cheetahs": "where do cheetahs live",
+    "cheetah habitat": "where do cheetahs live",
+    "where is a cheetah found": "where do cheetahs live",
+
+    "where do bees live": "Bees are found on **every continent except Antarctica** and inhabit nearly every terrestrial habitat — from tropical rainforests to deserts and urban gardens. Honeybees build waxy hive colonies in tree cavities or rock crevices, while most of the ~20,000 bee species are solitary and nest in soil or hollow plant stems.",
+    "habitat of bees": "where do bees live",
+    "bee habitat": "where do bees live",
+    "where is a bee found": "where do bees live",
+
+    "where do crocodiles live": "Crocodiles are found in **tropical and subtropical regions of Africa, Asia, the Americas, and Australia**. They inhabit freshwater **rivers, lakes, wetlands, and estuaries**, as well as brackish and saltwater coastal habitats. The saltwater crocodile has the widest range, from India to northern Australia.",
+    "habitat of crocodiles": "where do crocodiles live",
+    "crocodile habitat": "where do crocodiles live",
+    "where is a crocodile found": "where do crocodiles live",
+
+    "where do hippos live": "Hippos are native to **sub-Saharan Africa** and live in and around **rivers, lakes, and wetlands**. They spend up to 16 hours daily submerged to stay cool, emerging at dusk to graze on grassland. The pygmy hippo inhabits dense rainforest streams of West Africa.",
+    "habitat of hippos": "where do hippos live",
+    "hippo habitat": "where do hippos live",
+    "where is a hippo found": "where do hippos live",
+
+    "where do giraffes live": "Giraffes live in **sub-Saharan Africa**, inhabiting open **savannas, grasslands, and open woodlands** — particularly areas dominated by acacia trees, their preferred food source. They are most common in east Africa (Kenya, Tanzania) and southern Africa, and avoid dense forests.",
+    "habitat of giraffes": "where do giraffes live",
+    "giraffe habitat": "where do giraffes live",
+    "where is a giraffe found": "where do giraffes live",
+
+    "where do rhinos live": "Rhinos are found in **Africa and Asia**. White and black rhinos inhabit open **savannas and grasslands of sub-Saharan Africa**, Indian rhinos live in **floodplain grasslands and forests** of Nepal and northeastern India, while Sumatran and Javan rhinos occupy the dense **tropical rainforests** of Southeast Asia.",
+    "habitat of rhinos": "where do rhinos live",
+    "rhino habitat": "where do rhinos live",
+    "where is a rhino found": "where do rhinos live",
+
+    "where do zebras live": "Zebras are native to **Africa**, primarily the grasslands, savannas, and open woodlands of **east and southern Africa** (Kenya, Tanzania, Botswana, South Africa). Plains zebras are the most widespread; mountain zebras live on rocky hillsides; Grevy's zebras inhabit semi-arid grasslands of Ethiopia and Kenya.",
+    "habitat of zebras": "where do zebras live",
+    "zebra habitat": "where do zebras live",
+    "where is a zebra found": "where do zebras live",
+
+    "where do koalas live": "Koalas live exclusively in **Australia**, restricted to the **eucalyptus forests and woodlands** of Queensland, New South Wales, Victoria, and South Australia. They are arboreal and spend almost their entire lives in eucalyptus trees, which provide both food and shelter.",
+    "habitat of koalas": "where do koalas live",
+    "koala habitat": "where do koalas live",
+    "where is a koala found": "where do koalas live",
+
+    "where do kangaroos live": "Kangaroos are native to **Australia and New Guinea**, inhabiting environments from **open grasslands and savannas** to **scrublands and woodlands**. Red kangaroos prefer arid interior plains, while eastern grey kangaroos are common in the fertile eastern coastal regions.",
+    "habitat of kangaroos": "where do kangaroos live",
+    "kangaroo habitat": "where do kangaroos live",
+    "where is a kangaroo found": "where do kangaroos live",
+
+    "where do pandas live": "Giant pandas live only in the **mountainous bamboo forests of south-central China**, primarily in Sichuan province with smaller populations in Shaanxi and Gansu. They inhabit cool, moist **temperate broadleaf and mixed forests** at elevations of 1,200-4,100 m where dense bamboo understory provides their food.",
+    "habitat of pandas": "where do pandas live",
+    "panda habitat": "where do pandas live",
+    "where is a panda found": "where do pandas live",
+
+    "where do snow leopards live": "Snow leopards inhabit the **high mountain ranges of Central and South Asia** across 12 countries including China, India, Nepal, Mongolia, and Pakistan. They live in **alpine and subalpine zones** at elevations of 3,000-5,500 m — rocky terrain with cliffs and ravines that provide cover for stalking prey.",
+    "habitat of snow leopards": "where do snow leopards live",
+    "snow leopard habitat": "where do snow leopards live",
+    "where is a snow leopard found": "where do snow leopards live",
+
+    "where do jaguars live": "Jaguars are found in **Central and South America**, with the largest population in the **Amazon Basin** and the Pantanal wetlands of Brazil. They inhabit **tropical rainforests, flooded wetlands, and dry forests**, and unlike most big cats are excellent swimmers that actively hunt in rivers and swamps.",
+    "habitat of jaguars": "where do jaguars live",
+    "jaguar habitat": "where do jaguars live",
+    "where is a jaguar found": "where do jaguars live",
+
+    "where do orcas live": "Orcas (killer whales) are found in **every ocean on Earth** — from Arctic and Antarctic waters to tropical seas — making them the most widely distributed marine mammal. They are most abundant in cooler, coastal waters rich in prey, off the coasts of Norway, Iceland, Alaska, and the Pacific Northwest.",
+    "habitat of orcas": "where do orcas live",
+    "orca habitat": "where do orcas live",
+    "where is an orca found": "where do orcas live",
+
+    "where do blue whales live": "Blue whales are found in **all the world's oceans** except the Arctic. They migrate seasonally between **cold polar feeding grounds** (where krill are abundant in summer) and **warm tropical or subtropical waters** for breeding in winter. Major populations occur in the Southern Ocean, North Pacific, and Indian Ocean.",
+    "habitat of blue whales": "where do blue whales live",
+    "blue whale habitat": "where do blue whales live",
+    "where is a blue whale found": "where do blue whales live",
+
+    "where do manta rays live": "Manta rays inhabit **tropical, subtropical, and temperate ocean waters worldwide**, roughly between 35 N and 35 S latitude. They favor **open ocean (pelagic) and coastal environments** including coral reefs and seamounts, where they visit cleaning stations where small fish remove parasites from their skin.",
+    "habitat of manta rays": "where do manta rays live",
+    "manta ray habitat": "where do manta rays live",
+    "where is a manta ray found": "where do manta rays live",
+
+    "where do hammerhead sharks live": "Hammerhead sharks are found in **warm, temperate, and tropical coastal waters worldwide**, particularly around continental shelves and oceanic islands. Scalloped hammerheads famously school around **seamounts** in the Pacific, while great hammerheads favor shallow **coastal reefs and lagoons**.",
+    "habitat of hammerhead sharks": "where do hammerhead sharks live",
+    "hammerhead shark habitat": "where do hammerhead sharks live",
+    "where is a hammerhead shark found": "where do hammerhead sharks live",
+
+    "where do bald eagles live": "Bald eagles are found across **North America**, from Alaska and Canada to the contiguous United States and northern Mexico. They live near **large open bodies of water** — lakes, rivers, reservoirs, and coastlines — with nearby old-growth forests providing tall trees for their massive nests.",
+    "habitat of bald eagles": "where do bald eagles live",
+    "bald eagle habitat": "where do bald eagles live",
+    "where is a bald eagle found": "where do bald eagles live",
+
+    "where do owls live": "Owls are found on **every continent except Antarctica**, inhabiting nearly every terrestrial biome — from **Arctic tundra** (snowy owl) and **boreal forests** (great grey owl) to **tropical rainforests**, deserts, and urban parks. They nest in tree cavities, cliff ledges, barns, and burrows depending on species.",
+    "habitat of owls": "where do owls live",
+    "owl habitat": "where do owls live",
+    "where is an owl found": "where do owls live",
+
+    "where do cobras live": "Cobras are found across **Africa, the Middle East, and Asia**, from sub-Saharan Africa to India, Southeast Asia, and southern China. They inhabit diverse biomes including **tropical rainforests, grasslands, agricultural land, and scrublands** — often near human settlements where rodent prey is plentiful.",
+    "habitat of cobras": "where do cobras live",
+    "cobra habitat": "where do cobras live",
+    "where is a cobra found": "where do cobras live",
+
+    "where do pythons live": "Pythons are native to **Africa, South Asia, and Southeast Asia** (including parts of Australia). They inhabit a wide range of biomes — **tropical rainforests, grasslands, swamps, and rocky outcrops** — always near water. The reticulated python of Southeast Asia lives in dense rainforests from India to Indonesia.",
+    "habitat of pythons": "where do pythons live",
+    "python habitat": "where do pythons live",
+    "where is a python found": "where do pythons live",
+
+    "where do anacondas live": "Anacondas are found in **South America**, primarily in the **Amazon and Orinoco river basins** of Venezuela, Brazil, Colombia, Ecuador, and Peru. They live in **tropical rainforests, swamps, marshes, and slow-moving rivers**, spending most of their time in or near water where their massive weight is buoyed.",
+    "habitat of anacondas": "where do anacondas live",
+    "anaconda habitat": "where do anacondas live",
+    "where is an anaconda found": "where do anacondas live",
+
+    "where do octopuses live": "Octopuses are found in **every ocean worldwide**, from **tropical coral reefs** to the **deep sea** and cold polar waters. They inhabit **rocky seafloors, coral reefs, tide pools, and sandy bottoms**, hiding in dens — caves, crevices, or self-made shelters — to avoid predators. Most species live in shallow coastal waters.",
+    "habitat of octopuses": "where do octopuses live",
+    "octopus habitat": "where do octopuses live",
+    "where is an octopus found": "where do octopuses live",
+
+    "where do komodo dragons live": "Komodo dragons live on only **five small Indonesian islands** — Komodo, Rinca, Flores, Gili Motang, and Padar — making them one of the most geographically restricted large predators on Earth. They inhabit **tropical dry forests, savannas, and scrublands**, sheltering in burrows to escape the midday heat.",
+    "habitat of komodo dragons": "where do komodo dragons live",
+    "komodo dragon habitat": "where do komodo dragons live",
+    "where is a komodo dragon found": "where do komodo dragons live",
 }
 
 
