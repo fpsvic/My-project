@@ -174,3 +174,4 @@ function installJungleStyles(cssText) {
 }
 
 installJungleStyles(jungleStyles);
+
