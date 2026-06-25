@@ -58,43 +58,34 @@ def _detect_genre(q: str) -> str:
     )):
         return "memory"
 
-    if any(w in q for w in (
-        "space", "invader", "alien", "galaga",
-    )):
-        return "spaceshooter"
-
-    if any(w in q for w in ("asteroid", "asteroids", "space rock", "rotate and shoot")):
-        return "asteroids"
-
     if any(w in q for w in ("snake", "worm", "slither")):
         return "snake"
 
-    if any(w in q for w in ("tower defense", "tower defence", "td game", "place tower",
-                             "build tower", "defend base", "base defense", "tower game")):
+    if any(w in q for w in ("tower", "defense", "defend", "td game", "base defense")):
         return "tower_defense"
 
-    if any(w in q for w in ("whack", "mole", "whack-a-mole", "hit the mole")):
+    if any(w in q for w in ("whack", "mole", "whack-a-mole", "tap the")):
         return "whack"
 
-    if any(w in q for w in ("2048", "sliding tile", "number merge", "merge tile",
-                             "number puzzle", "tile merge")):
+    if any(w in q for w in ("2048", "sliding tile", "number merge", "merge tiles")):
         return "2048"
 
-    if any(w in q for w in ("blackjack", "black jack", "21 card", "poker", "casino card",
-                             "card game", "deal me", "deal cards")):
+    if any(w in q for w in ("blackjack", "black jack", "21 card", "poker", "casino card", "card game", "deal me")):
         return "blackjack"
 
-    if any(w in q for w in ("fishing", "go fishing", "catch fish", "reel", "fish game")):
+    if any(w in q for w in ("asteroid", "rotate and shoot", "space rock")):
+        return "asteroids"
+
+    if any(w in q for w in ("fishing", "fish game", "catch fish", "go fishing", "reel")):
         return "fishing"
 
     if any(w in q for w in ("chess",)):
         return "chess"
 
-    if any(w in q for w in ("doodle jump", "vertical jump", "jump up", "bounce up",
-                             "endless jump", "jump higher")):
+    if any(w in q for w in ("doodle jump", "vertical jump", "jump up", "endless jump", "bounce up")):
         return "doodle"
 
-    if any(w in q for w in ("shoot", "laser", "ship", "fire", "gun", "blast")):
+    if any(w in q for w in ("space", "shoot", "invader", "alien", "laser", "ship", "galaga", "meteor")):
         return "spaceshooter"
 
     # Unknown — generate a real game from the description
@@ -2453,6 +2444,14 @@ def compile_game(query: str) -> dict:
         "maze": "Maze",
         "memory": "Memory Match",
         "zombie": "Zombie Survival",
+        "tower_defense": "Tower Defense",
+        "whack": "Whack-a-Mole",
+        "2048": "2048",
+        "blackjack": "Blackjack",
+        "asteroids": "Asteroids",
+        "fishing": "Fishing",
+        "chess": "Chess",
+        "doodle": "Doodle Jump",
         "universal": "Custom Game",
     }
     title_label = genre_titles.get(genre, genre.title())
@@ -2482,7 +2481,23 @@ def compile_game(query: str) -> dict:
         code = _build_clicker(theme)
     elif genre == "spaceshooter":
         code = _build_spaceshooter(theme, speed, speed_label)
-    else:  # universal
-        code = _build_universal(theme, speed, speed_label, q)
+    elif genre == "tower_defense":
+        code = _build_tower_defense(theme, speed, speed_label)
+    elif genre == "whack":
+        code = _build_whack(theme)
+    elif genre == "2048":
+        code = _build_2048(theme)
+    elif genre == "blackjack":
+        code = _build_blackjack(theme)
+    elif genre == "asteroids":
+        code = _build_asteroids(theme, speed, speed_label)
+    elif genre == "fishing":
+        code = _build_fishing(theme, speed, speed_label)
+    elif genre == "chess":
+        code = _build_chess(theme)
+    elif genre == "doodle":
+        code = _build_doodle(theme, speed, speed_label)
+    else:  # universal / fallback
+        code = _build_from_description(theme, speed, speed_label, q)
 
     return {"title": title, "desc": f"Custom compiled {title_label} game.", "code": code}
