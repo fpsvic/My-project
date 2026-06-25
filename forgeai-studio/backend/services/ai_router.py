@@ -750,39 +750,28 @@ def _dispatch_programming(query: str, mode: str) -> str:
 # ══════════════════════════════════════════════════════════════
 
 def _quick_response(query: str, q: str) -> str:
-    """Return a short, direct one-liner or brief answer."""
-    # Math — just solve it
+    """Concise response — no artificial line cap, just the right amount."""
+    # Math — full solution, no trimming
     if _score_math(q) >= 30:
         from services.math_engine import generate_math_response
-        full = generate_math_response(query, "forge_instant")
-        # Return only first paragraph / up to 3 lines
-        lines = [l for l in full.strip().splitlines() if l.strip()]
-        return "\n".join(lines[:3])
+        return generate_math_response(query, "forge_instant")
 
-    # Knowledge lookup — return first sentence of the entry
+    # Knowledge lookup — return the full entry
     norm = q.strip().rstrip("?")
     for key, val in GENERAL_KNOWLEDGE.items():
         if norm in key or key in norm:
-            first = next((s.strip() for s in val.replace("\n", " ").split(".") if len(s.strip()) > 10), val[:200])
-            return first + "."
+            return val
 
-    # Space / Earth / Science — first paragraph
+    # Space / Earth / Science / Animals — full engine response
     if _score_space(q) >= 30:
-        full = generate_space_response(query, "forge_instant")
-        lines = [l for l in full.strip().splitlines() if l.strip()]
-        return "\n".join(lines[:2])
+        return generate_space_response(query, "forge_instant")
 
     if _score_earth(q) >= 30:
-        full = generate_earth_response(query, "forge_instant")
-        lines = [l for l in full.strip().splitlines() if l.strip()]
-        return "\n".join(lines[:2])
+        return generate_earth_response(query, "forge_instant")
 
     if _score_science(q) >= 30:
-        full = generate_science_response(query, "forge_instant")
-        lines = [l for l in full.strip().splitlines() if l.strip()]
-        return "\n".join(lines[:2])
+        return generate_science_response(query, "forge_instant")
 
-    # Animals
     if _score_animals(q) >= 30:
         return _dispatch_animals(query, q)
 
