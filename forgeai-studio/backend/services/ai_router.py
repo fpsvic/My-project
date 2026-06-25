@@ -515,12 +515,15 @@ import random
 
 def _extract_aspect(answer: str, aspect: str) -> str | None:
     keywords = _ASPECT_KEYWORDS.get(aspect, [])
-    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', answer) if s.strip()]
-    matches = [s for s in sentences if any(k in s.lower() for k in keywords)]
+    # Split on newlines AND sentence endings so bullet-point entries work
+    lines = [s.strip() for s in re.split(r'\n+|(?<=[.!?])\s+', answer) if s.strip()]
+    # Strip markdown formatting (* ** # >) for clean matching
+    clean = [re.sub(r'[*#>`_]+', '', l).strip() for l in lines]
+    matches = [clean[i] for i, l in enumerate(clean) if any(k in l.lower() for k in keywords) and len(clean[i]) > 8]
     if not matches:
         return None
     intro = random.choice(_ASPECT_INTROS.get(aspect, [""]))
-    return intro + " ".join(matches[:2])
+    return intro + "  ".join(matches[:2])
 
 def _detect_aspect(q: str) -> str | None:
     for aspect, keywords in _ASPECT_KEYWORDS.items():
