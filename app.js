@@ -948,81 +948,307 @@ class JungleRunner {
                 JungleUI.showToast(`⚠️ ${scanWarnings.length} warning${scanWarnings.length > 1 ? 's' : ''} — running anyway.`, null);
             }
             switchView('terminal', false);
-            terminalViewBody.textContent = "Connecting to Piston API...";
             terminalStatus.textContent = "RUNNING";
             terminalStatus.className = "text-[#74a896] font-bold animate-pulse";
-            const languageMap = { 'Javascript': 'javascript', 'Python': 'python', 'C++': 'cpp', 'Java': 'java', 'TypeScript': 'typescript', 'C': 'c', 'C#': 'csharp', 'Ruby': 'ruby', 'Go': 'go', 'Rust': 'rust', 'PHP': 'php', 'Swift': 'swift', 'Kotlin': 'kotlin', 'Scala': 'scala', 'R': 'r', 'Perl': 'perl', 'Haskell': 'haskell', 'Julia': 'julia', 'Lua': 'lua', 'Clojure': 'clojure', 'Elixir': 'elixir', 'Erlang': 'erlang', 'OCaml': 'ocaml', 'F#': 'fsharp', 'Dart': 'dart', 'Bash': 'bash', 'Fortran': 'fortran', 'COBOL': 'cobol', 'D': 'd', 'Zig': 'zig', 'Nim': 'nim', 'Assembly': 'nasm', 'Lisp': 'commonlisp', 'Prolog': 'prolog', 'Pascal': 'pascal' };
-            const pistonLang = languageMap[lang] || 'javascript';
             const p = JungleUI.getCurrentProject();
             if (!p) return;
-            const filesArray = [{ name: p.currentFile || 'main.py', content: code }];
-            Object.keys(p.files).forEach(filename => {
-                if (filename !== p.currentFile) { filesArray.push({ name: filename, content: p.files[filename] }); }
-            });
-            const payload = { language: pistonLang, version: "*", files: filesArray };
-            const pistonDirect = "https://emkc.org/api/v2/piston/execute";
-            const pistonMirror = "https://piston.engineering.purdue.edu/api/v2/piston/execute";
-            const enc = encodeURIComponent;
-            const endpoints = [
-                { name: "EMKC Primary",                   url: pistonDirect },
-                { name: "Purdue Mirror",                  url: pistonMirror },
-                { name: "corsproxy.io → EMKC",            url: `https://corsproxy.io/?${pistonDirect}` },
-                { name: "corsproxy.io → Purdue",          url: `https://corsproxy.io/?${pistonMirror}` },
-                { name: "allorigins → EMKC",              url: `https://api.allorigins.win/raw?url=${enc(pistonDirect)}`, useRaw: true },
-                { name: "allorigins → Purdue",            url: `https://api.allorigins.win/raw?url=${enc(pistonMirror)}`, useRaw: true },
-                { name: "cors.sh → EMKC",                 url: `https://cors.sh/${pistonDirect}`, corssh: true },
-                { name: "cors.sh → Purdue",               url: `https://cors.sh/${pistonMirror}`, corssh: true },
-                { name: "cors-anywhere → EMKC",           url: `https://cors-anywhere.herokuapp.com/${pistonDirect}` },
-                { name: "cors-anywhere → Purdue",         url: `https://cors-anywhere.herokuapp.com/${pistonMirror}` },
-                { name: "crossorigin.me → EMKC",          url: `https://crossorigin.me/${pistonDirect}` },
-                { name: "thingproxy → EMKC",              url: `https://thingproxy.freeboard.io/fetch/${pistonDirect}` },
-                { name: "thingproxy → Purdue",            url: `https://thingproxy.freeboard.io/fetch/${pistonMirror}` },
-                { name: "jsonp.afeld.me → EMKC",          url: `https://jsonp.afeld.me/?url=${enc(pistonDirect)}`, useRaw: true },
-                { name: "proxy.cors.st → EMKC",           url: `https://proxy.cors.st/${pistonDirect}` },
-            ];
-            let responseReceived = false, result = null, errorReports = [];
-            for (let i = 0; i < endpoints.length; i++) {
-                const currentTarget = endpoints[i];
-                if (i > 0) { terminalViewBody.textContent += `\n⚠️ Node [${endpoints[i-1].name}] failed or blocked. Failover: Routing to ${currentTarget.name}...`; }
+
+            // ── Tier 1: Native JS/TS (no network) ─────────────────────────────
+            if (lang === 'Javascript' || lang === 'TypeScript') {
+                terminalViewBody.textContent = "⚡ Running locally (native JS)...";
+                const res = await this.runNativeJS(code);
+                this.showRunResult(res.stdout, res.stderr, lang);
+                return;
+            }
+            // ── Tier 2: SQL — sql.js WASM (no network) ────────────────────────
+            if (lang === 'SQL') {
+                await this.runSqlJs(code);
+                return;
+            }
+            // ── Tier 3: Language-specific WASM runtimes ────────────────────────
+            const wasmRunner = {
+                'Python': () => this.runPyodide(code),
+                'PHP':    () => this.runPhpWasm(code),
+                'Lua':    () => this.runLuaWasm(code),
+                'Ruby':   () => this.runRubyOpal(code),
+            }[lang];
+            if (wasmRunner) {
                 try {
-                    const headers = { 'Content-Type': 'application/json' };
-                    if (currentTarget.corssh) headers['x-cors-api-key'] = 'temp_' + Math.random().toString(36).slice(2);
-                    const response = await fetch(currentTarget.url, { method: 'POST', headers, body: JSON.stringify(payload) });
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                    result = currentTarget.useRaw ? JSON.parse(await response.text()) : await response.json();
-                    responseReceived = true;
-                    break;
-                } catch (err) { errorReports.push(`${currentTarget.name}: ${err.message}`); }
-            }
-            if (responseReceived && result && result.run) {
-                const stdout = result.run.stdout || '';
-                const stderr = result.run.stderr || '';
-                terminalViewBody.textContent = "";
-                if (stderr || result.run.code !== 0) {
-                    const errorDetails = this.parseError(stderr, stdout, lang);
-                    this.printCrashAnalysis(errorDetails, stdout, stderr);
-                    JungleUI.showToast("❌ Failed to run! Tap here to inspect terminal diagnostics.", () => {
-                        switchView('terminal', false);
-                        this.printCrashAnalysis(errorDetails, stdout, stderr);
-                    });
-                    terminalStatus.textContent = "FAILED TO RUN";
-                    terminalStatus.className = "text-rose-500 font-bold";
-                } else {
-                    terminalViewBody.textContent = stdout || "Program executed successfully with no output.";
-                    terminalStatus.textContent = "SUCCESS";
-                    terminalStatus.className = "text-emerald-400 font-bold";
+                    const res = await wasmRunner();
+                    this.showRunResult(res.stdout, res.stderr, lang);
+                    return;
+                } catch (e) {
+                    terminalViewBody.textContent += `\n⚠️ WASM runtime failed (${e.message}), trying API fallback...`;
                 }
-            } else {
-                terminalStatus.textContent = "CLUSTER OFFLINE";
-                terminalStatus.className = "text-rose-500 font-bold";
-                terminalViewBody.textContent = this.formatSimpleReport({
-                    lineNo: "Unknown",
-                    errorMsg: "all compiler endpoints unreachable",
-                    likelyCause: "All API endpoints and CORS proxies were blocked by the browser's security policy or are currently offline.",
-                    suggestion: "Try a different network, disable browser extensions that block requests, or check if the site is served over HTTPS."
-                });
             }
+            // ── Tier 4: Judge0 CE (60+ languages, no auth) ────────────────────
+            terminalViewBody.textContent = "🌐 Connecting to Judge0 API...";
+            const j0 = await this.runJudge0(lang, code);
+            if (j0) { this.showRunResult(j0.stdout, j0.stderr, lang); return; }
+            // ── Tier 5: Piston + CORS proxy fallback chain ────────────────────
+            terminalViewBody.textContent += "\n⚠️ Judge0 unreachable, trying Piston cluster...";
+            await this.runPiston(lang, code, p);
+
         } catch (globalErr) { this.handleGlobalFailure(globalErr); }
+        terminalViewBody.scrollTop = terminalViewBody.scrollHeight;
+    }
+
+    // ── Native JS execution via sandboxed iframe + postMessage ────────────────
+    static runNativeJS(code) {
+        return new Promise(resolve => {
+            const output = [];
+            const handler = e => {
+                if (!e.data || typeof e.data !== 'object') return;
+                if (e.data.__jOut) output.push(e.data.t);
+                if (e.data.__jDone) {
+                    clearTimeout(timer);
+                    window.removeEventListener('message', handler);
+                    iframe.remove();
+                    resolve({ stdout: output.join('\n'), stderr: e.data.err || '' });
+                }
+            };
+            window.addEventListener('message', handler);
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            document.body.appendChild(iframe);
+            const wrap = fn => `(...a)=>{try{parent.postMessage({__jOut:true,t:[...a].map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' ')},'*')}catch(e){}}`;
+            iframe.srcdoc = `<!DOCTYPE html><html><body><script>
+const console={log:${wrap}('log'),info:${wrap}('info'),warn:(...a)=>parent.postMessage({__jOut:true,t:'WARN: '+[...a].join(' ')},'*'),error:(...a)=>parent.postMessage({__jOut:true,t:'ERROR: '+[...a].join(' ')},'*'),dir:${wrap}('dir'),table:${wrap}('table')};
+try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:true,err:''},'*');}catch(e){parent.postMessage({__jDone:true,err:e.toString()},'*');}
+<\/script></body></html>`;
+            const timer = setTimeout(() => {
+                window.removeEventListener('message', handler);
+                iframe.remove();
+                resolve({ stdout: output.join('\n'), stderr: 'Execution timed out after 10s' });
+            }, 10000);
+        });
+    }
+
+    // ── Pyodide — Python WASM ─────────────────────────────────────────────────
+    static async runPyodide(code) {
+        if (!window._pyodide) {
+            terminalViewBody.textContent = "⏳ Loading Python WASM (~10 MB, cached after first load)...";
+            await new Promise((res, rej) => {
+                const s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/pyodide/v0.26.0/full/pyodide.js';
+                s.onload = res; s.onerror = rej;
+                document.head.appendChild(s);
+            });
+            window._pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.0/full/' });
+        }
+        const py = window._pyodide;
+        const out = [], err = [];
+        py.setStdout({ batched: s => out.push(s) });
+        py.setStderr({ batched: s => err.push(s) });
+        try { await py.runPythonAsync(code); }
+        catch (e) { err.push(e.message); }
+        return { stdout: out.join('\n'), stderr: err.join('\n') };
+    }
+
+    // ── php-wasm — PHP 8 WASM ─────────────────────────────────────────────────
+    static async runPhpWasm(code) {
+        if (!window._phpWasm) {
+            terminalViewBody.textContent = "⏳ Loading PHP 8 WASM (~10 MB, cached after first load)...";
+            const mod = await import('https://cdn.jsdelivr.net/npm/php-wasm/PhpWeb.mjs');
+            window._phpWasm = mod.PhpWeb;
+        }
+        return new Promise(async resolve => {
+            const php = new window._phpWasm();
+            const out = [], err = [];
+            php.addEventListener('output', e => out.push(...e.detail));
+            php.addEventListener('error',  e => err.push(...e.detail));
+            const src = code.trim().startsWith('<?') ? code : `<?php\n${code}`;
+            try { await php.run(src); } catch(e) { err.push(e.message); }
+            resolve({ stdout: out.join(''), stderr: err.join('') });
+        });
+    }
+
+    // ── wasmoon — Lua 5.4 WASM ───────────────────────────────────────────────
+    static async runLuaWasm(code) {
+        if (!window._luaFactory) {
+            terminalViewBody.textContent = "⏳ Loading Lua WASM (~1 MB, cached after first load)...";
+            const mod = await import('https://cdn.jsdelivr.net/npm/wasmoon@1.16.0/+esm');
+            window._luaFactory = new mod.LuaFactory('https://unpkg.com/wasmoon@1.16.0/dist/glue.wasm');
+        }
+        const out = [], err = [];
+        const lua = await window._luaFactory.createEngine();
+        lua.global.set('print', (...a) => out.push(a.map(String).join('\t')));
+        try { await lua.doString(code); }
+        catch (e) { err.push(e.message); }
+        lua.global.close();
+        return { stdout: out.join('\n'), stderr: err.join('\n') };
+    }
+
+    // ── Opal — Ruby → JS transpiler (in-browser, no WASM download) ───────────
+    static async runRubyOpal(code) {
+        if (!window.Opal) {
+            terminalViewBody.textContent = "⏳ Loading Ruby (Opal) runtime...";
+            await new Promise((res, rej) => {
+                const s = document.createElement('script');
+                s.src = 'https://cdn.opalrb.com/opal/current/opal.min.js';
+                s.onload = res; s.onerror = rej;
+                document.head.appendChild(s);
+            });
+            await new Promise((res, rej) => {
+                const s = document.createElement('script');
+                s.src = 'https://cdn.opalrb.com/opal/current/opal-parser.min.js';
+                s.onload = () => { Opal.load('opal-parser'); res(); };
+                s.onerror = rej;
+                document.head.appendChild(s);
+            });
+        }
+        const out = [];
+        const origWrite = Opal.gvars['$stdout'] && Opal.gvars['$stdout'].write;
+        try {
+            Opal.gvars['$stdout'] = { write: s => { out.push(s); return s.length; }, puts: s => { out.push(s + '\n'); } };
+            Opal.eval(code);
+        } catch(e) {
+            return { stdout: out.join(''), stderr: e.message || String(e) };
+        }
+        return { stdout: out.join(''), stderr: '' };
+    }
+
+    // ── sql.js — SQLite WASM ──────────────────────────────────────────────────
+    static async runSqlJs(code) {
+        switchView('terminal', false);
+        terminalStatus.textContent = "RUNNING";
+        terminalStatus.className = "text-[#74a896] font-bold animate-pulse";
+        if (!window._sqlJs) {
+            terminalViewBody.textContent = "⏳ Loading SQLite WASM (~1 MB, cached after first load)...";
+            await new Promise((res, rej) => {
+                const s = document.createElement('script');
+                s.src = 'https://sql.js.org/dist/sql-wasm.js';
+                s.onload = res; s.onerror = rej;
+                document.head.appendChild(s);
+            });
+            window._sqlJs = await initSqlJs({ locateFile: f => `https://sql.js.org/dist/${f}` });
+        }
+        try {
+            const db = new window._sqlJs.Database();
+            const results = db.exec(code);
+            if (!results.length) {
+                terminalViewBody.textContent = "Query executed successfully (no rows returned).";
+            } else {
+                const lines = [];
+                results.forEach(r => {
+                    lines.push(r.columns.join(' | '));
+                    lines.push('─'.repeat(r.columns.join(' | ').length));
+                    r.values.forEach(row => lines.push(row.join(' | ')));
+                    lines.push('');
+                });
+                terminalViewBody.textContent = lines.join('\n');
+            }
+            db.close();
+            terminalStatus.textContent = "SUCCESS";
+            terminalStatus.className = "text-emerald-400 font-bold";
+        } catch(e) {
+            terminalViewBody.textContent = `SQL Error: ${e.message}`;
+            terminalStatus.textContent = "FAILED TO RUN";
+            terminalStatus.className = "text-rose-500 font-bold";
+        }
+    }
+
+    // ── Judge0 CE — 60+ languages, no auth ───────────────────────────────────
+    static async runJudge0(lang, code) {
+        const ids = {
+            'Javascript': 63, 'TypeScript': 74, 'Python': 71,
+            'Java': 62, 'C': 50, 'C++': 54, 'C#': 51,
+            'Go': 60, 'Rust': 73, 'Ruby': 72, 'PHP': 68,
+            'Swift': 83, 'Kotlin': 78, 'Scala': 81,
+            'R': 80, 'Perl': 85, 'Haskell': 61,
+            'Lua': 64, 'Bash': 46, 'Fortran': 59,
+            'Erlang': 58, 'Elixir': 57, 'Clojure': 86,
+            'OCaml': 65, 'D': 56, 'Assembly': 45,
+            'Lisp': 55, 'Prolog': 69, 'Pascal': 67,
+        };
+        const id = ids[lang];
+        if (!id) return null;
+        const base = 'https://ce.judge0.com';
+        const enc = encodeURIComponent;
+        const proxies = [
+            base,
+            `https://corsproxy.io/?${base}`,
+            `https://api.allorigins.win/raw?url=${enc(base)}`,
+        ];
+        const body = JSON.stringify({ source_code: code, language_id: id, stdin: '' });
+        for (const proxy of proxies) {
+            try {
+                const res = await fetch(`${proxy}/submissions?base64_encoded=false&wait=true`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                const stdout = data.stdout || '';
+                const stderr = (data.stderr || '') + (data.compile_output || '');
+                return { stdout, stderr };
+            } catch(_) {}
+        }
+        return null;
+    }
+
+    // ── Piston cluster — last resort fallback ─────────────────────────────────
+    static async runPiston(lang, code, p) {
+        const langMap = { 'Javascript': 'javascript', 'Python': 'python', 'C++': 'cpp', 'Java': 'java', 'TypeScript': 'typescript', 'C': 'c', 'C#': 'csharp', 'Ruby': 'ruby', 'Go': 'go', 'Rust': 'rust', 'PHP': 'php', 'Swift': 'swift', 'Kotlin': 'kotlin', 'Scala': 'scala', 'R': 'r', 'Perl': 'perl', 'Haskell': 'haskell', 'Julia': 'julia', 'Lua': 'lua', 'Clojure': 'clojure', 'Elixir': 'elixir', 'Erlang': 'erlang', 'OCaml': 'ocaml', 'F#': 'fsharp', 'Dart': 'dart', 'Bash': 'bash', 'Fortran': 'fortran', 'COBOL': 'cobol', 'D': 'd', 'Zig': 'zig', 'Nim': 'nim', 'Assembly': 'nasm', 'Lisp': 'commonlisp', 'Prolog': 'prolog', 'Pascal': 'pascal' };
+        const pistonLang = langMap[lang] || 'javascript';
+        const filesArray = [{ name: p.currentFile || 'main', content: code }];
+        Object.keys(p.files).forEach(f => { if (f !== p.currentFile) filesArray.push({ name: f, content: p.files[f] }); });
+        const payload = { language: pistonLang, version: '*', files: filesArray };
+        const e1 = 'https://emkc.org/api/v2/piston/execute';
+        const e2 = 'https://piston.engineering.purdue.edu/api/v2/piston/execute';
+        const enc = encodeURIComponent;
+        const endpoints = [
+            { name: 'EMKC', url: e1 }, { name: 'Purdue', url: e2 },
+            { name: 'corsproxy→EMKC', url: `https://corsproxy.io/?${e1}` },
+            { name: 'corsproxy→Purdue', url: `https://corsproxy.io/?${e2}` },
+            { name: 'allorigins→EMKC', url: `https://api.allorigins.win/raw?url=${enc(e1)}`, raw: true },
+            { name: 'allorigins→Purdue', url: `https://api.allorigins.win/raw?url=${enc(e2)}`, raw: true },
+            { name: 'cors.sh→EMKC', url: `https://cors.sh/${e1}`, corssh: true },
+            { name: 'cors-anywhere→EMKC', url: `https://cors-anywhere.herokuapp.com/${e1}` },
+            { name: 'thingproxy→EMKC', url: `https://thingproxy.freeboard.io/fetch/${e1}` },
+        ];
+        let result = null;
+        for (let i = 0; i < endpoints.length; i++) {
+            const ep = endpoints[i];
+            if (i > 0) terminalViewBody.textContent += `\n↳ Trying ${ep.name}...`;
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (ep.corssh) headers['x-cors-api-key'] = 'temp_' + Math.random().toString(36).slice(2);
+                const res = await fetch(ep.url, { method: 'POST', headers, body: JSON.stringify(payload) });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                result = ep.raw ? JSON.parse(await res.text()) : await res.json();
+                break;
+            } catch(_) {}
+        }
+        if (result && result.run) {
+            this.showRunResult(result.run.stdout || '', result.run.stderr || '', lang);
+        } else {
+            terminalStatus.textContent = "ALL RUNTIMES OFFLINE";
+            terminalStatus.className = "text-rose-500 font-bold";
+            terminalViewBody.textContent = this.formatSimpleReport({
+                lineNo: "—", errorMsg: "All execution engines unreachable",
+                likelyCause: "JS/HTML run locally. Python/PHP/Lua/Ruby/SQL load via WASM. All API endpoints (Judge0, Piston) are currently blocked or offline.",
+                suggestion: "Try a different network or browser extension blocker settings. JS and HTML always work offline."
+            });
+        }
+    }
+
+    // ── Shared result display ─────────────────────────────────────────────────
+    static showRunResult(stdout, stderr, lang) {
+        const hasFail = stderr && stderr.trim();
+        terminalViewBody.textContent = '';
+        if (hasFail) {
+            const details = this.parseError(stderr, stdout, lang);
+            this.printCrashAnalysis(details, stdout, stderr);
+            JungleUI.showToast("❌ Runtime error — tap to inspect.", () => switchView('terminal', false));
+            terminalStatus.textContent = "FAILED TO RUN";
+            terminalStatus.className = "text-rose-500 font-bold";
+        } else {
+            terminalViewBody.textContent = stdout || "Program executed successfully with no output.";
+            terminalStatus.textContent = "SUCCESS";
+            terminalStatus.className = "text-emerald-400 font-bold";
+        }
         terminalViewBody.scrollTop = terminalViewBody.scrollHeight;
     }
     static handleGlobalFailure(err) {
