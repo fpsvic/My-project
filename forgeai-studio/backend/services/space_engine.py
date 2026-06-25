@@ -12,7 +12,6 @@ def _wrap(thinking: str, heading: str, body: str, mode: str) -> str:
 def generate_space_response(query: str, mode: str) -> str:
     q = query.lower().strip()
 
-    # ── Star Life Cycle ───────────────────────────────────────────────────────
     if any(w in q for w in ("star form", "star die", "stellar", "main sequence", "red giant", "white dwarf", "neutron star", "how stars")):
         heading = "How Stars Form and Die: The Stellar Life Cycle"
         body = (
@@ -37,12 +36,8 @@ def generate_space_response(query: str, mode: str) -> str:
             "* **White Dwarf**: Earth-sized ember of carbon and oxygen that slowly cools over billions of years.\n\n"
             "[COSMIC_CARD: formula: Sun's Main Sequence Lifespan | result: ~10 Billion Years | style: indigo]"
         )
-        thinking = (
-            "- **Intent:** Stellar evolution lifecycle query.\n"
-            "- **Parameters:** Mass-dependent death pathways, main sequence timescales, supernova remnant types."
-        )
+        thinking = "- **Intent:** Stellar evolution lifecycle query.\n- **Parameters:** Mass-dependent death pathways, main sequence timescales, supernova remnant types."
 
-    # ── Dark Matter & Dark Energy ─────────────────────────────────────────────
     elif any(w in q for w in ("dark matter", "dark energy")):
         heading = "Dark Matter & Dark Energy: The Invisible Universe"
         body = (
@@ -62,12 +57,8 @@ def generate_space_response(query: str, mode: str) -> str:
             "**Normal matter (us):** only ~**5%** of everything.\n\n"
             "[COSMIC_CARD: formula: Universe Composition | result: 68% Dark Energy, 27% Dark Matter, 5% Normal | style: indigo]"
         )
-        thinking = (
-            "- **Intent:** Cosmology dark matter/energy query.\n"
-            "- **Parameters:** Observational evidence, composition percentages, candidate particles."
-        )
+        thinking = "- **Intent:** Cosmology dark matter/energy query.\n- **Parameters:** Observational evidence, composition percentages, candidate particles."
 
-    # ── Voyager Probes ────────────────────────────────────────────────────────
     elif any(w in q for w in ("voyager", "interstellar")):
         heading = "The Voyager Probes: Humanity's Farthest Travellers"
         body = (
@@ -91,12 +82,8 @@ def generate_space_response(query: str, mode: str) -> str:
             "**Power**: Nuclear RTGs (Radioisotope Thermoelectric Generators) fuelled by Plutonium-238. Expected to lose power ~**2025–2030**.\n\n"
             "[COSMIC_CARD: formula: Voyager 1 Distance (2024) | result: >162 AU from Sun | style: indigo]"
         )
-        thinking = (
-            "- **Intent:** Voyager mission status and specifications query.\n"
-            "- **Parameters:** Launch dates, interstellar crossing milestones, Golden Record contents."
-        )
+        thinking = "- **Intent:** Voyager mission status and specifications query.\n- **Parameters:** Launch dates, interstellar crossing milestones, Golden Record contents."
 
-    # ── James Webb Space Telescope ─────────────────────────────────────────────
     elif any(w in q for w in ("james webb", "jwst", "webb telescope")):
         heading = "James Webb Space Telescope (JWST)"
         body = (
@@ -118,12 +105,8 @@ def generate_space_response(query: str, mode: str) -> str:
             "- Carina Nebula stellar nursery in unprecedented detail\n\n"
             "[COSMIC_CARD: formula: JWST Primary Mirror | result: 6.5 m diameter (18 segments) | style: indigo]"
         )
-        thinking = (
-            "- **Intent:** James Webb Space Telescope specifications and mission query.\n"
-            "- **Parameters:** Mirror size, L2 orbit, infrared capabilities, scientific objectives."
-        )
+        thinking = "- **Intent:** James Webb Space Telescope specifications and mission query.\n- **Parameters:** Mirror size, L2 orbit, infrared capabilities, scientific objectives."
 
-    # ── Hubble's Law & Expanding Universe ──────────────────────────────────────
     elif any(w in q for w in ("hubble", "hubble's law", "expanding universe", "expansion", "redshift", "recession")):
         heading = "Hubble's Law & The Expanding Universe"
         body = (
@@ -142,12 +125,8 @@ def generate_space_response(query: str, mode: str) -> str:
             "Astronomers measure $H_0$ using: Cepheid variable stars → Type Ia supernovae → galaxy recession velocities.\n\n"
             "[COSMIC_CARD: formula: Hubble Constant (H₀) | result: ~70 km/s/Mpc | style: indigo]"
         )
-        thinking = (
-            "- **Intent:** Cosmological expansion and Hubble's Law query.\n"
-            "- **Parameters:** Hubble constant value, redshift mechanism, Hubble tension debate."
-        )
+        thinking = "- **Intent:** Cosmological expansion and Hubble's Law query.\n- **Parameters:** Hubble constant value, redshift mechanism, Hubble tension debate."
 
-    # ── Cosmic Microwave Background ────────────────────────────────────────────
     elif any(w in q for w in ("cosmic microwave", "cmb", "microwave background", "afterglow", "big bang radiation")):
         heading = "Cosmic Microwave Background Radiation (CMB)"
         body = (
@@ -165,38 +144,25 @@ def generate_space_response(query: str, mode: str) -> str:
             "* Planck data gave us the most precise age of the universe: **13.787 ± 0.020 billion years**.\n\n"
             "[COSMIC_CARD: formula: CMB Temperature | result: 2.725 K | style: indigo]"
         )
-        thinking = (
-            "- **Intent:** Cosmic microwave background query.\n"
-            "- **Parameters:** Recombination epoch, blackbody temperature, satellite measurements."
-        )
+        thinking = "- **Intent:** Cosmic microwave background query.\n- **Parameters:** Recombination epoch, blackbody temperature, satellite measurements."
 
-    # ── Multiverse ────────────────────────────────────────────────────────────
     elif any(w in q for w in ("multiverse", "parallel universe", "many worlds", "inflationary multiverse")):
         heading = "The Multiverse Theory"
         body = (
             "The **multiverse** is the hypothetical collection of multiple universes beyond our own observable universe:\n\n"
-            "**Major Multiverse Proposals**\n\n"
             "**1. Inflationary Multiverse (Level I & II)**\n"
-            "* Cosmic inflation (rapid expansion after the Big Bang) may have spawned countless separate 'bubble universes', each with potentially different physical constants.\n"
-            "* Our observable universe would be one bubble in an eternal, ever-expanding multiverse.\n\n"
+            "* Cosmic inflation may have spawned countless separate 'bubble universes', each with potentially different physical constants.\n\n"
             "**2. Many-Worlds Interpretation (Level III — Quantum)**\n"
-            "* Proposed by Hugh Everett (1957): every quantum measurement causes the universe to **branch** into separate realities.\n"
-            "* No wave function collapse — all outcomes happen in parallel branches.\n\n"
+            "* Proposed by Hugh Everett (1957): every quantum measurement causes the universe to **branch** into separate realities.\n\n"
             "**3. String Theory Landscape (Level II)**\n"
             "* String theory allows ~$10^{500}$ different configurations of extra dimensions — each could be a different universe with different physics.\n\n"
             "**4. Mathematical Multiverse (Level IV)**\n"
             "* Max Tegmark's proposal: every mathematically consistent structure is a physical reality.\n\n"
-            "**Status**\n"
-            "* Currently **not falsifiable** with existing technology — remains speculative.\n"
-            "* Some physicists argue it is outside the realm of science; others consider it a legitimate extension of established physics.\n\n"
+            "**Status**: Currently **not falsifiable** — remains speculative but considered a legitimate extension of established physics by many researchers.\n\n"
             "[COSMIC_CARD: formula: String Theory Landscape | result: ~10⁵⁰⁰ possible universes | style: indigo]"
         )
-        thinking = (
-            "- **Intent:** Multiverse theoretical cosmology query.\n"
-            "- **Parameters:** Inflationary, quantum many-worlds, string landscape scenarios."
-        )
+        thinking = "- **Intent:** Multiverse theoretical cosmology query.\n- **Parameters:** Inflationary, quantum many-worlds, string landscape scenarios."
 
-    # ── Exoplanet Detection ────────────────────────────────────────────────────
     elif any(w in q for w in ("exoplanet", "transit method", "radial velocity", "planet detection", "kepler", "habitable zone")):
         heading = "Exoplanet Detection Methods"
         body = (
@@ -204,82 +170,59 @@ def generate_space_response(query: str, mode: str) -> str:
             "**1. Transit Method (~75% of discoveries)**\n"
             "* When a planet passes in front of its star, it blocks a tiny fraction of starlight.\n"
             "* A **1% dip** in brightness typically indicates a Jupiter-sized planet; Earth would cause a ~**0.008% dip**.\n"
-            "* Requires the orbital plane to be edge-on from our perspective.\n"
-            "* Used by: **Kepler** telescope (2009–2018, 2,600+ planets), **TESS** (2018–present), **JWST**.\n\n"
+            "* Used by: **Kepler** (2009–2018, 2,600+ planets), **TESS** (2018–present), **JWST**.\n\n"
             "**2. Radial Velocity (Doppler Method, ~20% of discoveries)**\n"
             "* A planet's gravity causes its host star to **wobble** slightly.\n"
-            "* The star's light is **blueshifted** as it moves toward us and **redshifted** as it moves away.\n"
-            "* Best for detecting massive planets in close orbits.\n"
-            "* Used to confirm Kepler discoveries and find planets around nearby stars.\n\n"
-            "**Other Methods**\n"
-            "* **Direct imaging**: Actually photographing planets (only works for very large, distant planets).\n"
-            "* **Gravitational microlensing**: Background star is briefly brightened by a planet's gravity.\n"
-            "* **Astrometry**: Measuring the tiny wobble of a star's position on the sky.\n\n"
+            "* The star's light is **blueshifted** as it moves toward us and **redshifted** as it moves away.\n\n"
+            "**Other Methods**: Direct imaging, gravitational microlensing, astrometry.\n\n"
             "**Notable Discoveries**\n"
             "- **Proxima Centauri b**: Closest known exoplanet (4.24 ly), potentially habitable.\n"
             "- **TRAPPIST-1 system**: 7 Earth-sized planets, 3 in the habitable zone, 39 ly away.\n"
             "- **51 Pegasi b** (1995): First exoplanet around a Sun-like star (Nobel Prize 2019).\n\n"
             "[COSMIC_CARD: formula: Confirmed Exoplanets (2024) | result: >5,600 confirmed | style: indigo]"
         )
-        thinking = (
-            "- **Intent:** Exoplanet detection methodology query.\n"
-            "- **Parameters:** Transit photometry, Doppler spectroscopy, Kepler/TESS missions."
-        )
+        thinking = "- **Intent:** Exoplanet detection methodology query.\n- **Parameters:** Transit photometry, Doppler spectroscopy, Kepler/TESS missions."
 
-    # ── Asteroid Belt vs Kuiper Belt ───────────────────────────────────────────
     elif any(w in q for w in ("asteroid belt", "kuiper belt", "kuiper", "asteroid", "ceres", "pluto")):
         heading = "Asteroid Belt vs. Kuiper Belt"
         body = (
             "**Asteroid Belt**\n"
             "* Location: Between **Mars and Jupiter** (2.2–3.2 AU from the Sun).\n"
-            "* Contains millions of rocky/metallic objects — remnants from the **proto-planetary disk** that never coalesced due to Jupiter's gravity.\n"
+            "* Contains millions of rocky/metallic objects — remnants from the proto-planetary disk that never coalesced due to Jupiter's gravity.\n"
             "* Largest object: **Ceres** (dwarf planet, 945 km diameter) — contains ~1/3 of the belt's total mass.\n"
-            "* Total mass: only ~4% of Earth's Moon — much less dense than movies suggest.\n"
-            "* **Near-Earth asteroids (NEAs)**: Some have crossed into the inner solar system. NASA's DART mission **deflected** the asteroid Dimorphos in **September 2022**.\n\n"
+            "* Total mass: only ~4% of Earth's Moon.\n"
+            "* NASA's DART mission **deflected** the asteroid Dimorphos in **September 2022**.\n\n"
             "**Kuiper Belt**\n"
             "* Location: Beyond **Neptune's orbit** (30–50 AU from the Sun).\n"
-            "* Contains icy bodies (comets, dwarf planets) — remnants of the early outer solar system.\n"
-            "* ~**20× wider** and **20–200× more massive** than the asteroid belt.\n"
+            "* Contains icy bodies (comets, dwarf planets) — ~**20× wider** and **20–200× more massive** than the asteroid belt.\n"
             "* Contains: **Pluto** (2,377 km), Eris, Makemake, Haumea — all dwarf planets.\n"
             "* Source of **short-period comets** (orbital period <200 years).\n"
             "* Explored by **New Horizons** (Pluto flyby July 2015; Arrokoth flyby January 2019).\n\n"
             "**Oort Cloud** (beyond Kuiper Belt, 2,000–100,000 AU) — source of long-period comets.\n\n"
             "[COSMIC_CARD: formula: Kuiper Belt Location | result: 30–50 AU from the Sun | style: indigo]"
         )
-        thinking = (
-            "- **Intent:** Solar system small body region query.\n"
-            "- **Parameters:** Asteroid belt vs Kuiper belt composition, location, major objects."
-        )
+        thinking = "- **Intent:** Solar system small body region query.\n- **Parameters:** Asteroid belt vs Kuiper belt composition, location, major objects."
 
-    # ── Mars Colonisation ──────────────────────────────────────────────────────
     elif "mars" in q and any(w in q for w in ("coloniz", "colonise", "colony", "terraforming", "settle", "live on", "inhabit", "mission to")):
         heading = "Colonisation of Mars: Challenges & Plans"
         body = (
-            "Mars is the top candidate for human colonisation beyond Earth. Here's what we know:\n\n"
-            "**Why Mars?**\n"
-            "* Closest neighbour with a day of 24 hours 37 minutes (similar to Earth).\n"
-            "* Has water ice at the poles and subsurface.\n"
-            "* Rocky terrain with resources (iron oxide, silica, CO₂ for fuel).\n"
-            "* Average distance: **225 million km** from Earth (travel time: ~7 months one-way).\n\n"
+            "Mars is the top candidate for human colonisation beyond Earth:\n\n"
+            "**Why Mars?** Day length of 24h 37m, water ice at poles and subsurface, rocky terrain with usable resources. Average distance: **225 million km** (~7 months travel one-way).\n\n"
             "**Key Challenges**\n"
-            "* **Radiation**: Mars has no global magnetic field and thin atmosphere — surface radiation is **700× Earth's**.\n"
-            "* **Atmosphere**: 95% CO₂, pressure only 0.6% of Earth's — unsurvivable without a suit.\n"
-            "* **Temperature**: Average −60°C, ranging from −125°C to +20°C at the equator.\n"
+            "* **Radiation**: No global magnetic field — surface radiation is **700× Earth's**.\n"
+            "* **Atmosphere**: 95% CO₂, pressure only 0.6% of Earth's.\n"
+            "* **Temperature**: Average −60°C (range −125°C to +20°C).\n"
             "* **Gravity**: 38% of Earth's — long-term health effects unknown.\n"
-            "* **Communication delay**: 4–24 minutes one-way depending on orbital positions.\n\n"
+            "* **Communication delay**: 4–24 minutes one-way.\n\n"
             "**Current Missions**\n"
-            "* **NASA Perseverance rover** (2021): Collecting rock samples and testing MOXIE (oxygen production from CO₂).\n"
-            "* **SpaceX Starship**: Designed to carry 100 people to Mars; Elon Musk targets crewed missions by **late 2020s**.\n"
+            "* **NASA Perseverance rover** (2021): Collecting rock samples and testing MOXIE (oxygen from CO₂).\n"
+            "* **SpaceX Starship**: Designed to carry 100 people; crewed missions targeted **late 2020s**.\n"
             "* NASA's **Moon to Mars** programme aims for humans on Mars in the **2030s**.\n\n"
-            "**Terraforming** (making Mars Earth-like): Would require releasing greenhouse gases to thicken the atmosphere — timescale of **centuries to millennia**.\n\n"
+            "**Terraforming**: Would require centuries to millennia to make Mars Earth-like.\n\n"
             "[COSMIC_CARD: formula: Mars Surface Gravity | result: 38% of Earth (3.72 m/s²) | style: indigo]"
         )
-        thinking = (
-            "- **Intent:** Mars colonisation feasibility and plans query.\n"
-            "- **Parameters:** Environmental hazards, radiation levels, current mission timelines."
-        )
+        thinking = "- **Intent:** Mars colonisation feasibility and plans query.\n- **Parameters:** Environmental hazards, radiation levels, current mission timelines."
 
-    # ── Mars (general) ────────────────────────────────────────────────────────
     elif "mars" in q or "red planet" in q:
         heading = "Mars: The Red Planet"
         body = (
@@ -289,12 +232,8 @@ def generate_space_response(query: str, mode: str) -> str:
             "and its surface gravity is only **38% of Earth's**.\n\n"
             "[COSMIC_CARD: formula: Mars Gravity Ratio | result: 38% of Earth | style: indigo]"
         )
-        thinking = (
-            "- **Intent:** Planet specific mechanics query (Mars).\n"
-            "- **Data Points:** Surface rust oxidation chemistry, orbital timeline metrics."
-        )
+        thinking = "- **Intent:** Planet specific mechanics query (Mars).\n- **Data Points:** Surface rust oxidation chemistry, orbital timeline metrics."
 
-    # ── Earth-Sun Distance ────────────────────────────────────────────────────
     elif "sun" in q and any(w in q for w in ("earth", "distance", "apart", "far")):
         heading = "Earth-to-Sun Orbit Distance"
         body = (
@@ -305,13 +244,8 @@ def generate_space_response(query: str, mode: str) -> str:
             "**8 minutes and 20 seconds** to reach us.\n\n"
             "[COSMIC_CARD: formula: Average Earth-Sun Distance (1 AU) | result: 93,000,000 Miles | style: indigo]"
         )
-        thinking = (
-            "- **Intent:** Astronomy constant query (Earth-Sun distance).\n"
-            "- **Parameters:** Elliptical orbit variance, AU coordinate translation.\n"
-            "- **Speed Integration:** Sunlight travel delta $\\approx 500\\text{ seconds}$."
-        )
+        thinking = "- **Intent:** Astronomy constant query (Earth-Sun distance).\n- **Parameters:** Elliptical orbit variance, AU coordinate translation.\n- **Speed Integration:** Sunlight travel delta $\\approx 500\\text{ seconds}$."
 
-    # ── Earth-Moon Distance ───────────────────────────────────────────────────
     elif "moon" in q and any(w in q for w in ("earth", "distance", "far", "apart")):
         heading = "Earth-to-Moon Orbit Distance"
         body = (
@@ -321,12 +255,8 @@ def generate_space_response(query: str, mode: str) -> str:
             "This is roughly equivalent to wrapping 30 Earths in a row!\n\n"
             "[COSMIC_CARD: formula: Average Earth-Moon Distance | result: 238,855 Miles | style: indigo]"
         )
-        thinking = (
-            "- **Intent:** Moon orbit constant query.\n"
-            "- **Math Check:** Translating metric apogee/perigee scale limits to statute miles."
-        )
+        thinking = "- **Intent:** Moon orbit constant query.\n- **Math Check:** Translating metric apogee/perigee scale limits to statute miles."
 
-    # ── Speed of Light ────────────────────────────────────────────────────────
     elif "speed of light" in q:
         heading = "Universal Speed Limit (c)"
         body = (
@@ -335,12 +265,8 @@ def generate_space_response(query: str, mode: str) -> str:
             "At this speed you could circle Earth's equator **7.5 times in a single second**!\n\n"
             "[COSMIC_CARD: formula: Speed of Light in Vacuum (c) | result: 186,282 mi/s | style: emerald]"
         )
-        thinking = (
-            "- **Intent:** Universal constant query (c).\n"
-            "- **Reference Framework:** Einstein's Special Relativity model boundaries."
-        )
+        thinking = "- **Intent:** Universal constant query (c).\n- **Reference Framework:** Einstein's Special Relativity model boundaries."
 
-    # ── Universe Scale ────────────────────────────────────────────────────────
     elif "universe" in q and any(w in q for w in ("size", "big", "scale", "diameter")):
         heading = "Scale of the Observable Universe"
         body = (
@@ -350,12 +276,8 @@ def generate_space_response(query: str, mode: str) -> str:
             "than the speed of light, stretching the observable edge far beyond $13.8\\text{ billion light-years}$.\n\n"
             "[COSMIC_CARD: formula: Observable Universe Diameter | result: 93,000,000,000 ly | style: indigo]"
         )
-        thinking = (
-            "- **Intent:** Cosmological scale query.\n"
-            "- **Cosmic Metric:** Big Bang timeline delta versus cosmological expansion speed ratio."
-        )
+        thinking = "- **Intent:** Cosmological scale query.\n- **Cosmic Metric:** Big Bang timeline delta versus cosmological expansion speed ratio."
 
-    # ── Gravity ───────────────────────────────────────────────────────────────
     elif "gravity" in q or " g " in q:
         heading = "Fundamental Constant of Gravity"
         body = (
@@ -365,10 +287,7 @@ def generate_space_response(query: str, mode: str) -> str:
             "$$G \\approx 6.674 \\times 10^{-11}\\text{ m}^3\\text{ kg}^{-1}\\text{ s}^{-2}$$\n\n"
             "[COSMIC_CARD: formula: Gravitational Acceleration (Earth) | result: 9.81 m/s² | style: indigo]"
         )
-        thinking = (
-            "- **Intent:** Gravity mechanics query.\n"
-            "- **Parameters:** Surface gravity $g$ versus Newtonian gravitational constant $G$."
-        )
+        thinking = "- **Intent:** Gravity mechanics query.\n- **Parameters:** Surface gravity $g$ versus Newtonian gravitational constant $G$."
 
     else:
         heading = "Astronomical Analysis"
@@ -378,9 +297,6 @@ def generate_space_response(query: str, mode: str) -> str:
             "2. **The Vacuum Medium:** Space is a nearly perfect vacuum where light travels unimpeded.\n"
             "3. **Universal Physics Constants:** Every star and galaxy is governed by $c$, $G$, and $\\hbar$."
         )
-        thinking = (
-            "- **Intent:** Open space topic query.\n"
-            "- **Formulating Output:** Providing a comprehensive cosmic mechanics overview."
-        )
+        thinking = "- **Intent:** Open space topic query.\n- **Formulating Output:** Providing a comprehensive cosmic mechanics overview."
 
     return _wrap(thinking, heading, body, mode)

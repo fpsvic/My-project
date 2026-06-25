@@ -1,3 +1,7 @@
+def _kw(q: str, *words) -> bool:
+    return any(w in q for w in words)
+
+
 def _wrap(thinking: str, heading: str, body: str, mode: str) -> str:
     if mode == "forge_thinking":
         return (
@@ -12,8 +16,7 @@ def _wrap(thinking: str, heading: str, body: str, mode: str) -> str:
 def generate_science_response(query: str, mode: str) -> str:
     q = query.lower().strip()
 
-    # ── Quantum Mechanics ─────────────────────────────────────────────────────
-    if any(w in q for w in ("quantum", "planck", "boltzmann", "heisenberg", "wave function", "superposition", "entanglement")):
+    if _kw(q, "quantum", "planck", "boltzmann", "heisenberg", "wave function", "superposition", "entanglement"):
         heading = "Quantum Mechanics: The Science of the Very Small"
         body = (
             "Quantum mechanics describes nature at the atomic and subatomic scale, where classical physics breaks down:\n\n"
@@ -35,8 +38,7 @@ def generate_science_response(query: str, mode: str) -> str:
             "- **Parameters:** Planck energy-frequency constants, uncertainty bounds, wave-particle duality."
         )
 
-    # ── Standard Model ────────────────────────────────────────────────────────
-    elif any(w in q for w in ("standard model", "particle physics", "quark", "lepton", "boson", "higgs", "fermion", "gluon")):
+    elif _kw(q, "standard model", "particle physics", "quark", "lepton", "boson", "higgs", "fermion", "gluon"):
         heading = "The Standard Model of Particle Physics"
         body = (
             "The Standard Model is the theory describing three of the four fundamental forces (electromagnetic, weak, strong) and classifying all known elementary particles:\n\n"
@@ -59,8 +61,7 @@ def generate_science_response(query: str, mode: str) -> str:
             "- **Parameters:** Fermion/boson taxonomy, force carrier identification, Higgs mechanism."
         )
 
-    # ── CRISPR ────────────────────────────────────────────────────────────────
-    elif any(w in q for w in ("crispr", "gene editing", "gene edit", "cas9")):
+    elif _kw(q, "crispr", "gene editing", "gene edit", "cas9"):
         heading = "CRISPR-Cas9: Precision Gene Editing"
         body = (
             "CRISPR (Clustered Regularly Interspaced Short Palindromic Repeats) is a revolutionary gene-editing technology derived from bacterial immune systems:\n\n"
@@ -82,8 +83,7 @@ def generate_science_response(query: str, mode: str) -> str:
             "- **Parameters:** CRISPR mechanism, Cas9 function, therapeutic applications."
         )
 
-    # ── Nuclear Fission vs Fusion ─────────────────────────────────────────────
-    elif any(w in q for w in ("fission", "fusion", "nuclear", "reactor", "uranium", "plutonium", "deuterium", "tritium")):
+    elif _kw(q, "fission", "fusion", "nuclear", "reactor", "uranium", "plutonium", "deuterium", "tritium"):
         heading = "Nuclear Fission vs. Nuclear Fusion"
         body = (
             "Both fission and fusion release enormous energy via Einstein's **E = mc²**, but they work oppositely:\n\n"
@@ -106,8 +106,7 @@ def generate_science_response(query: str, mode: str) -> str:
             "- **Parameters:** Fission chain reaction mechanics, fusion plasma confinement, energy yields."
         )
 
-    # ── Speed of Light & Relativity ───────────────────────────────────────────
-    elif any(w in q for w in ("speed of light", "relativity", "special relativity", "general relativity", "e=mc", "time dilation", "length contraction")):
+    elif _kw(q, "speed of light", "relativity", "special relativity", "general relativity", "e=mc", "time dilation", "length contraction"):
         heading = "The Speed of Light & Einstein's Relativity"
         body = (
             "**The Speed of Light**\n"
@@ -131,8 +130,7 @@ def generate_science_response(query: str, mode: str) -> str:
             "- **Parameters:** Special vs general relativity, time dilation, E=mc² derivation."
         )
 
-    # ── Black Holes ───────────────────────────────────────────────────────────
-    elif any(w in q for w in ("black hole", "event horizon", "singularity", "hawking radiation", "spaghettification")):
+    elif _kw(q, "black hole", "event horizon", "singularity", "hawking radiation", "spaghettification"):
         heading = "Black Holes & Event Horizons"
         body = (
             "A **black hole** is a region of spacetime where gravity is so extreme that nothing — not even light — can escape.\n\n"
@@ -155,8 +153,7 @@ def generate_science_response(query: str, mode: str) -> str:
             "- **Parameters:** Event horizon mechanics, Hawking radiation, observational milestones."
         )
 
-    # ── String Theory ─────────────────────────────────────────────────────────
-    elif any(w in q for w in ("string theory", "m-theory", "extra dimension", "brane", "superstring")):
+    elif _kw(q, "string theory", "m-theory", "extra dimension", "brane", "superstring"):
         heading = "String Theory: An Overview"
         body = (
             "**String theory** is a theoretical framework proposing that the fundamental constituents of nature are not point-like particles but tiny one-dimensional **vibrating strings** of energy.\n\n"
@@ -178,8 +175,7 @@ def generate_science_response(query: str, mode: str) -> str:
             "- **Parameters:** Vibrational modes, extra dimensions, M-theory unification."
         )
 
-    # ── Climate Science ───────────────────────────────────────────────────────
-    elif any(w in q for w in ("greenhouse", "carbon cycle", "climate", "global warming", "co2", "atmosphere", "ozone")):
+    elif _kw(q, "greenhouse", "carbon cycle", "climate", "global warming", "co2", "atmosphere", "ozone"):
         heading = "Climate Science: The Greenhouse Effect & Carbon Cycle"
         body = (
             "**The Greenhouse Effect**\n"
@@ -204,8 +200,7 @@ def generate_science_response(query: str, mode: str) -> str:
             "- **Parameters:** Greenhouse gas mechanisms, carbon cycle flows, anthropogenic warming data."
         )
 
-    # ── Human Genetics ────────────────────────────────────────────────────────
-    elif any(w in q for w in ("dominant", "recessive", "chromosome", "allele", "mendel", "genetics", "heredity", "trait", "genotype", "phenotype")):
+    elif _kw(q, "dominant", "recessive", "chromosome", "allele", "mendel", "genetics", "heredity", "trait", "genotype", "phenotype"):
         heading = "Human Genetics: Inheritance & Chromosomes"
         body = (
             "**Chromosomes**\n"
@@ -233,8 +228,7 @@ def generate_science_response(query: str, mode: str) -> str:
             "- **Parameters:** Dominant/recessive allele mechanics, inheritance patterns, chromosome structure."
         )
 
-    # ── Neuroscience ──────────────────────────────────────────────────────────
-    elif any(w in q for w in ("neuron", "synapse", "brain wave", "neuroscience", "action potential", "dendrite", "axon", "neurotransmitter")):
+    elif _kw(q, "neuron", "synapse", "brain wave", "neuroscience", "action potential", "dendrite", "axon", "neurotransmitter"):
         heading = "Neuroscience: Neurons, Synapses & Brain Waves"
         body = (
             "The brain is a network of ~**86 billion neurons** communicating via electrical and chemical signals.\n\n"
@@ -263,8 +257,7 @@ def generate_science_response(query: str, mode: str) -> str:
             "- **Parameters:** Neuron anatomy, synaptic transmission, EEG brain wave frequencies."
         )
 
-    # ── General Chemistry ─────────────────────────────────────────────────────
-    elif any(w in q for w in ("chemistry", "element", "carbon", "noble", "electroneg")):
+    elif _kw(q, "chemistry", "element", "carbon", "noble", "electroneg"):
         heading = "Molecular Chemistry & Electronegativity Scales"
         body = (
             "Chemical interactions are governed by electron configurations and atomic properties:\n\n"
@@ -281,8 +274,7 @@ def generate_science_response(query: str, mode: str) -> str:
             "- **Parameters:** Carbon bonding geometries, Pauling electronegativity scales."
         )
 
-    # ── DNA / Biology ─────────────────────────────────────────────────────────
-    elif any(w in q for w in ("dna", "gene", "cell", "transcription", "biology")):
+    elif _kw(q, "dna", "gene", "cell", "transcription", "biology"):
         heading = "Genetics, DNA Base-Pairing & Transcription"
         body = (
             "Biological life is coordinated at the molecular level inside cell nuclei:\n\n"
@@ -298,8 +290,7 @@ def generate_science_response(query: str, mode: str) -> str:
             "- **Parameters:** Hydrogen bonding differences between nucleic base pairings."
         )
 
-    # ── Mathematics ───────────────────────────────────────────────────────────
-    elif any(w in q for w in ("math", "constant", "golden ratio", "phi", "euler")):
+    elif _kw(q, "math", "constant", "golden ratio", "phi", "euler"):
         heading = "Pure Mathematical Limits & Irrational Constants"
         body = (
             "Mathematics uses unique irrational constants to map natural proportions and limit scales:\n\n"
