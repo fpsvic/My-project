@@ -110,82 +110,39 @@ HIGH_CONFIDENCE_KEYWORDS: list[str] = [
 # ─── General knowledge ────────────────────────────────────────────────────────
 
 GENERAL_KNOWLEDGE: dict[str, str] = {
-    # Biology
     "how many bones": "### Human Skeleton\n\nAn adult human body has **206 bones**. Babies are born with about **270 bones** — many fuse together during childhood and adolescence.\n\n**Major bone groups:**\n- Skull: 22 bones\n- Vertebral column (spine): 33 vertebrae\n- Ribcage: 24 ribs + sternum\n- Upper limbs: 64 bones\n- Lower limbs: 62 bones\n- Pelvis: 4 bones",
-
     "how many chromosomes": "### Human Chromosomes\n\nHumans have **46 chromosomes** arranged in **23 pairs**. Pair 23 determines biological sex: **XX** (female) or **XY** (male).\n\nChromosomes carry DNA genes that encode proteins and traits. Abnormal counts (aneuploidy) cause conditions such as Down syndrome (trisomy 21 = 47 chromosomes).",
-
     "how many cells": "### Cells in the Human Body\n\nThe human body contains approximately **37.2 trillion cells** (3.72 × 10¹³). The most abundant cells are **red blood cells** (~70% of all cells). Neurons, while only ~86 billion, are among the largest and most complex.",
-
-    # Geography
     "largest country": "### World's Largest Countries by Area\n\n1. 🇷🇺 **Russia** — 17.1 million km²\n2. 🇨🇦 **Canada** — 10.0 million km²\n3. 🇺🇸 **United States** — 9.8 million km²\n4. 🇨🇳 **China** — 9.6 million km²\n5. 🇧🇷 **Brazil** — 8.5 million km²",
-
     "tallest mountain": "### World's Highest Mountains\n\n1. **Mount Everest** (Nepal/Tibet) — **8,848.86 m** (29,031.7 ft) — highest point above sea level\n2. **K2** (Pakistan/China) — 8,611 m\n3. **Kangchenjunga** (Nepal/India) — 8,586 m\n\nIf measured from Earth's center, **Chimborazo** (Ecuador) wins at 6,384 km from Earth's core due to equatorial bulge.",
-
     "deepest ocean": "### Deepest Points in the Ocean\n\n**Challenger Deep** in the **Mariana Trench** (Pacific Ocean) is the deepest known point: **10,935 meters (35,876 ft)** below sea level.\n\n[EARTH_CARD: topic: Challenger Deep, Mariana Trench | value: 10,935 m depth | style: sky]",
-
     "longest river": "### World's Longest Rivers\n\n1. **Nile River** (Africa) — **6,650 km** (4,130 mi)\n2. **Amazon River** (South America) — 6,400 km\n3. **Yangtze River** (China) — 6,300 km\n\nNote: The Amazon vs Nile debate is ongoing — some measurements give the Amazon the edge depending on headwater definitions.",
-
     "capital of": "I can help with world capitals! Here are some:\n\n- 🇫🇷 France → **Paris**\n- 🇩🇪 Germany → **Berlin**\n- 🇯🇵 Japan → **Tokyo**\n- 🇦🇺 Australia → **Canberra**\n- 🇧🇷 Brazil → **Brasília**\n- 🇨🇦 Canada → **Ottawa**\n- 🇲🇽 Mexico → **Mexico City**\n- 🇨🇳 China → **Beijing**\n- 🇮🇳 India → **New Delhi**\n- 🇷🇺 Russia → **Moscow**",
-
-    # Animals
     "fastest animal": "### World's Fastest Animals\n\n**Air:** 🦅 **Peregrine Falcon** — **389 km/h (242 mph)** in a dive (fastest animal alive)\n**Land:** 🐆 **Cheetah** — **112 km/h (70 mph)** over short bursts\n**Water:** 🐬 **Black Marlin** — **129 km/h (80 mph)**\n**Insect:** **Dragonfly** — ~97 km/h",
-
     "largest animal": "### World's Largest Animals\n\n**Living:** 🐋 **Blue Whale** — up to **33 meters (110 ft)** long, weighing **180 metric tons** — the largest animal ever known to exist.\n\n**Land animal:** African Bush Elephant — up to 6,000 kg\n**Largest reptile:** Saltwater Crocodile — up to 1,000 kg",
-
     "smartest animal": "### Most Intelligent Animals\n\n1. **Great Apes** (chimpanzees, bonobos, gorillas, orangutans) — closest cognitive relatives to humans\n2. **Dolphins** — self-aware, complex language, tool use\n3. **Elephants** — grief, empathy, mirror self-recognition\n4. **Crows & Ravens** — use tools, plan for the future, solve multi-step puzzles\n5. **Octopuses** — remarkable problem solving despite a distributed nervous system",
-
-    # Technology
     "what is ai": "### Artificial Intelligence\n\n**AI** is the simulation of human intelligence processes by machines. Key branches:\n\n- **Machine Learning (ML)** — systems that learn from data without explicit programming\n- **Deep Learning** — neural networks with many layers (powers image recognition, LLMs)\n- **Natural Language Processing (NLP)** — understanding and generating human language\n- **Computer Vision** — teaching machines to interpret visual input\n- **Reinforcement Learning** — agents that learn by trial-and-error with reward signals\n\nModern LLMs like GPT-4 and Claude use transformer architectures trained on massive text datasets.",
-
     "what is machine learning": "### Machine Learning\n\nMachine Learning is a subset of AI where models **learn patterns from data** rather than following explicit rules.\n\n**3 main paradigms:**\n- **Supervised learning** — trained on labeled examples (spam detection, image classification)\n- **Unsupervised learning** — finds hidden structure in unlabeled data (clustering, dimensionality reduction)\n- **Reinforcement learning** — agents maximize cumulative rewards through environment interaction\n\n**Neural Networks & Deep Learning:**\nMulti-layer networks of artificial neurons that learn hierarchical representations. Deep learning powers image recognition, speech synthesis, and large language models.\n\n**Transformers** (2017) revolutionized NLP — the architecture behind GPT, BERT, and Claude uses self-attention to process entire sequences in parallel.\n\n**Popular frameworks:** TensorFlow, PyTorch, scikit-learn, Keras, JAX\n\n**Popular algorithms:** Linear/Logistic Regression, Decision Trees, Random Forests, SVMs, k-NN, Gradient Boosting (XGBoost), Neural Networks.",
-
     "what is blockchain": "### Blockchain\n\nA **blockchain** is a distributed, immutable ledger where data is stored in chronologically linked blocks. Each block contains:\n- Transaction data\n- A cryptographic hash of the previous block\n- A timestamp\n\n**Key properties:** Decentralized, transparent, tamper-resistant.\n**Use cases:** Cryptocurrencies (Bitcoin, Ethereum), smart contracts, supply chain tracking, NFTs.",
-
     "what is http": "### HTTP / HTTPS\n\n**HTTP** (HyperText Transfer Protocol) is the foundation of web communication — a request-response protocol between clients and servers.\n\n**HTTPS** = HTTP + **TLS/SSL encryption**.\n\n**Common methods:**\n```\nGET    — retrieve data\nPOST   — submit data\nPUT    — update resource\nDELETE — remove resource\nPATCH  — partial update\n```",
-
     "what is an api": "### API (Application Programming Interface)\n\nAn **API** is a contract that defines how software components communicate.\n\n**REST API** — uses HTTP methods, returns JSON/XML, stateless\n**GraphQL** — single endpoint, client specifies exact data shape\n**WebSocket** — persistent bidirectional connection\n**gRPC** — high-performance binary protocol by Google\n\n```python\nimport requests\nres = requests.get('https://api.example.com/data')\nprint(res.json())\n```",
-
     "what is the internet": "### The Internet\n\nThe Internet is a **global network of interconnected computers** communicating via the **TCP/IP protocol suite**.\n\n**Key layers:**\n1. **Physical** — fiber optic cables, copper, wireless radio\n2. **IP layer** — routing packets between networks\n3. **TCP layer** — reliable ordered delivery\n4. **Application** — HTTP, DNS, SMTP, FTP\n\nThe **Web** (WWW) is just one application running on the Internet — others include email, VoIP, and peer-to-peer file sharing.",
-
-    # Math facts
     "what is pi": "### π (Pi)\n\n**π ≈ 3.14159265358979...**\n\nPi is the ratio of a circle's circumference to its diameter — an **irrational and transcendental** number.\n\n[MATH_CARD: formula: C = 2πr | result: π ≈ 3.14159265... | style: indigo]\n\n**Fun facts:**\n- Pi has been computed to over **100 trillion digits**\n- It appears in probability (Buffon's needle), Fourier analysis, and quantum mechanics\n- March 14 (3/14) is celebrated as Pi Day",
-
     "what is euler": "### Euler's Number (e)\n\n**e ≈ 2.71828182845904...**\n\nEuler's number is the base of the **natural logarithm** and defines continuous exponential growth.\n\n[MATH_CARD: formula: e = lim(1 + 1/n)ⁿ as n→∞ | result: e ≈ 2.71828... | style: indigo]\n\n**Euler's Identity:** e^(iπ) + 1 = 0 — often called the most beautiful equation in mathematics.",
-
     "fibonacci": "### Fibonacci Sequence\n\n**0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89...**\n\nEach number is the sum of the two preceding numbers. Named after Italian mathematician **Leonardo Fibonacci** (c. 1202).\n\nThe ratio of consecutive Fibonacci numbers converges to the **Golden Ratio φ ≈ 1.6180339887...**\n\n```python\ndef fib(n):\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n```",
-
     "pythagorean": "### Pythagorean Theorem\n\nFor a right triangle with legs **a** and **b** and hypotenuse **c**:\n\n[MATH_CARD: formula: a² + b² = c² | result: c = √(a² + b²) | style: indigo]\n\n**Example:** a=3, b=4 → c = √(9+16) = √25 = **5**\n\nProved by Euclid (~300 BC) but known to Babylonians 1,000 years earlier. There are over **370 known proofs**.",
-
-    # Health / body
     "normal body temperature": "### Normal Body Temperature\n\n**98.6°F (37°C)** is the classic average, but healthy temperatures range from **97°F to 99°F (36.1–37.2°C)**.\n\n- **Fever:** ≥100.4°F (38°C)\n- **Hypothermia:** <95°F (35°C)\n- Temperature varies by time of day (lowest ~6 AM, highest ~4–6 PM)",
-
     "blood type": "### ABO Blood Types\n\n| Type | Antigen | Can donate to | Can receive from |\n|------|---------|--------------|------------------|\n| A | A | A, AB | A, O |\n| B | B | B, AB | B, O |\n| AB | A+B | AB only | All types (universal recipient) |\n| O | None | All types (universal donor) | O only |\n\n**Rh factor** (+/-) adds another dimension (e.g. O+ is the most common type).",
-
-    # Universe / physics
     "age of universe": "### Age of the Universe\n\nThe universe is approximately **13.8 billion years old** (13.787 ± 0.020 Gyr), estimated from the cosmic microwave background radiation (CMB) measured by the Planck satellite.\n\n[COSMIC_CARD: formula: t₀ = 1/H₀ × correction factor | result: ~13.8 billion years | style: indigo]",
-
     "how many stars": "### Stars in the Universe\n\n- **Milky Way galaxy:** ~**200–400 billion** stars\n- **Observable universe:** estimated **10²⁴ stars** (1 septillion)\n- That's more stars than grains of sand on all of Earth's beaches combined.",
-
-    # Famous people
     "who is einstein": "### Albert Einstein (1879–1955)\n\nGerman-born theoretical physicist who developed the **Theory of Relativity**.\n\n**Key contributions:**\n- **Special Relativity** (1905): E = mc² — mass-energy equivalence\n- **General Relativity** (1915): gravity curves spacetime\n- **Photoelectric Effect** — foundation of quantum mechanics (Nobel Prize 1921)\n- **Brownian Motion** — evidence for atoms\n\nBorn in Ulm, Germany, he emigrated to the US in 1933 and worked at Princeton's Institute for Advanced Study.",
-
     "who is newton": "### Isaac Newton (1643–1727)\n\nEnglish mathematician and physicist who laid foundations for classical mechanics.\n\n**Key contributions:**\n- **Laws of Motion** (3 laws describing force, mass, acceleration)\n- **Universal Gravitation** — F = Gm₁m₂/r²\n- **Calculus** (co-invented with Leibniz)\n- **Optics** — light prism decomposition\n\nHis *Principia Mathematica* (1687) is considered one of the most influential scientific works ever written.",
-
     "who is tesla": "### Nikola Tesla (1856–1943)\n\nSerbian-American inventor and electrical engineer.\n\n**Key contributions:**\n- **AC (Alternating Current)** electrical system — now the global standard\n- **Tesla Coil** — high-voltage resonant transformer\n- **Induction Motor** — drives modern industrial equipment\n- **Radio** — disputed priority with Marconi\n- **X-ray** research, fluorescent lighting, wireless power transmission\n\nWorked for Edison before famously feuding in the 'War of Currents'.",
-
-    # World records
     "fastest computer": "### World's Fastest Supercomputers (2024)\n\n1. **Frontier** (Oak Ridge, USA) — **1.194 ExaFLOPS** (10¹⁸ floating-point ops/sec)\n2. **Aurora** (Argonne, USA) — ~1.012 ExaFLOPS\n3. **Eagle** (Microsoft Azure) — 561.2 PetaFLOPS\n\n1 ExaFLOP = 1 quintillion calculations per second.",
-
     "oldest language": "### World's Oldest Languages\n\n- **Tamil** — ~5,000 years old, still widely spoken (75M+ speakers)\n- **Sanskrit** — ~3,500 years, ancestor of many Indo-European languages\n- **Hebrew** — ~3,000 years, revived as a modern language\n- **Greek** — continuous written record since ~800 BC\n- **Sumerian** — oldest *written* language (~3,100 BC), now extinct\n\nProto-languages like Proto-Indo-European are estimated to be 6,000–8,000 years old but were never written.",
-
     "world population": "### World Population\n\nAs of 2024, the world population is approximately **8.1 billion people**.\n\n**Top 5 most populous countries:**\n1. 🇮🇳 India — ~1.44 billion\n2. 🇨🇳 China — ~1.41 billion\n3. 🇺🇸 USA — ~340 million\n4. 🇮🇩 Indonesia — ~280 million\n5. 🇵🇰 Pakistan — ~240 million",
 
-    # Food / cooking
     "how to boil an egg": "### How to Boil an Egg\n\n1. Place egg(s) in a pot, cover with cold water (1 inch above)\n2. Bring to a **full rolling boil** over high heat\n3. Reduce to medium, set timer:\n   - **Soft boiled** (runny yolk): **6–7 minutes**\n   - **Medium** (jammy yolk): **9–10 minutes**\n   - **Hard boiled** (firm yolk): **12–13 minutes**\n4. Transfer immediately to an ice bath for 5 min to stop cooking\n5. Peel under running water\n\n**Altitude note:** Water boils below 100°C at altitude — add 1 minute per 1,000m above sea level.",
-
-    # ─── Science / Physics ────────────────────────────────────────────────────
-
     "speed of light": "### Speed of Light\n\nThe speed of light in a vacuum is exactly **c = 299,792,458 m/s** (~3 × 10⁸ m/s, or ~186,282 miles/second).\n\n[SCIENCE_CARD: topic: Speed of Light | value: c = 299,792,458 m/s | style: violet]\n\n**Einstein's mass-energy equivalence:**\n\n[SCIENCE_CARD: topic: Mass-Energy Equivalence | value: E = mc² | style: violet]\n\nThis means a tiny amount of mass converts to an enormous amount of energy — the principle behind nuclear reactions.\n\n**Real-world applications:**\n- **GPS satellites** must account for relativistic time dilation (clocks run faster in orbit) — without corrections, GPS would drift ~10 km/day\n- **Fiber optics** transmit data as pulses of light, making global internet possible\n- Light from the Sun takes ~8 minutes 20 seconds to reach Earth\n- Light from the nearest star (Proxima Centauri) takes ~4.24 years\n\n**Nothing with mass can reach c** — as objects accelerate toward c, relativistic mass increases toward infinity, requiring infinite energy.",
 
     "what is gravity": "### Gravity\n\nGravity is the fundamental force of attraction between objects with mass.\n\n**Newton's Law of Universal Gravitation (1687):**\n\n[SCIENCE_CARD: topic: Newton's Gravity | value: F = Gm₁m₂/r² | style: violet]\n\nWhere G = 6.674 × 10⁻¹¹ N·m²/kg² (gravitational constant).\n\n**Einstein's General Relativity (1915):**\nGravity is not a force but the **curvature of spacetime** caused by mass and energy. Massive objects warp the fabric of spacetime; other objects follow curved paths (geodesics) through that warped space.\n\n**Key values:**\n- Surface gravity on Earth: **g = 9.8 m/s²** (9.80665 m/s² exactly)\n- Objects in free fall accelerate at 9.8 m/s every second\n- **Escape velocity from Earth:** ~11.2 km/s (the speed needed to leave Earth's gravity well)\n- Escape velocity from the Sun: ~617.5 km/s\n\n**Predictions confirmed by GR:** gravitational lensing, gravitational waves (LIGO 2015), black holes, time dilation near massive objects.",
