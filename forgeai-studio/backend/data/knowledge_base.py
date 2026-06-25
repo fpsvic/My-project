@@ -309,7 +309,105 @@ GENERAL_KNOWLEDGE: dict[str, str] = {
     "famous paintings and art": "### Famous Works of Art\n\n**Most famous paintings:**\n| Work | Artist | Year | Location |\n|------|--------|------|----------|\n| Mona Lisa | Leonardo da Vinci | ~1503–1519 | Louvre, Paris |\n| The Starry Night | Vincent van Gogh | 1889 | MoMA, New York |\n| The Last Supper | Leonardo da Vinci | 1495–1498 | Milan (mural) |\n| The Persistence of Memory | Salvador Dalí | 1931 | MoMA, New York |\n| Girl with a Pearl Earring | Johannes Vermeer | ~1665 | Mauritshuis, The Hague |\n| The Birth of Venus | Sandro Botticelli | ~1484–1486 | Uffizi, Florence |\n| Guernica | Pablo Picasso | 1937 | Museo Reina Sofía, Madrid |\n| The Scream | Edvard Munch | 1893 | National Gallery, Oslo |\n\n**Most expensive paintings ever sold:**\n1. Salvator Mundi (da Vinci, attributed) — $450.3M (2017)\n2. Interchange (de Kooning) — $300M (2015)\n3. The Card Players (Cézanne) — $259M (2011)\n\n**Art movements:**\n- **Renaissance** (1300s–1600s): realistic depiction, perspective, humanism\n- **Baroque** (1600–1750): dramatic light, emotion (Caravaggio, Rembrandt)\n- **Impressionism** (1860s–1880s): light and color, outdoor painting (Monet, Renoir)\n- **Cubism** (1907): multiple perspectives simultaneously (Picasso, Braque)\n- **Surrealism** (1920s): dream imagery, subconscious (Dalí, Magritte)\n- **Abstract Expressionism** (1940s–50s): emotion through non-representational form (Pollock)",
     "famous music facts": "### Music — Facts and History\n\n**Best-selling music artists of all time (estimated):**\n1. The Beatles — ~600 million records\n2. Elvis Presley — ~500 million\n3. Michael Jackson — ~350 million (Thriller: best-selling album ~70M)\n4. Madonna — ~300 million\n5. Led Zeppelin — ~300 million\n\n**Musical scales and notes:**\n- Western music uses 12 chromatic notes per octave: C, C#, D, D#, E, F, F#, G, G#, A, A#, B\n- An octave doubles the frequency: A4 = 440 Hz; A5 = 880 Hz\n- Pythagoras discovered mathematical relationships between musical intervals (~550 BC)\n\n**Genres timeline:**\n- Classical (1750–1820): Mozart, Beethoven, Haydn\n- Romantic (1820–1900): Chopin, Liszt, Brahms, Wagner\n- Jazz (1910s): New Orleans, African American musical tradition\n- Blues (1920s): roots of rock and jazz\n- Rock and Roll (1950s): Elvis, Chuck Berry, Little Richard\n- Psychedelic/Rock (1960s): Beatles, Rolling Stones, Jimi Hendrix\n- Disco (1970s), Punk (1970s), Hip-Hop (1970s Bronx NYC)\n- Electronic/EDM (1980s–90s), Pop (ongoing)\n\n**Music and the brain:**\n- Music activates more parts of the brain simultaneously than any other human activity\n- 'Musical chills' (frisson) occur in ~50% of people — dopamine release\n- ASMR and binaural beats affect brainwave states\n- Mozart Effect: temporary improvement in spatial reasoning after listening to Mozart (modest, short-lived)",
     "famous movies and cinema": "### Cinema — Key Facts and History\n\n**Film history milestones:**\n- **1878:** Eadweard Muybridge photographs a galloping horse — proto-cinema\n- **1895:** Lumière Brothers screen the first public film (Paris) — *Workers Leaving the Factory*\n- **1927:** *The Jazz Singer* — first feature film with synchronized dialogue\n- **1939:** *Gone with the Wind* / *The Wizard of Oz* — golden age of Hollywood\n- **1975:** *Jaws* — first modern blockbuster\n- **1977:** *Star Wars* — transformed franchises and special effects\n- **1994:** Digital cinema begins; *The Lion King* uses CGI\n- **1999:** *The Matrix* — bullet-time, landmark VFX\n- **2009:** *Avatar* — 3D blockbuster, highest-grossing film ever (~$2.923 billion)\n\n**Highest-grossing films of all time:**\n1. Avatar (2009) — $2.923B\n2. Avengers: Endgame (2019) — $2.799B\n3. Avatar: The Way of Water (2022) — $2.32B\n4. Titanic (1997) — $2.26B\n5. Star Wars: The Force Awakens (2015) — $2.07B\n\n**Oscar records:**\n- *Ben-Hur* (1959), *Titanic* (1997), *The Lord of the Rings: The Return of the King* (2003) — each won 11 Oscars (tied most wins)\n- *All About Eve* (1950) and *Titanic* (1997) — most nominations: 14\n\n**Streaming revolution:** Netflix (2007), Disney+ (2019) disrupted theatrical model; ~250 million Netflix subscribers (2024)",
+
+    # ── Alias keys: Lions ────────────────────────────────────────────────────────
+    "lion facts": "tell me about lions",
+    "lions facts": "tell me about lions",
+    "about lions": "tell me about lions",
+    "info on lions": "tell me about lions",
+    "lion information": "tell me about lions",
+    "what is a lion": "tell me about lions",
+
+    # ── Alias keys: Dolphins ─────────────────────────────────────────────────────
+    "dolphin facts": "tell me about dolphins",
+    "about dolphins": "tell me about dolphins",
+    "dolphin information": "tell me about dolphins",
+    "are dolphins smart": "tell me about dolphins",
+    "how smart are dolphins": "tell me about dolphins",
+
+    # ── Alias keys: Sharks ───────────────────────────────────────────────────────
+    "shark facts": "tell me about sharks",
+    "about sharks": "tell me about sharks",
+    "are sharks dangerous": "tell me about sharks",
+    "shark information": "tell me about sharks",
+    "great white shark": "tell me about sharks",
+
+    # ── Alias keys: Elephants ────────────────────────────────────────────────────
+    "elephant facts": "tell me about elephants",
+    "about elephants": "tell me about elephants",
+    "elephant information": "tell me about elephants",
+    "how big is an elephant": "tell me about elephants",
+    "elephant size": "tell me about elephants",
+
+    # ── Alias keys: DNA ──────────────────────────────────────────────────────────
+    "dna facts": "what is dna",
+    "how does dna work": "what is dna",
+    "explain dna": "what is dna",
+    "what does dna do": "what is dna",
+    "dna structure": "what is dna",
+
+    # ── Alias keys: Photosynthesis ───────────────────────────────────────────────
+    "photosynthesis facts": "explain photosynthesis",
+    "how does photosynthesis work": "explain photosynthesis",
+    "what is photosynthesis": "explain photosynthesis",
+    "photosynthesis process": "explain photosynthesis",
+
+    # ── Alias keys: Black holes ──────────────────────────────────────────────────
+    "black hole facts": "what is a black hole",
+    "how do black holes work": "what is a black hole",
+    "explain black holes": "what is a black hole",
+    "black hole information": "what is a black hole",
+
+    # ── Alias keys: Evolution ────────────────────────────────────────────────────
+    "explain evolution": "what is evolution",
+    "how does evolution work": "what is evolution",
+    "evolution facts": "what is evolution",
+    "darwin evolution": "what is evolution",
+
+    # ── Alias keys: Internet ─────────────────────────────────────────────────────
+    "how was the internet invented": "important inventions in history",
+    "who made the internet": "important inventions in history",
+    "internet history": "how does the internet work",
+    "when was the internet invented": "important inventions in history",
+    "history of internet": "how does the internet work",
+
+    # ── Alias keys: Space ────────────────────────────────────────────────────────
+    "facts about space": "interesting science facts",
+    "space facts": "interesting science facts",
+    "interesting space facts": "interesting science facts",
+    "cool space facts": "interesting science facts",
+
+    # ── Alias keys: Solar system ─────────────────────────────────────────────────
+    "tell me about the solar system": "### The Solar System\n\nOur solar system consists of the **Sun** and everything gravitationally bound to it.\n\n**The 8 planets (in order from the Sun):**\n1. **Mercury** — smallest; no atmosphere; extreme temperature swings (−180°C to 430°C)\n2. **Venus** — hottest planet (462°C average); thick CO₂ atmosphere; rotates backward\n3. **Earth** — only known planet with life; one large moon\n4. **Mars** — the 'Red Planet'; two moons (Phobos, Deimos); largest volcano (Olympus Mons, 22 km high)\n5. **Jupiter** — largest planet; 95 known moons (including Ganymede, largest moon in the solar system); Great Red Spot storm ongoing 350+ years\n6. **Saturn** — spectacular ring system (water ice and rock); least dense planet (would float on water); 146 known moons\n7. **Uranus** — rotates on its side (98° axial tilt); ice giant; faint rings\n8. **Neptune** — farthest planet; strongest winds in the solar system (~2,100 km/h); 16 known moons\n\n**Other objects:**\n- **Asteroid Belt** — between Mars and Jupiter; ~1 million asteroids >1 km\n- **Kuiper Belt** — beyond Neptune; home of Pluto (dwarf planet) and other icy bodies\n- **Oort Cloud** — distant spherical shell; source of long-period comets\n\n**The Sun:** Contains 99.86% of all mass in the solar system; diameter ~109× Earth; surface temp ~5,778 K; core temp ~15 million K; converts 600 million tonnes of hydrogen to helium every second.",
+    "solar system facts": "tell me about the solar system",
+    "how many planets": "tell me about the solar system",
+    "planets in order": "tell me about the solar system",
+    "what are the planets": "tell me about the solar system",
+
+    # ── New entries: common questions ────────────────────────────────────────────
+    "how old is the earth": "### Age of the Earth\n\nThe Earth is approximately **4.54 billion years old** (4.54 ± 0.05 Ga).\n\n**How we know:**\n- **Radiometric dating** of the oldest zircon crystals found on Earth: ~4.4 billion years old (Jack Hills, Western Australia)\n- Radiometric dating of meteorites (chondrites) that formed at the same time as the solar system: ~4.56 billion years\n- The Earth and Moon likely formed from the same proto-planetary disk — lunar samples returned by Apollo missions date to ~4.5 billion years\n\n**Formation:**\n- The solar system condensed from a rotating cloud of gas and dust (solar nebula) ~4.6 billion years ago\n- Gravity caused the nebula to collapse; the Sun ignited at the center\n- Remaining material formed a protoplanetary disk; planetesimals accreted into planets\n- Earth formed through **accretion** — collisions and merging of planetesimals over ~10–20 million years\n- The Moon likely formed ~4.5 billion years ago when a Mars-sized body (Theia) collided with proto-Earth — the **Giant Impact Hypothesis**\n\n**Early Earth:**\n- Initially molten (magma ocean) from impact heat and radioactive decay\n- Heavy iron sank to form the core (differentiation)\n- Lighter silicates formed the mantle and crust\n- Water likely delivered by comets and asteroids; liquid oceans formed ~4.4 billion years ago\n- First life: ~3.5–3.8 billion years ago (stromatolites)",
+
+    "how old is the universe": "### Age of the Universe\n\nThe universe is approximately **13.8 billion years old** (13.787 ± 0.020 billion years).\n\n**How we measure it:**\n- **Cosmic Microwave Background (CMB):** The afterglow of the Big Bang, measured precisely by the Planck satellite (2009–2013). Temperature fluctuations encode the age, composition, and geometry of the early universe.\n- **Hubble constant (H₀):** The rate of expansion of the universe. If we know how fast space is expanding, we can work backward to the Big Bang. H₀ ≈ 67–73 km/s/Mpc (exact value debated — the 'Hubble tension').\n- **Oldest stars:** Globular clusters contain stars estimated at 13.2–13.6 billion years — consistent with the universe's age.\n\n**Timeline:**\n- t = 0: Big Bang — all matter, energy, space, and time originate in an extremely hot, dense state\n- t = 380,000 years: Universe cools enough for atoms to form; CMB is released\n- t = 180 million years: First stars ignite\n- t = 1 billion years: First galaxies form\n- t = 9.2 billion years: Our solar system forms\n- t = 13.8 billion years: Present day\n\n**The Hubble Tension:** Two measurement methods give slightly different values of H₀ (67.4 vs. 73.0 km/s/Mpc), suggesting possible new physics beyond the standard cosmological model.",
+
+    "what is an atom": "### The Atom\n\nAn **atom** is the smallest unit of an element that retains the chemical properties of that element.\n\n**Structure:**\n- **Nucleus** (at the center, ~10⁻¹⁵ m):\n  - **Protons** — positively charged; number of protons = atomic number = defines the element\n  - **Neutrons** — no charge; same mass as protons; number can vary (isotopes)\n- **Electrons** — negatively charged; orbit the nucleus in **electron shells**; ~1/1836 the mass of a proton\n\n**Size:** An atom is ~10⁻¹⁰ m (0.1 nanometers) in diameter. The nucleus is ~100,000× smaller than the atom — if an atom were the size of a football stadium, the nucleus would be a marble at the center.\n\n**Models of the atom:**\n- **Dalton (1803):** Atoms are solid, indivisible spheres\n- **Thomson (1897):** 'Plum pudding' — electrons embedded in positive charge\n- **Rutherford (1911):** Dense positive nucleus with electrons orbiting around it (gold foil experiment)\n- **Bohr (1913):** Electrons in fixed circular orbits (energy levels); electrons jump between levels by absorbing/emitting photons\n- **Quantum model (1920s–present):** Electrons exist in **probability clouds** (orbitals) described by wave functions; exact position uncertain (Heisenberg)\n\n**Key facts:**\n- A hydrogen atom is the simplest: 1 proton, 0 neutrons, 1 electron\n- ~99.9% of an atom's mass is in the nucleus\n- Atoms are mostly empty space\n- ~7 billion billion billion (7 × 10²⁷) atoms in the human body",
+
+    "how do vaccines work": "### How Vaccines Work\n\nVaccines **train the immune system** to recognize and fight specific pathogens without causing the disease.\n\n**The core mechanism:**\n1. **Antigen exposure:** The vaccine introduces an antigen — a piece of the pathogen (protein, weakened/killed virus, or mRNA instructions to make a protein) that the immune system can recognize\n2. **Immune response:** The immune system mounts a response as if facing the real pathogen:\n   - Macrophages engulf and present the antigen\n   - Helper T cells activate B cells and cytotoxic T cells\n   - **B cells produce antibodies** specific to that antigen\n3. **Memory formation:** After the response, **memory B cells and memory T cells** persist — sometimes for decades or life\n4. **Future protection:** When the real pathogen is encountered, the immune system recognizes it immediately and responds within hours — neutralizing it before it causes disease\n\n**Types of vaccines:**\n| Type | Examples | How it works |\n|------|---------|-------------|\n| Live-attenuated | MMR, chickenpox, yellow fever | Weakened pathogen; strong, long-lasting immunity |\n| Inactivated | Flu shot, polio (IPV), hepatitis A | Killed pathogen; often needs boosters |\n| Subunit/protein | Hepatitis B, HPV, pertussis | Only specific proteins from pathogen |\n| mRNA | COVID-19 (Pfizer, Moderna) | mRNA instructs cells to make antigen protein |\n| Viral vector | COVID-19 (AstraZeneca, J&J) | Harmless virus carries antigen gene |\n\n**Herd immunity:**\nWhen enough of a population is immune (via vaccination or prior infection), transmission chains break — protecting those who cannot be vaccinated. Threshold varies by disease:\n- Measles: ~95% immunity needed\n- Polio: ~80–85%\n- COVID-19: ~70–90% (varies by variant)\n\n**Safety:** Vaccines undergo multi-phase clinical trials involving tens of thousands of participants before approval. Serious adverse events are rare and monitored post-approval via systems like VAERS.",
 }
+
+
+# Resolve alias entries: any value that is itself a key in GENERAL_KNOWLEDGE
+# gets replaced with that key's content so lookups return the real answer.
+def _resolve_aliases(d: dict) -> None:
+    changed = True
+    while changed:
+        changed = False
+        for k, v in list(d.items()):
+            if isinstance(v, str) and v in d:
+                d[k] = d[v]
+                changed = True
+
+_resolve_aliases(GENERAL_KNOWLEDGE)
+
 
 
 
