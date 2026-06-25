@@ -8,11 +8,6 @@ def _match(q: str, *keywords: str) -> bool:
 
 
 def _thinking_wrap(thinking: str, heading: str, body: str, mode: str) -> str:
-    if mode == "forge_thinking":
-        return (
-            f"### <i class=\"fa-solid fa-infinity text-violet-500 mr-2\"></i> Thinking Process\n"
-            f"{thinking}\n\n---\n\n### {heading}\n{body}"
-        )
     if mode == "forge_instant":
         first_para = body.split("\n\n")[0]
         return f"### {heading}\n\n{first_para}"

@@ -692,14 +692,6 @@ def _dispatch_game(query: str, q: str, mode: str) -> str:
         "Hit **\"Play Game\"** inside the code box to launch it instantly!"
     )
     block = f"\n\n```html\n{game['code']}\n```"
-    if mode == "forge_thinking":
-        return (
-            "### Thinking Process\n"
-            f"- **Genre detected**: {game['title']}\n"
-            "- **Theme, speed, and modifiers** derived from your description.\n"
-            "- **HTML5 Canvas engine** compiled with vanilla JS.\n\n---\n\n"
-            + intro + block
-        )
     return intro + block
 
 def _dispatch_app(query: str, mode: str) -> str:
@@ -713,14 +705,6 @@ def _dispatch_app(query: str, mode: str) -> str:
         "Click **\"Launch App\"** in the code box to open it live."
     )
     block = f"\n\n```html\n{app['code']}\n```"
-    if mode == "forge_thinking":
-        return (
-            "### Thinking Process\n"
-            f"- **App type**: {app['type'].replace('_', ' ').title()}\n"
-            "- **Theme** picked from your description.\n"
-            "- **Single-file HTML5** built with vanilla JS.\n\n---\n\n"
-            + intro + block
-        )
     return intro + block
 
 def _dispatch_dynamic(query: str, mode: str) -> str:
@@ -730,14 +714,6 @@ def _dispatch_dynamic(query: str, mode: str) -> str:
         "Click **\"Launch App\"** in the code box to open it live."
     )
     block = f"\n\n```html\n{app['code']}\n```"
-    if mode == "forge_thinking":
-        return (
-            "### Thinking Process\n"
-            f"- **Detected entity**: {app['type'].replace('_', ' ').title()}\n"
-            "- **Fields & features** inferred from your description.\n"
-            "- **Single-file HTML5** with localStorage persistence.\n\n---\n\n"
-            + intro + block
-        )
     return intro + block
 
 def _dispatch_update(query: str, history: list, mode: str) -> str:

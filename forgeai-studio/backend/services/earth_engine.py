@@ -1,9 +1,4 @@
 def _wrap(thinking: str, heading: str, body: str, mode: str) -> str:
-    if mode == "forge_thinking":
-        return (
-            f"### <i class=\"fa-solid fa-mountain-sun text-emerald-500 mr-2\"></i> Thinking Process\n"
-            f"{thinking}\n\n---\n\n### {heading}\n{body}"
-        )
     if mode == "forge_instant":
         return f"### {heading}\n\n{body.split(chr(10)+chr(10))[0]}"
     return f"### {heading}\n{body}"
