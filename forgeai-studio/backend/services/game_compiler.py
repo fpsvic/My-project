@@ -1995,18 +1995,27 @@ _PLAYER_NOUNS = [
     "ball", "cube", "star", "plane", "submarine", "penguin",
     "chicken", "duck", "cow", "pig", "horse", "unicorn", "fox", "wolf",
     "bunny", "rabbit", "turtle", "hamster", "mouse", "rat",
+    "samurai", "astronaut", "mage", "elf", "dwarf", "vampire", "zombie",
+    "superhero", "cop", "spy", "chef", "farmer", "miner", "sailor", "pilot",
+    "racer", "runner", "jumper", "shooter",
 ]
 _COLLECT_NOUNS = [
     "coin", "star", "gem", "crystal", "fruit", "apple", "banana",
     "cherry", "pizza", "cookie", "candy", "heart", "ring", "key",
     "treasure", "gold", "diamond", "orb", "token", "dot", "pellet",
     "mushroom", "berry", "flower", "egg", "fish",
+    "potion", "scroll", "armor", "shield", "sword", "wand", "hat", "boot",
+    "glove", "pearl", "ammo", "fuel", "battery", "lightning bolt", "feather",
+    "leaf", "seed", "book", "letter", "package",
 ]
 _ENEMY_NOUNS = [
     "zombie", "monster", "enemy", "villain", "spike", "fire",
     "bomb", "bullet", "trap", "demon", "skeleton",
     "goblin", "orc", "troll", "vampire", "spider", "cactus",
     "rock", "block", "wall", "missile", "meteor", "barrel",
+    "pirate", "bandit", "witch", "dragon", "snake", "bear", "shark", "robot",
+    "alien", "ninja", "assassin", "thief", "ghost", "curse", "poison",
+    "lava", "ice", "thunder", "laser", "arrow",
 ]
 
 

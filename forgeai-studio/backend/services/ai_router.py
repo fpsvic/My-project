@@ -665,23 +665,8 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     best_intent = max(scores, key=lambda k: scores[k])
     best_score = scores[best_intent]
     if best_score < 30:
-        return (
-            "### ForgeAI Cognitive Response\n\n"
-            f"I couldn't confidently identify what you meant by **\"{query}\"**.\n\n"
-            "Here's what I can do:\n\n"
-            "**Build apps & tools:**\n"
-            "> `make a calculator` · `build a pomodoro timer` · `create a budget tracker`\n"
-            "> `make a drawing canvas` · `build a quiz` · `create a habit tracker`\n\n"
-            "**Build games:**\n"
-            "> `make flappy bird` · `build a snake game` · `create a space shooter`\n\n"
-            "**Ask me:**\n"
-            "> Math: `derivative of x³ + 2x` · `what is 15% of 340`\n"
-            "> Space: `how far is Neptune` · `what is a neutron star`\n"
-            "> Science: `explain quantum entanglement` · `what is DNA`\n"
-            "> Animals: `tell me about lions` · `how fast is a cheetah` · `facts about dolphins`\n"
-            "> History: `who was Abraham Lincoln` · `what caused the Civil War`\n"
-            "> Code: `history of JavaScript` · `what is recursion` · `Python hello world`\n"
-        )
+        from services.web_search import web_lookup
+        return web_lookup(query)
     if best_intent == "greeting":
         return _dispatch_greeting(mode)
     if best_intent == "build_game":
@@ -710,4 +695,5 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
         for key, answer in GENERAL_KNOWLEDGE.items():
             if key in q:
                 return answer
-    return _dispatch_greeting(mode)
+    from services.web_search import web_lookup
+    return web_lookup(query)
