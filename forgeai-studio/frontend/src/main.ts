@@ -6,6 +6,7 @@ import { initSidebar, renderSessionList, createNewSession } from './ui/sidebar';
 import { initChatForm, initQuickToggle, renderCurrentSessionChat } from './ui/chat';
 import { initModeSelector, updateModeSelectorUI } from './ui/modeSelector';
 import { openSandboxFromCode, closeSandbox } from './ui/sandbox';
+import { initSettings, loadSettings } from './ui/settings';
 import type { Mode } from './types';
 
 // Expose globals required by inline HTML onclick attributes
@@ -50,6 +51,10 @@ function bootstrap(): void {
   const stored = loadSessions();
   state.sessions = stored;
 
+  // Sync quick mode from persisted settings
+  const saved = loadSettings();
+  state.quickMode = saved.quickMode;
+
   const savedMode = loadActiveMode();
   if (savedMode && MODE_CONFIGS[savedMode]) {
     state.activeMode = savedMode as Mode;
@@ -70,6 +75,7 @@ function bootstrap(): void {
   initChatForm();
   initQuickToggle();
   initModeSelector();
+  initSettings();
 }
 
 window.addEventListener('load', bootstrap);

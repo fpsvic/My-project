@@ -1,5 +1,6 @@
 import { state } from '../state';
 import { sendChat } from '../api';
+import { settings } from './settings';
 import { saveSessions } from '../utils/storage';
 import { escapeHTML } from '../utils/helpers';
 import { formatMarkdown } from './markdown';
@@ -34,19 +35,18 @@ export function addThinkingIndicatorUI(): HTMLElement {
         <i class="fa-solid fa-brain text-slate-400" id="thinkingIcon"></i>
         <span id="thinkingText">Formulating system response...</span>
       </div>
-      <div class="h-3 shimmer-bg rounded w-3/4"></div>
-      <div class="h-3 shimmer-bg rounded w-1/2"></div>
+      ${settings.showTypingShimmer ? '<div class="h-3 shimmer-bg rounded w-3/4"></div><div class="h-3 shimmer-bg rounded w-1/2"></div>' : ''}
     </div>`;
   feed.appendChild(row);
   feed.scrollTop = feed.scrollHeight;
 
   // After 700ms with no response, assume web search is happening
-  const searchTimer = setTimeout(() => {
+  const searchTimer = settings.showSearchIndicator ? setTimeout(() => {
     const icon = row.querySelector('#thinkingIcon') as HTMLElement | null;
     const text = row.querySelector('#thinkingText') as HTMLElement | null;
     if (icon) { icon.className = 'fa-solid fa-globe text-indigo-400'; }
     if (text) { text.textContent = 'Searching the web...'; }
-  }, 700);
+  }, 700) : undefined;
 
   (row as any)._searchTimer = searchTimer;
   return row;
@@ -80,7 +80,7 @@ export async function addAIStreamUI(fullText: string, stream = true): Promise<HT
   // If the response contains a code block, skip streaming — render instantly
   const hasCodeBlock = fullText.includes('```');
 
-  if (!stream || hasCodeBlock) {
+  if (!stream || hasCodeBlock || !settings.streamingText) {
     body.innerHTML = formatMarkdown(fullText);
     // Only scroll to bottom if user is already near the bottom
     const distFromBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
