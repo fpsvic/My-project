@@ -424,6 +424,73 @@ GENERAL_KNOWLEDGE: dict[str, str] = {
     "what is an atom": "### The Atom\n\nAn **atom** is the smallest unit of an element that retains the chemical properties of that element.\n\n**Structure:**\n- **Nucleus** (at the center, ~10⁻¹⁵ m):\n  - **Protons** — positively charged; number of protons = atomic number = defines the element\n  - **Neutrons** — no charge; same mass as protons; number can vary (isotopes)\n- **Electrons** — negatively charged; orbit the nucleus in **electron shells**; ~1/1836 the mass of a proton\n\n**Size:** An atom is ~10⁻¹⁰ m (0.1 nanometers) in diameter. The nucleus is ~100,000× smaller than the atom — if an atom were the size of a football stadium, the nucleus would be a marble at the center.\n\n**Models of the atom:**\n- **Dalton (1803):** Atoms are solid, indivisible spheres\n- **Thomson (1897):** 'Plum pudding' — electrons embedded in positive charge\n- **Rutherford (1911):** Dense positive nucleus with electrons orbiting around it (gold foil experiment)\n- **Bohr (1913):** Electrons in fixed circular orbits (energy levels); electrons jump between levels by absorbing/emitting photons\n- **Quantum model (1920s–present):** Electrons exist in **probability clouds** (orbitals) described by wave functions; exact position uncertain (Heisenberg)\n\n**Key facts:**\n- A hydrogen atom is the simplest: 1 proton, 0 neutrons, 1 electron\n- ~99.9% of an atom's mass is in the nucleus\n- Atoms are mostly empty space\n- ~7 billion billion billion (7 × 10²⁷) atoms in the human body",
 
     "how do vaccines work": "### How Vaccines Work\n\nVaccines **train the immune system** to recognize and fight specific pathogens without causing the disease.\n\n**The core mechanism:**\n1. **Antigen exposure:** The vaccine introduces an antigen — a piece of the pathogen (protein, weakened/killed virus, or mRNA instructions to make a protein) that the immune system can recognize\n2. **Immune response:** The immune system mounts a response as if facing the real pathogen:\n   - Macrophages engulf and present the antigen\n   - Helper T cells activate B cells and cytotoxic T cells\n   - **B cells produce antibodies** specific to that antigen\n3. **Memory formation:** After the response, **memory B cells and memory T cells** persist — sometimes for decades or life\n4. **Future protection:** When the real pathogen is encountered, the immune system recognizes it immediately and responds within hours — neutralizing it before it causes disease\n\n**Types of vaccines:**\n| Type | Examples | How it works |\n|------|---------|-------------|\n| Live-attenuated | MMR, chickenpox, yellow fever | Weakened pathogen; strong, long-lasting immunity |\n| Inactivated | Flu shot, polio (IPV), hepatitis A | Killed pathogen; often needs boosters |\n| Subunit/protein | Hepatitis B, HPV, pertussis | Only specific proteins from pathogen |\n| mRNA | COVID-19 (Pfizer, Moderna) | mRNA instructs cells to make antigen protein |\n| Viral vector | COVID-19 (AstraZeneca, J&J) | Harmless virus carries antigen gene |\n\n**Herd immunity:**\nWhen enough of a population is immune (via vaccination or prior infection), transmission chains break — protecting those who cannot be vaccinated. Threshold varies by disease:\n- Measles: ~95% immunity needed\n- Polio: ~80–85%\n- COVID-19: ~70–90% (varies by variant)\n\n**Safety:** Vaccines undergo multi-phase clinical trials involving tens of thousands of participants before approval. Serious adverse events are rare and monitored post-approval via systems like VAERS.",
+
+    # ─── Animal predator/prey entries ────────────────────────────────────────────
+
+    "what eats lions": "Lions are **apex predators** with no natural predators as adults. Cubs and weakened individuals may be killed by hyenas, leopards, or rival lion prides; humans are the only significant threat to adult lions through hunting and habitat encroachment.",
+    "lion predators": "what eats lions",
+    "what eats tigers": "Tigers are **apex predators** with no natural predators. The primary threats to tigers are humans — through poaching, habitat loss, and conflict — rather than other animals.",
+    "tiger predators": "what eats tigers",
+    "what eats wolves": "Adult wolves have **no significant natural predators**, though bears and cougars occasionally kill wolves over food competition. The greatest threat is humans, who have historically hunted wolves to near-extinction across much of their range.",
+    "wolf predators": "what eats wolves",
+    "what eats sharks": "Most large sharks are **apex predators** with few natural enemies. Orcas (killer whales) are the primary predator of sharks, including great whites — orcas have been documented flipping sharks upside down to induce tonic immobility before eating their livers. Large sharks also occasionally prey on smaller shark species.",
+    "shark predators": "what eats sharks",
+    "what eats elephants": "Adult elephants have **no natural predators** due to their size. Lion prides and spotted hyena clans occasionally attack calves or elderly/sick individuals. Humans remain the greatest threat through poaching for ivory and habitat destruction.",
+    "elephant predators": "what eats elephants",
+    "what eats dolphins": "Dolphins are preyed upon by **large sharks** (great white, tiger, bull) and **orcas**. Orcas are particularly effective dolphin hunters, using coordinated pack tactics. Humans also threaten dolphins through bycatch, hunting, and ocean noise pollution.",
+    "dolphin predators": "what eats dolphins",
+    "what eats eagles": "Eagles are near-apex aerial predators with few natural enemies. **Large owls** (great horned owls) prey on eaglets and sleeping adults; **raccoons and snakes** raid nests for eggs and chicks. Other large raptors may compete with or occasionally kill eagles. Adult eagles have effectively no regular natural predators.",
+    "eagle predators": "what eats eagles",
+    "what eats gorillas": "Adult gorillas, especially silverbacks, have **no significant natural predators** in the wild. Leopards occasionally prey on younger or isolated gorillas. Humans are by far the greatest threat through poaching and habitat destruction.",
+    "gorilla predators": "what eats gorillas",
+    "what eats cheetahs": "Cheetahs are regularly outcompeted and killed by **lions, leopards, and spotted hyenas**, which also steal their kills. Eagles may take unguarded cubs. Cheetahs avoid direct confrontation with larger predators due to their slender build — they are not apex predators despite their speed.",
+    "cheetah predators": "what eats cheetahs",
+    "what eats penguins": "Penguins are preyed upon both in the water and on land. **Leopard seals** and **orcas** are their primary marine predators. On land, **skuas, petrels, and sheathbills** steal eggs and attack chicks. Antarctic penguins face **fur seals** as additional threats near shore.",
+    "penguin predators": "what eats penguins",
+    "what eats polar bears": "Adult polar bears are **apex predators** with no natural enemies. Walruses can injure or kill polar bears that attack them, and other polar bears (particularly large males) will kill cubs and occasionally weaker adults. Climate change and human hunting are the primary existential threats.",
+    "polar bear predators": "what eats polar bears",
+    "what eats bees": "Bees are preyed upon by a wide range of animals including **bears** (which raid hives for honey and larvae), **birds** (bee-eaters, woodpeckers, starlings), **spiders**, **dragonflies**, **praying mantises**, **badgers**, and **skunks**. Varroa mites and pesticides are the most damaging modern threats to bee populations.",
+    "bee predators": "what eats bees",
+    "what eats crocodiles": "Adult large crocodiles are **apex predators** with virtually no natural enemies. Juveniles and eggs are vulnerable — **monitor lizards, herons, marabou storks, raccoons, and other crocodiles** raid nests and eat hatchlings. Hippos and large elephants will kill crocodiles that threaten them. Humans are the main threat to adult crocodiles.",
+    "crocodile predators": "what eats crocodiles",
+    "what eats hippos": "Adult hippos are **apex predators** with no significant natural enemies due to their size and aggression. Nile crocodiles and lions may prey on young calves, but adult hippos are rarely attacked. Hippos kill more humans annually than almost any other large African animal.",
+    "hippo predators": "what eats hippos",
+    "what eats giraffes": "Giraffes are preyed upon by **lions** (the primary predator), **leopards** (which take calves), **spotted hyenas**, and **African wild dogs**. Giraffe calves are especially vulnerable in their first weeks; adults can defend themselves with powerful kicks capable of killing a lion. **Crocodiles** take giraffes during river crossings.",
+    "giraffe predators": "what eats giraffes",
+    "what eats rhinos": "Adult rhinos have **no natural predators** due to their size and thick skin. Lions, hyenas, and wild dogs occasionally prey on calves. Humans are overwhelmingly the greatest threat to rhinos through poaching for their horns, which has driven several subspecies to the brink of extinction.",
+    "rhino predators": "what eats rhinos",
+    "what eats zebras": "Zebras are prey for **lions** (primary predator), **spotted hyenas, African wild dogs, leopards, cheetahs**, and **Nile crocodiles** (during river crossings). Zebras defend themselves with powerful kicks and often rely on herd vigilance and flight. They are a keystone prey species in African ecosystems.",
+    "zebra predators": "what eats zebras",
+    "what eats koalas": "Koalas face predation from **dingoes, powerful owls, wedge-tailed eagles, goannas (monitor lizards)**, and **pythons**. Humans are the greatest modern threat through habitat loss, vehicle strikes, and dog attacks. Chlamydia disease, exacerbated by stress from habitat loss, is also a major population threat.",
+    "koala predators": "what eats koalas",
+    "what eats kangaroos": "Kangaroos are preyed upon by **dingoes** (primary natural predator), **wedge-tailed eagles** (which take joeys and young), **quolls**, and **pythons**. Humans hunt kangaroos for meat and pest control. Introduced foxes prey on smaller kangaroo species. Adult red kangaroos can defend themselves with powerful kicks.",
+    "kangaroo predators": "what eats kangaroos",
+    "what eats pandas": "Giant pandas have **no significant natural predators** as adults due to their size and remote mountain habitat. Snow leopards and jackals may occasionally prey on panda cubs. Habitat destruction and extremely low reproductive rates pose the main threats to panda survival.",
+    "panda predators": "what eats pandas",
+    "what eats snow leopards": "Snow leopards are **apex predators** in their high-mountain habitat with no natural enemies. They face competition from wolves at lower elevations. The main threats to snow leopards are humans — through poaching for fur and bones, retaliatory killing by herders whose livestock they attack, and climate change shrinking their prey's habitat.",
+    "snow leopard predators": "what eats snow leopards",
+    "what eats jaguars": "Jaguars are **apex predators** in their range with no natural predators. Anacondas and caimans may occasionally attack young or small jaguars, but adult jaguars dominate all other predators in Central and South America. Humans are the primary threat through deforestation, ranching conflicts, and illegal hunting.",
+    "jaguar predators": "what eats jaguars",
+    "what eats orcas": "Orcas (killer whales) are the **apex predators of the ocean** with absolutely no natural predators. No other animal regularly preys on orcas. Threats come entirely from humans: pollution (PCBs), prey depletion (particularly salmon), boat noise, and captivity.",
+    "orca predators": "what eats orcas",
+    "what eats blue whales": "Blue whales are effectively **apex predators** with no regular natural predators due to their enormous size. Pods of **orcas** are the only animals known to attack blue whales — usually targeting calves or weakened adults in coordinated hunts. Historic commercial whaling decimated the species; today ship strikes and entanglement in fishing gear are the main threats.",
+    "blue whale predators": "what eats blue whales",
+    "what eats manta rays": "Manta rays have few natural predators due to their large size. **Large sharks** (tiger sharks, great whites) and **orcas** occasionally prey on them. Manta rays have no venomous tail spine for defense. By far the greatest threat is humans — targeted fishing for gill plates used in traditional medicine has caused sharp population declines.",
+    "manta ray predators": "what eats manta rays",
+    "what eats bald eagles": "Adult bald eagles are **apex aerial predators** with no regular natural predators. Great horned owls may attack nesting eagles at night, and raccoons or snakes raid eagle nests. Eagle chicks are vulnerable to larger raptors and terrestrial predators. DDT poisoning (now banned) nearly drove bald eagles to extinction in the 20th century.",
+    "bald eagle predators": "what eats bald eagles",
+    "what eats owls": "Owls face few natural predators. **Larger owls** prey on smaller owls — the great horned owl is known to kill barred owls, barn owls, and others. **Hawks and eagles** may attack owls during daylight. Nest-robbing by corvids, raccoons, and snakes is common. Humans pose threats via habitat loss, vehicle strikes, and rodenticides.",
+    "owl predators": "what eats owls",
+    "what eats cobras": "Cobras are preyed upon by **mongooses** (famous for their speed, agility, and partial immunity to cobra venom), **secretary birds, eagles** (particularly snake eagles), **honey badgers**, and **king cobras** (which eat other snakes). The mongoose-cobra interaction is one of nature's most iconic predator-prey battles.",
+    "cobra predators": "what eats cobras",
+    "what eats pythons": "Pythons face predation mainly when young. **King cobras, monitor lizards, birds of prey, and crocodiles** prey on juvenile pythons. In Florida, invasive Burmese pythons have few natural predators, which contributes to their explosive population growth. Large adult reticulated pythons have virtually no natural enemies.",
+    "python predators": "what eats pythons",
+    "what eats anacondas": "Adult anacondas have **no significant natural predators** due to their massive size. Caimans and jaguars may occasionally attack smaller anacondas. Humans hunt anacondas for skin and out of fear. Hatchlings are vulnerable to a wide range of predators including herons, caimans, and large fish.",
+    "anaconda predators": "what eats anacondas",
+    "what eats octopuses": "Octopuses are preyed upon by **moray eels, large fish (grouper, barracuda), dolphins, seals, sea otters, sharks**, and **large seabirds**. Octopuses use ink clouds, camouflage, jet propulsion, and arm autotomy to escape. Despite their many defenses, they are important prey items in many marine food webs.",
+    "octopus predators": "what eats octopuses",
+    "what eats komodo dragons": "Adult Komodo dragons are **apex predators** on their islands with no natural enemies. Juveniles, however, are vulnerable — **adult Komodo dragons themselves** will cannibalize young ones, which is why juveniles live in trees. Feral pigs may occasionally compete with or harm juveniles. Habitat loss and reduced prey availability are the main conservation threats.",
+    "komodo dragon predators": "what eats komodo dragons",
 }
 
 
@@ -439,10 +506,6 @@ def _resolve_aliases(d: dict) -> None:
                 changed = True
 
 _resolve_aliases(GENERAL_KNOWLEDGE)
-
-
-
-
 
 
 # ─── Coding help ──────────────────────────────────────────────────────────────
