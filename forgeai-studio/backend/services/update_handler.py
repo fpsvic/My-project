@@ -36,7 +36,7 @@ def extract_last_code(history: list[dict]) -> str | None:
     for msg in reversed(history):
         if msg.get("role") != "assistant":
             continue
-        text = msg.get("content", "")
+        text = msg.get("content") or msg.get("text", "")
         m = re.search(r"```html\n([\s\S]*?)```", text)
         if m:
             return m.group(1).strip()

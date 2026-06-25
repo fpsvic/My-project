@@ -56,12 +56,15 @@ export async function addAIStreamUI(fullText: string, stream = true): Promise<HT
   feed.appendChild(row);
 
   const body = row.querySelector('.response-body') as HTMLElement;
-  const isNearBottom = () =>
-    feed.scrollHeight - feed.scrollTop - feed.clientHeight < 120;
 
-  if (!stream) {
+  // If the response contains a code block, skip streaming — render instantly
+  const hasCodeBlock = fullText.includes('```');
+
+  if (!stream || hasCodeBlock) {
     body.innerHTML = formatMarkdown(fullText);
-    feed.scrollTop = feed.scrollHeight;
+    // Only scroll to bottom if user is already near the bottom
+    const distFromBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+    if (distFromBottom < 300) feed.scrollTop = feed.scrollHeight;
     return row;
   }
 
@@ -69,13 +72,22 @@ export async function addAIStreamUI(fullText: string, stream = true): Promise<HT
     const words = fullText.split(' ');
     let i = 0;
     const accumulated: string[] = [];
+    let userScrolled = false;
+
+    const onScroll = () => {
+      const distFromBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+      userScrolled = distFromBottom > 150;
+    };
+    feed.addEventListener('scroll', onScroll, { passive: true });
+
     const timer = setInterval(() => {
       if (i < words.length) {
         accumulated.push(words[i++]);
         body.innerHTML = formatMarkdown(accumulated.join(' '));
-        if (isNearBottom()) feed.scrollTop = feed.scrollHeight;
+        if (!userScrolled) feed.scrollTop = feed.scrollHeight;
       } else {
         clearInterval(timer);
+        feed.removeEventListener('scroll', onScroll);
         resolve(row);
       }
     }, 8);
@@ -172,7 +184,7 @@ export function initChatForm(): void {
       const res = await sendChat({
         query: text,
         mode: state.activeMode,
-        history: session.messages.map((m) => ({ role: m.role, text: m.text })),
+        history: session.messages.map((m) => ({ role: m.role, content: m.text, text: m.text })),
       });
 
       thinkingRow.remove();
