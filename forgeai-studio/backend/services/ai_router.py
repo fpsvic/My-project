@@ -28,6 +28,13 @@ from services.update_handler import is_update_request, apply_update
 def _normalize(raw: str) -> str:
     q = raw.lower().strip()
     q = re.sub(r"[''`]", "'", q)
+    # expand common contractions so "what's" matches "what is" etc.
+    q = q.replace("what's", "what is").replace("who's", "who is") \
+         .replace("how's", "how is").replace("where's", "where is") \
+         .replace("when's", "when is").replace("that's", "that is") \
+         .replace("it's", "it is").replace("there's", "there is") \
+         .replace("'s ", " is ").replace("'re ", " are ").replace("'ve ", " have ") \
+         .replace("'ll ", " will ").replace("'d ", " would ").replace("n't", " not")
     q = re.sub(r"[!?.,;:]+$", "", q)
     q = re.sub(r"\s+", " ", q)
     return q
@@ -507,7 +514,7 @@ _ASPECT_KEYWORDS = {
     "behavior":    ["behave", "social", "pack", "group", "herd", "pride", "lone", "nocturnal", "sleep", "smart", "intelligent", "communicate"],
     "temperature": ["hot", "cold", "temperature", "degrees", "celsius", "fahrenheit", "kelvin", "warm", "heat", "°c", "°f"],
     "distance":    ["far", "distance", "away", "light-year", "light year", "parsec", "au ", "km from", "miles from", "million km", "billion km"],
-    "date":        ["when", "year", "date", "founded", "born", "invented", "discovered", "created", "established", "built", "started", "fell", "ended", "began", "happened"],
+    "date":        ["when", "year", "date", "age", "old", "founded", "born", "invented", "discovered", "created", "established", "built", "started", "fell", "ended", "began", "happened"],
     "count":       ["how many", "number of", "count", "moons", "planets", "species", "bones", "teeth", "legs", "eyes", "heart"],
     "composition": ["made of", "consist", "composed", "element", "chemical", "formula", "contain", "ingredient", "structure", "makeup"],
     "inventor":    ["who made", "who invented", "who created", "who discovered", "who built", "who designed", "inventor", "creator", "discovered by", "founded by"],
@@ -560,6 +567,7 @@ _SPECIFIC_PATTERNS = [
     (r"how (hot|cold|warm|cool)", "temperature"),
     (r"how far", "distance"),
     (r"how many", "count"),
+    (r"how old (is|was|are|were|do)", "date"),
     (r"how long (does|do|did|will|can|could).{0,20}(live|last|take|survive)", "lifespan"),
     (r"what (year|date|time) (did|was|were|is)", "date"),
     (r"when (did|was|were|is|does)", "date"),
@@ -597,7 +605,10 @@ _STOP_WORDS = {
     "it","its","i","me","my","you","your","he","she","we","they","this","that",
     "and","or","but","so","if","not","about","how","what","when","where","who",
     "why","which","can","could","would","should","will","just","very","also",
-    "tell","me","give","explain","describe",
+    "tell","give","explain","describe",
+    # generic quantity / question words that cannot distinguish KB keys
+    "many","much","more","less","some","any","all","every","each","few","most",
+    "number","get","let","put","way","thing","things","lot",
 }
 
 def _query_keywords(q: str) -> list[str]:
@@ -634,7 +645,8 @@ def _try_extract_fact(answer: str, q: str) -> str | None:
             scored.append((hits, sent))
     if not scored:
         return None
-    scored.sort(key=lambda x: -x[0])
+    # Boost sentences that contain a number/unit (more likely to be the direct answer)
+    scored.sort(key=lambda x: (-(x[0] * 2 + bool(re.search(r'\d', x[1])))))
     top = [s for _, s in scored[:2]]
     return "  ".join(top)
 
@@ -812,21 +824,44 @@ def _quick_response(query: str, q: str) -> str:
 # --- MAIN ENTRY POINT ---
 
 def _kb_fact_lookup(q: str) -> str | None:
-    """For specific questions: score every KB key by keyword overlap and return the best match."""
+    """Return a KB answer for factual questions.
+
+    Pass 1 — direct substring: find the longest KB key that appears literally in the
+    query (e.g. "speed of sound" matches "what is the speed of sound in air").
+
+    Pass 2 — token overlap: for questions phrased differently from any key, require
+    at least 2 meaningful token hits AND coverage ≥ 50% of the key's tokens.
+    This avoids false positives like "many" matching "how many bones".
+    """
+    # Pass 1: longest key that is a literal substring of the query
+    best_len, best_answer = 0, None
+    for key, answer in GENERAL_KNOWLEDGE.items():
+        if key in q and len(key) > best_len:
+            best_len, best_answer = len(key), answer
+    if best_answer and best_len >= 5:  # skip single-word key matches
+        fact = _try_extract_fact(best_answer, q)
+        return fact if fact else best_answer
+
+    # Pass 2: token-based fallback — only for question-form queries
     if not _QUESTION_STARTERS.match(q):
         return None
-    # Use the full query tokens for scoring (not stripped), so "who invented internet"
-    # scores the key "who invented the internet" higher than "what is the internet"
     q_tokens = set(re.findall(r"[a-z0-9]+", q)) - _STOP_WORDS
-    if not q_tokens:
+    if len(q_tokens) < 2:
         return None
-    best_score, best_answer = 0, None
+    best_score, best_ratio, best_answer = 0, 0.0, None
     for key, answer in GENERAL_KNOWLEDGE.items():
-        key_tokens = set(re.findall(r"[a-z0-9]+", key))
+        key_tokens = set(re.findall(r"[a-z0-9]+", key)) - _STOP_WORDS
+        if not key_tokens:
+            continue
         hits = len(q_tokens & key_tokens)
-        if hits > best_score:
-            best_score, best_answer = hits, answer
-    if best_score >= max(1, len(q_tokens) // 2) and best_answer:
+        if hits < 2:
+            continue
+        ratio = hits / len(key_tokens)
+        if ratio < 0.5:
+            continue
+        if hits > best_score or (hits == best_score and ratio > best_ratio):
+            best_score, best_ratio, best_answer = hits, ratio, answer
+    if best_answer:
         fact = _try_extract_fact(best_answer, q)
         return fact if fact else best_answer
     return None
