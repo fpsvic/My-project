@@ -149,6 +149,29 @@ export function renderCurrentSessionChat(): void {
   feed.scrollTop = feed.scrollHeight;
 }
 
+export function initQuickToggle(): void {
+  const btn = document.getElementById('btnQuickMode');
+  const icon = document.getElementById('quickModeIcon');
+  if (!btn || !icon) return;
+
+  btn.addEventListener('click', () => {
+    state.quickMode = !state.quickMode;
+    if (state.quickMode) {
+      btn.classList.replace('bg-white', 'bg-emerald-500');
+      btn.classList.replace('border-slate-200', 'border-emerald-500');
+      btn.classList.replace('text-slate-500', 'text-white');
+      btn.classList.replace('hover:border-slate-300', 'hover:border-emerald-600');
+      icon.classList.replace('text-slate-400', 'text-white');
+    } else {
+      btn.classList.replace('bg-emerald-500', 'bg-white');
+      btn.classList.replace('border-emerald-500', 'border-slate-200');
+      btn.classList.replace('text-white', 'text-slate-500');
+      btn.classList.replace('hover:border-emerald-600', 'hover:border-slate-300');
+      icon.classList.replace('text-white', 'text-slate-400');
+    }
+  });
+}
+
 export function initChatForm(): void {
   const form = document.getElementById('chatForm');
   const input = document.getElementById('userInput') as HTMLTextAreaElement | null;
@@ -185,6 +208,7 @@ export function initChatForm(): void {
         query: text,
         mode: state.activeMode,
         history: session.messages.map((m) => ({ role: m.role, content: m.text, text: m.text })),
+        quick_mode: state.quickMode,
       });
 
       thinkingRow.remove();

@@ -26,4 +26,5 @@ export const state = {
   currentSessionId: '',
   activeMode: 'forge_code' as Mode,
   activeLanguage: 'javascript',
+  quickMode: false,
 };

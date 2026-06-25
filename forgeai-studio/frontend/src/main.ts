@@ -3,7 +3,7 @@ import { loadSessions, saveSessions, loadActiveMode, saveActiveMode } from './ut
 import { generateId } from './utils/helpers';
 import { initSplash } from './ui/splash';
 import { initSidebar, renderSessionList, createNewSession } from './ui/sidebar';
-import { initChatForm, renderCurrentSessionChat } from './ui/chat';
+import { initChatForm, initQuickToggle, renderCurrentSessionChat } from './ui/chat';
 import { initModeSelector, updateModeSelectorUI } from './ui/modeSelector';
 import { openSandboxFromCode, closeSandbox } from './ui/sandbox';
 import type { Mode } from './types';
@@ -68,6 +68,7 @@ function bootstrap(): void {
   initSplash();
   initSidebar();
   initChatForm();
+  initQuickToggle();
   initModeSelector();
 }
 

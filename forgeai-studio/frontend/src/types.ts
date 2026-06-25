@@ -23,6 +23,7 @@ export interface ChatRequest {
   query: string;
   mode: Mode;
   history: Array<{ role: string; text: string }>;
+  quick_mode?: boolean;
 }
 
 export interface ChatResponse {

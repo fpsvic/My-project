@@ -130,7 +130,10 @@
                     <textarea id="userInput" rows="2" class="w-full bg-transparent px-4 pt-3.5 pb-1 text-sm text-slate-800 placeholder-slate-400 focus:outline-none resize-none rounded-t-xl"
                         placeholder="Ask to build games, evaluate calculus/trigonometry, or explore science systems..."></textarea>
                     <div class="flex items-center justify-between px-3 pb-2.5 shrink-0 rounded-b-xl">
-                        <div></div>
+                        <button type="button" id="btnQuickMode" class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-500 rounded-lg text-xs font-medium shadow-sm transition select-none" title="Quick mode: short, simple answers">
+                            <i class="fa-solid fa-bolt text-[10px] text-slate-400" id="quickModeIcon"></i>
+                            <span class="font-medium">Quick</span>
+                        </button>
                         <div class="flex items-center space-x-2">
                             <div class="relative">
                                 <button type="button" id="btnModeSelector" class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-600 hover:text-slate-900 rounded-lg text-xs font-medium shadow-sm transition">

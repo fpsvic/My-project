@@ -10,6 +10,7 @@ class ChatRequest(BaseModel):
     query: str
     mode: str = "forge_code"
     history: list[dict] = []
+    quick_mode: bool = False
 
 
 class ChatResponse(BaseModel):
@@ -22,7 +23,7 @@ def chat(req: ChatRequest):
     spell_result = spell_correct_query(req.query)
     processed = spell_result["text"]
     corrections = spell_result["corrections"]
-    text = generate_response(processed, req.mode, req.history)
+    text = generate_response(processed, req.mode, req.history, quick_mode=req.quick_mode)
     prefix = ""
     for c in corrections:
         prefix += f"[TYPO_ALERT: {c['original']} | {c['corrected']}]\n"

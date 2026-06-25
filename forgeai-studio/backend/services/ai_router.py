@@ -745,11 +745,68 @@ def _dispatch_programming(query: str, mode: str) -> str:
 
 
 # ══════════════════════════════════════════════════════════════
+# QUICK MODE
+# ══════════════════════════════════════════════════════════════
+
+def _quick_response(query: str, q: str) -> str:
+    """Return a short, direct one-liner or brief answer."""
+    # Math — just solve it
+    if _score_math(q) >= 30:
+        from services.math_engine import generate_math_response
+        full = generate_math_response(query, "forge_instant")
+        # Return only first paragraph / up to 3 lines
+        lines = [l for l in full.strip().splitlines() if l.strip()]
+        return "\n".join(lines[:3])
+
+    # Knowledge lookup — return first sentence of the entry
+    norm = q.strip().rstrip("?")
+    for key, val in GENERAL_KNOWLEDGE.items():
+        if norm in key or key in norm:
+            first = next((s.strip() for s in val.replace("\n", " ").split(".") if len(s.strip()) > 10), val[:200])
+            return first + "."
+
+    # Space / Earth / Science — first paragraph
+    if _score_space(q) >= 30:
+        full = generate_space_response(query, "forge_instant")
+        lines = [l for l in full.strip().splitlines() if l.strip()]
+        return "\n".join(lines[:2])
+
+    if _score_earth(q) >= 30:
+        full = generate_earth_response(query, "forge_instant")
+        lines = [l for l in full.strip().splitlines() if l.strip()]
+        return "\n".join(lines[:2])
+
+    if _score_science(q) >= 30:
+        full = generate_science_response(query, "forge_instant")
+        lines = [l for l in full.strip().splitlines() if l.strip()]
+        return "\n".join(lines[:2])
+
+    # Animals
+    if _score_animals(q) >= 30:
+        return _dispatch_animals(query, q)
+
+    # Build requests — not supported in quick mode
+    if _has_build_verb(q):
+        return "Quick mode is on — turn it off to build apps and games."
+
+    # Greeting
+    if _score_greeting(q) >= 50:
+        return "Hey! How can I help?"
+
+    # Fallback
+    return f"I'm not sure about \"{query}\". Try turning off Quick mode for a full answer."
+
+
+# ══════════════════════════════════════════════════════════════
 # MAIN ENTRY POINT
 # ══════════════════════════════════════════════════════════════
 
-def generate_response(query: str, mode: str, history: list) -> str:
+def generate_response(query: str, mode: str, history: list, quick_mode: bool = False) -> str:
     q = _normalize(query)
+
+    # ── Quick mode: short, direct answer ─────────────────────────────────────
+    if quick_mode:
+        return _quick_response(query, q)
 
     # ── Update check (before intent scoring) ──────────────────
     if is_update_request(q, history):
