@@ -535,19 +535,20 @@ def _score_animals(q: str) -> int:
     if not animal_match:
         return 0
 
-    score += 60
+    # Strong base score — animals must beat programming/knowledge scores
+    score += 85
 
     # boost for question patterns
     if any(q.startswith(p) for p in _ANIMAL_QUESTION_PREFIXES):
-        score += 20
+        score += 10
 
     # specific topic signals
     if any(w in q for w in ("habitat", "diet", "hunt", "prey", "predator", "endangered",
                              "species", "behavior", "speed", "size", "weight", "lifespan",
                              "migration", "breeding", "population", "facts")):
-        score += 15
+        score += 5
 
-    return min(score, 95)
+    return min(score, 100)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -811,6 +812,12 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     # ── Update check (before intent scoring) ──────────────────
     if is_update_request(q, history):
         return _dispatch_update(query, history, mode)
+
+    # ── Animal guard: dispatch immediately if an animal name is matched ────────
+    # This prevents animal queries from being hijacked by programming/knowledge
+    # scorers (e.g. single-letter lang tokens like "r"/"c" inflate prog scores).
+    if _score_animals(q) >= 60:
+        return _dispatch_animals(query, q)
 
     # ── Score every intent ────────────────────────────────────
     # "build anything" — verb present but no known noun → dynamic builder
