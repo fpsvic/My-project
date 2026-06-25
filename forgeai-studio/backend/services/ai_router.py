@@ -491,26 +491,88 @@ def _dispatch_greeting(mode: str) -> str:
         "Just tell me what you want to **build** or ask me anything!"
     )
 
+_ASPECT_KEYWORDS = {
+    "speed":    ["fast", "speed", "mph", "km/h", "quick", "run", "swim", "fly", "sprint"],
+    "size":     ["big", "size", "large", "heavy", "weight", "tall", "long", "huge", "giant", "small"],
+    "diet":     ["eat", "diet", "food", "feed", "prey on", "hunt", "consume"],
+    "habitat":  ["live", "habitat", "home", "found", "range", "region", "continent", "where"],
+    "predator": ["predator", "threat", "eats", "hunted by", "enemy", "danger"],
+    "lifespan": ["live", "lifespan", "age", "old", "years", "long"],
+    "behavior": ["behave", "social", "pack", "group", "herd", "pride", "lone", "nocturnal", "sleep", "smart", "intelligent"],
+}
+
+_ASPECT_INTROS = {
+    "speed":    ["Speed-wise, ", "When it comes to speed, ", "In terms of how fast — ", ""],
+    "size":     ["Size-wise, ", "As for size, ", "In terms of size, ", ""],
+    "diet":     ["Diet-wise, ", "As for what they eat — ", "When it comes to food, ", ""],
+    "habitat":  ["Habitat-wise, ", "As for where they live — ", "In terms of range, ", ""],
+    "predator": ["As for predators — ", "In the wild, ", "When it comes to threats — ", ""],
+    "lifespan": ["Lifespan-wise, ", "In terms of how long they live — ", ""],
+    "behavior": ["Behaviour-wise, ", "As for how they act — ", ""],
+}
+
+import random
+
+def _extract_aspect(answer: str, aspect: str) -> str | None:
+    keywords = _ASPECT_KEYWORDS.get(aspect, [])
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', answer) if s.strip()]
+    matches = [s for s in sentences if any(k in s.lower() for k in keywords)]
+    if not matches:
+        return None
+    intro = random.choice(_ASPECT_INTROS.get(aspect, [""]))
+    return intro + " ".join(matches[:2])
+
+def _detect_aspect(q: str) -> str | None:
+    for aspect, keywords in _ASPECT_KEYWORDS.items():
+        if any(k in q for k in keywords):
+            return aspect
+    return None
+
 def _dispatch_animals(query: str, q: str) -> str:
+    # Direct key match
     for key, answer in GENERAL_KNOWLEDGE.items():
-        if key in q:
+        if key in q or q in key:
+            aspect = _detect_aspect(q)
+            if aspect:
+                specific = _extract_aspect(answer, aspect)
+                if specific:
+                    return specific
             return answer
-    for animal in _ANIMAL_NAMES:
-        if animal in q:
-            for key, answer in GENERAL_KNOWLEDGE.items():
-                if animal in key:
-                    return answer
-    mentioned = next((a for a in sorted(_ANIMAL_NAMES, key=len, reverse=True) if a in q), "animal")
+    # Animal name match — find relevant entry
+    animal = next((a for a in sorted(_ANIMAL_NAMES, key=len, reverse=True) if a in q), None)
+    if animal:
+        aspect = _detect_aspect(q)
+        # Try specific aspect entry first (e.g. "what do lions eat")
+        aspect_key_map = {
+            "diet": f"what do {animal}s eat",
+            "habitat": f"where do {animal}s live",
+            "predator": f"what eats {animal}s",
+            "speed": f"how fast is a {animal}",
+        }
+        if aspect and aspect in aspect_key_map:
+            candidate = aspect_key_map[aspect]
+            if candidate in GENERAL_KNOWLEDGE:
+                return random.choice(_ASPECT_INTROS.get(aspect, [""])) + GENERAL_KNOWLEDGE[candidate]
+        # Fall back to general entry and extract aspect
+        for key, answer in GENERAL_KNOWLEDGE.items():
+            if animal in key and "tell me" in key:
+                if aspect:
+                    specific = _extract_aspect(answer, aspect)
+                    if specific:
+                        return specific
+                return answer
+        # Any entry mentioning animal
+        for key, answer in GENERAL_KNOWLEDGE.items():
+            if animal in key:
+                if aspect:
+                    specific = _extract_aspect(answer, aspect)
+                    if specific:
+                        return specific
+                return answer
+    mentioned = animal or "animal"
     return (
-        f"### {mentioned.title()}\n\n"
-        f"You asked about **{mentioned}s** — here's what I know:\n\n"
-        "**Quick facts:**\n"
-        f"- {mentioned.title()}s are fascinating animals studied by zoologists and wildlife biologists.\n"
-        "- They play important roles in their ecosystems as predators, prey, pollinators, or decomposers.\n\n"
-        "**Want to learn more?** Try asking:\n"
-        f"> `tell me about {mentioned}s` · `how fast is a {mentioned}` · `where do {mentioned}s live`\n\n"
-        "I also have detailed entries on: **lions, tigers, wolves, sharks, elephants, dolphins, eagles, "
-        "octopuses, gorillas, cheetahs, penguins, polar bears, bees, Komodo dragons, and more!**"
+        f"I have info on **{mentioned}s** — try asking:\n"
+        f"> `tell me about {mentioned}s` · `what do {mentioned}s eat` · `where do {mentioned}s live` · `what eats {mentioned}s`"
     )
 
 def _dispatch_game(query: str, q: str, mode: str) -> str:
@@ -693,7 +755,7 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
         return _dispatch_animals(query, q)
     if best_intent == "knowledge":
         for key, answer in GENERAL_KNOWLEDGE.items():
-            if key in q:
+            if key in q or q in key:
                 return answer
     from services.web_search import web_lookup
     return web_lookup(query)
