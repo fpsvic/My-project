@@ -439,6 +439,10 @@ _ANIMAL_QUESTION_PREFIXES = (
     "how many", "can a", "do", "does a", "are",
     "facts about", "information about", "info about",
     "talk about", "explain",
+    "whats the", "how big", "how heavy", "how smart", "how dangerous",
+    "can a", "do", "does", "are", "is a", "is the",
+    "what sounds", "what noise", "where is", "why do", "why does",
+    "when do", "can", "could a",
 )
 
 def _score_animals(q: str) -> int:

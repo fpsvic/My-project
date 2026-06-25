@@ -19,7 +19,8 @@ def _detect_genre(q: str) -> str:
     if any(w in q for w in (
         "car", "race", "racing", "drive", "driving", "road", "highway",
         "drift", "formula", "nascar", "kart", "vehicle", "truck", "traffic",
-        "lane", "speed racer", "dirt road",
+        "lane", "speed racer", "dirt road", "speedway", "grand prix", "lap",
+        "circuit", "burnout", "road rage", "car racing", "street race",
     )):
         return "racing"
 
@@ -29,7 +30,7 @@ def _detect_genre(q: str) -> str:
     if any(w in q for w in ("tic", "toe", "noughts", "xo", "x and o")):
         return "tictactoe"
 
-    if any(w in q for w in ("flap", "bird", "wing", "copter")):
+    if any(w in q for w in ("flap", "bird", "wing", "copter", "fly through", "dodge pipes", "flutter")):
         return "flappy"
 
     if any(w in q for w in ("brick", "break", "shatter", "breaker", "arkanoid")):
@@ -40,21 +41,22 @@ def _detect_genre(q: str) -> str:
 
     if any(w in q for w in (
         "zombie", "undead", "horde", "survival", "wave", "apocalypse",
+        "outbreak", "infection", "plague", "undead horde", "dead rising",
     )):
         return "zombie"
 
     if any(w in q for w in (
         "platform", "platformer", "jump", "mario", "side scroll",
-        "run and jump", "jump game",
+        "run and jump", "jump game", "side scroller", "hop", "leap", "parkour",
     )):
         return "platformer"
 
-    if any(w in q for w in ("maze", "labyrinth", "dungeon", "corridor")):
+    if any(w in q for w in ("maze", "labyrinth", "dungeon", "corridor", "escape", "find the exit", "navigate")):
         return "maze"
 
     if any(w in q for w in (
         "memory", "match card", "card flip", "card match", "concentration",
-        "matching game", "pair",
+        "matching game", "pair", "flip cards", "find pairs",
     )):
         return "memory"
 

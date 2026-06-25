@@ -23,6 +23,21 @@ _UPDATE_SIGNALS = [
     r"\badd (more|extra|a)\b",
     r"\bcan you (make|change|add|fix|improve)\b",
     r"\bnow (make|add|change|fix)\b",
+    r"\bcan u add\b",
+    r"\bpls add\b",
+    r"\badd more\b",
+    r"\bmake the\b.{0,30}\b(faster|slower|bigger|smaller|harder|easier|better)\b",
+    r"\bturn it (dark|light)\b",
+    r"\bswitch to (dark|light)\b",
+    r"\bi want (more|less)\b",
+    r"\bgive it\b",
+    r"\bgive me more\b",
+    r"\bnow make\b",
+    r"\blet me\b.{0,20}\badd\b",
+    r"\bthrow in\b",
+    r"\bput in\b",
+    r"\binclude a\b",
+    r"\balso make\b",
 ]
 
 
