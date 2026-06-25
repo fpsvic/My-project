@@ -397,10 +397,10 @@ GENERAL_KNOWLEDGE: dict[str, str] = {
     "darwin evolution": "what is evolution",
 
     # ── Alias keys: Internet ─────────────────────────────────────────────────────
-    "how was the internet invented": "important inventions in history",
-    "who made the internet": "important inventions in history",
+    "how was the internet invented": "who invented the internet",
+    "who made the internet": "who invented the internet",
     "internet history": "how does the internet work",
-    "when was the internet invented": "important inventions in history",
+    "when was the internet invented": "who invented the internet",
     "history of internet": "how does the internet work",
 
     # ── Alias keys: Space ────────────────────────────────────────────────────────
@@ -647,6 +647,129 @@ GENERAL_KNOWLEDGE: dict[str, str] = {
     "habitat of komodo dragons": "where do komodo dragons live",
     "komodo dragon habitat": "where do komodo dragons live",
     "where is a komodo dragon found": "where do komodo dragons live",
+
+    # ── Specific single-fact questions ──────────────────────────────────────
+    "how hot is the sun": "The **surface (photosphere)** of the Sun is approximately **5,500°C (9,932°F)**. The **corona** (outer atmosphere) paradoxically reaches **1–3 million °C**. The **core**, where nuclear fusion occurs, is approximately **15 million °C (27 million °F)**.",
+    "temperature of the sun": "how hot is the sun",
+    "how hot is the sun surface": "how hot is the sun",
+    "sun temperature": "how hot is the sun",
+
+    "how many moons does jupiter have": "Jupiter has **95 confirmed moons** (as of 2023). The four largest are the **Galilean moons** discovered by Galileo in 1610: **Io** (most volcanically active body in the solar system), **Europa** (subsurface ocean, candidate for extraterrestrial life), **Ganymede** (largest moon in the solar system, bigger than Mercury), and **Callisto** (heavily cratered ancient surface).",
+    "how many moons does saturn have": "Saturn has **146 confirmed moons** — the most of any planet in our solar system. The largest is **Titan**, which has a thick nitrogen atmosphere and lakes of liquid methane. **Enceladus** has water-ice geysers and a subsurface ocean.",
+    "moons of jupiter": "how many moons does jupiter have",
+    "jupiter moons count": "how many moons does jupiter have",
+
+    "when did the roman empire fall": "The **Western Roman Empire** fell on **September 4, 476 AD** when the Germanic chieftain **Odoacer** deposed the last emperor, **Romulus Augustulus**. The **Eastern Roman Empire** (Byzantine Empire) continued for nearly another 1,000 years until **1453 AD**, when Constantinople fell to the Ottoman Turks under Sultan Mehmed II.",
+    "fall of roman empire": "when did the roman empire fall",
+    "when did rome fall": "when did the roman empire fall",
+    "roman empire end": "when did the roman empire fall",
+
+    "who invented the internet": "The Internet evolved from **ARPANET**, funded by the US Defense Department in **1969**. Key inventors: **Vint Cerf** and **Bob Kahn** invented the **TCP/IP protocol** (1974) — the fundamental communication standard that makes the Internet work. **Tim Berners-Lee** invented the **World Wide Web** in **1989** at CERN, creating HTML, HTTP, and the browser concept that made the Internet accessible to everyone.",
+    "who created the internet": "who invented the internet",
+    "history of internet invention": "who invented the internet",
+
+    "what is water made of": "Water (**H₂O**) is made of **two hydrogen atoms** bonded to **one oxygen atom** via covalent bonds. The molecule has a bent shape (~104.5° bond angle) and is **polar** — the oxygen end carries a partial negative charge and the hydrogen ends carry partial positive charges. This polarity gives water its exceptional properties: high surface tension, high boiling point (100°C), and ability to dissolve many substances.",
+    "what is h2o": "what is water made of",
+    "chemical formula for water": "what is water made of",
+    "water chemical composition": "what is water made of",
+
+    "how fast is sound": "Sound travels at approximately **343 m/s (1,235 km/h or 767 mph)** in dry air at 20°C. Speed increases with temperature (~0.6 m/s per °C). In water, sound travels ~**1,480 m/s** (4× faster). In steel, ~**5,960 m/s**. The speed of sound in air is called **Mach 1** — breaking it creates a sonic boom.",
+    "speed of sound": "how fast is sound",
+    "what is the speed of sound": "how fast is sound",
+
+    "how fast does light travel": "speed of light",
+    "how fast is light": "speed of light",
+    "what is the speed of light": "speed of light",
+
+    "how old is the earth": "Earth is approximately **4.54 billion years old** (4.54 × 10⁹ years), determined primarily through **radiometric dating** of the oldest rocks and meteorites. The oldest minerals found on Earth are zircon crystals from Australia dated to **4.4 billion years**. Earth formed by accretion from the solar nebula shortly after the Sun's formation.",
+    "age of the earth": "how old is the earth",
+    "earth age": "how old is the earth",
+
+    "how many planets are in the solar system": "There are **8 planets** in our solar system (since Pluto was reclassified as a dwarf planet in 2006): **Mercury, Venus, Earth, Mars** (terrestrial/rocky planets) and **Jupiter, Saturn, Uranus, Neptune** (gas/ice giants). There are also 5 officially recognized dwarf planets: Pluto, Eris, Haumea, Makemake, and Ceres.",
+    "how many planets": "how many planets are in the solar system",
+    "planets in solar system": "how many planets are in the solar system",
+    "number of planets": "how many planets are in the solar system",
+
+    "what is the biggest planet": "**Jupiter** is the largest planet in our solar system — with a diameter of **142,984 km** (about 11× Earth's diameter). Its mass is **317.8× Earth's mass** and accounts for more than twice the mass of all other planets combined. Jupiter is a gas giant primarily composed of hydrogen and helium.",
+    "largest planet": "what is the biggest planet",
+    "biggest planet in solar system": "what is the biggest planet",
+
+    "what is the smallest planet": "**Mercury** is the smallest planet in our solar system, with a diameter of **4,879 km** — only slightly larger than Earth's Moon. It is also the closest planet to the Sun, orbiting at an average distance of 57.9 million km.",
+    "smallest planet": "what is the smallest planet",
+
+    "how far is the moon from earth": "The **Moon** is on average **384,400 km (238,855 miles)** from Earth. The distance varies because the Moon's orbit is elliptical: at **perigee** (closest) ~356,500 km; at **apogee** (farthest) ~406,700 km. Light takes ~1.28 seconds to travel from the Moon to Earth.",
+    "distance to the moon": "how far is the moon from earth",
+    "how far away is the moon": "how far is the moon from earth",
+
+    "how far is the sun from earth": "The Earth is on average **149.6 million km (92.96 million miles)** from the Sun — a distance called **1 Astronomical Unit (AU)**. Light from the Sun takes **8 minutes and 20 seconds** to reach Earth. Distance varies from ~147.1M km (perihelion, January) to ~152.1M km (aphelion, July).",
+    "distance to the sun": "how far is the sun from earth",
+    "how far away is the sun": "how far is the sun from earth",
+
+    "who discovered gravity": "**Isaac Newton** is credited with formulating the **law of universal gravitation** in **1687** (*Principia Mathematica*) after reportedly being inspired by an apple falling from a tree. However, gravity as a phenomenon was observed long before — Newton was the first to **mathematically describe** it with F = Gm₁m₂/r². Einstein later reformulated gravity as spacetime curvature in **General Relativity (1915)**.",
+    "who invented gravity": "who discovered gravity",
+    "who found gravity": "who discovered gravity",
+
+    "who invented electricity": "**Electricity** was not invented by one person — it was gradually understood. **Benjamin Franklin** demonstrated lightning is electrical in 1752. **Alessandro Volta** invented the first battery in 1800. **Michael Faraday** discovered electromagnetic induction in 1831. **Thomas Edison** developed practical DC power distribution; **Nikola Tesla** developed AC power systems. **James Clerk Maxwell** provided the mathematical framework unifying electricity and magnetism in 1865.",
+    "who discovered electricity": "who invented electricity",
+
+    "when was the telephone invented": "The telephone was invented by **Alexander Graham Bell** on **March 10, 1876** — the date he made the first successful call to his assistant Thomas Watson, saying *'Mr. Watson, come here, I want to see you.'* Bell filed his patent just hours before rival Elisha Gray. The telephone revolutionized long-distance communication.",
+    "who invented the telephone": "when was the telephone invented",
+    "invention of the telephone": "when was the telephone invented",
+
+    "when was the airplane invented": "The **Wright Brothers** — **Orville and Wilbur Wright** — made the first successful powered airplane flight on **December 17, 1903**, at Kitty Hawk, North Carolina. The first flight lasted **12 seconds** and covered **37 meters**. Their aircraft, the *Flyer*, was a biplane with a gasoline engine they designed themselves.",
+    "who invented the airplane": "when was the airplane invented",
+    "first airplane flight": "when was the airplane invented",
+
+    "when was electricity discovered": "who invented electricity",
+
+    "how many elements are there": "There are **118 confirmed chemical elements** in the periodic table, from hydrogen (atomic number 1) to oganesson (atomic number 118). Of these, **94 occur naturally** on Earth; the rest are synthesized in laboratories. The most recently confirmed elements (113–118) were officially named in 2016.",
+    "how many elements on the periodic table": "how many elements are there",
+    "number of elements": "how many elements are there",
+
+    "what is the boiling point of water": "Water boils at **100°C (212°F or 373.15 K)** at standard atmospheric pressure (1 atm / 101.325 kPa). At higher altitudes where air pressure is lower, water boils at a lower temperature (e.g., at Denver ~95°C; on Mount Everest ~70°C). Under increased pressure, the boiling point rises (pressure cookers use this principle).",
+    "boiling point of water": "what is the boiling point of water",
+    "at what temperature does water boil": "what is the boiling point of water",
+
+    "what is the freezing point of water": "Water freezes at **0°C (32°F or 273.15 K)** at standard atmospheric pressure. Under very high pressure, the freezing point can be slightly lower. Salt dissolved in water lowers the freezing point (freezing point depression) — which is why salt is used on icy roads.",
+    "freezing point of water": "what is the freezing point of water",
+
+    "how big is the milky way": "The **Milky Way galaxy** is approximately **100,000 light-years in diameter** and about **1,000 light-years thick** at the disk. It contains **200–400 billion stars** and is estimated to have a total mass of ~1.5 trillion solar masses (including dark matter). Our Sun is located about **26,000 light-years** from the galactic center, in the Orion Arm.",
+    "size of the milky way": "how big is the milky way",
+    "milky way size": "how big is the milky way",
+
+    "how many galaxies are there": "Scientists estimate there are approximately **2 trillion galaxies** (2 × 10¹²) in the **observable universe** — a 2016 estimate (revised upward from the previous ~200 billion figure). However, only a small fraction are large enough to observe with current telescopes. The total number of stars across all galaxies is estimated at ~10²⁴ (1 septillion).",
+    "number of galaxies": "how many galaxies are there",
+    "how many galaxies in the universe": "how many galaxies are there",
+
+    "what is absolute zero": "**Absolute zero** is **0 Kelvin (−273.15°C / −459.67°F)** — the theoretical lowest possible temperature, where all molecular motion ceases. It is physically unreachable (Third Law of Thermodynamics) but scientists have cooled matter to within **billionths of a degree** of absolute zero. At near-absolute-zero temperatures, quantum effects dominate — producing phenomena like **superconductivity** and **Bose-Einstein condensates**.",
+    "temperature of absolute zero": "what is absolute zero",
+    "what is 0 kelvin": "what is absolute zero",
+
+    "what year did ww2 end": "**World War II** ended in **1945** — on **May 8, 1945** (V-E Day) in Europe when Nazi Germany surrendered, and on **September 2, 1945** (V-J Day) in the Pacific when Japan formally surrendered aboard USS Missouri. The war lasted from September 1, 1939 (Germany's invasion of Poland) to September 2, 1945 — **6 years and 1 day**.",
+    "when did world war 2 end": "what year did ww2 end",
+    "when did ww2 end": "what year did ww2 end",
+    "when did world war ii end": "what year did ww2 end",
+
+    "what year did ww1 end": "**World War I** ended on **November 11, 1918** at 11:00 AM (the 11th hour of the 11th day of the 11th month) when the Armistice was signed. The war began July 28, 1914, and lasted **4 years and 3 months**. The formal peace treaty — the **Treaty of Versailles** — was signed on June 28, 1919.",
+    "when did world war 1 end": "what year did ww1 end",
+    "when did ww1 end": "what year did ww1 end",
+
+    "when did the cold war end": "The **Cold War** effectively ended in **1991** with the **dissolution of the Soviet Union** on December 25–26, 1991. Key milestones: the fall of the **Berlin Wall** (November 9, 1989), German reunification (October 1990), and the formal dissolution of the USSR into 15 independent republics.",
+    "cold war end date": "when did the cold war end",
+
+    "how tall is mount everest": "**Mount Everest** stands at **8,848.86 meters (29,031.7 feet)** above sea level — the highest point on Earth. This height was officially revised in 2020 by a joint China-Nepal survey. It is located on the border of Nepal and Tibet (China) in the Himalayas.",
+    "height of mount everest": "how tall is mount everest",
+    "mount everest height": "how tall is mount everest",
+
+    "how deep is the ocean": "The deepest point in the ocean is **Challenger Deep** in the **Mariana Trench** in the western Pacific Ocean, reaching **10,935 meters (35,876 feet / 6.79 miles)** below sea level. The average depth of all oceans is approximately **3,688 meters (12,100 feet)**.",
+    "how deep is the mariana trench": "how deep is the ocean",
+    "deepest point in the ocean": "how deep is the ocean",
+
+    "how many bones in the human body": "how many bones",
+    "how many bones does a human have": "how many bones",
+
+    "what is the largest country": "largest country",
+    "biggest country in the world": "largest country",
 }
 
 

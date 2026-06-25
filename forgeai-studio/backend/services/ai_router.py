@@ -237,13 +237,19 @@ _EARTH_STRONG = {
     "volcano", "earthquake", "tectonic", "magma", "lava", "caldera",
     "trench", "mariana", "seafloor", "lithosphere", "crust", "mantle",
     "basalt", "granite", "sediment", "metamorphic", "igneous",
-    "mineral", "rock", "fossil", "glacier", "erosion", "subduction",
-    "hydrothermal", "vent", "black smoker", "ocean floor",
+    "mineral", "fossil", "glacier", "erosion", "subduction",
+    "hydrothermal", "black smoker", "ocean floor",
+}
+_EARTH_STRONG_WORDS = {
+    "rock", "vent", "mineral",
 }
 
 def _score_earth(q: str) -> int:
     score = 0
     if _match(q, *_EARTH_STRONG):
+        score += 80
+    # whole-word only for short ambiguous terms
+    if any(re.search(r'\b' + re.escape(w) + r'\b', q) for w in _EARTH_STRONG_WORDS):
         score += 80
     if _match(q, *EARTH_KEYWORDS):
         score = max(score, 55)
@@ -525,13 +531,24 @@ _ASPECT_INTROS = {
 
 import random
 
+def _is_heading_line(s: str) -> bool:
+    if re.match(r'^#{1,4}\s', s):
+        return True
+    words = s.split()
+    if len(words) <= 4 and not re.search(r'\d|is |are |was |were |have |has |can |do |does ', s.lower()):
+        return True
+    return False
+
 def _extract_aspect(answer: str, aspect: str) -> str | None:
     keywords = _ASPECT_KEYWORDS.get(aspect, [])
-    # Split on newlines AND sentence endings so bullet-point entries work
     lines = [s.strip() for s in re.split(r'\n+|(?<=[.!?])\s+', answer) if s.strip()]
-    # Strip markdown formatting (* ** # >) for clean matching
     clean = [re.sub(r'[*#>`_]+', '', l).strip() for l in lines]
-    matches = [clean[i] for i, l in enumerate(clean) if any(k in l.lower() for k in keywords) and len(clean[i]) > 8]
+    matches = [
+        clean[i] for i, l in enumerate(clean)
+        if any(k in l.lower() for k in keywords)
+        and len(clean[i]) > 15
+        and not _is_heading_line(clean[i])
+    ]
     if not matches:
         return None
     intro = random.choice(_ASPECT_INTROS.get(aspect, [""]))
@@ -562,12 +579,64 @@ def _detect_aspect(q: str) -> str | None:
             return aspect
     return None
 
+_QUESTION_STARTERS = re.compile(
+    r"^(what is|what are|what does|what do|what did|what was|what were|"
+    r"how (fast|big|hot|cold|far|many|much|long|old|deep|high|wide|heavy|tall|large|small|often)|"
+    r"how does|how do|how did|how is|how are|how was|"
+    r"when (did|was|were|is|does|do|will)|"
+    r"where (do|does|did|is|are|was|were|can)|"
+    r"who (made|invented|created|discovered|built|designed|founded|was|is|are)|"
+    r"why (do|does|did|is|are|was|were)|"
+    r"which (is|are|was|were|has|have)|"
+    r"can a|can the|could a|does a|do|is a|is the|are there)\s+"
+)
+
+_STOP_WORDS = {
+    "a","an","the","is","are","was","were","do","does","did","have","has","had",
+    "be","been","being","of","in","on","at","to","for","with","by","from","as",
+    "it","its","i","me","my","you","your","he","she","we","they","this","that",
+    "and","or","but","so","if","not","about","how","what","when","where","who",
+    "why","which","can","could","would","should","will","just","very","also",
+    "tell","me","give","explain","describe",
+}
+
+def _query_keywords(q: str) -> list[str]:
+    """Extract meaningful keywords from the query for matching against answer sentences."""
+    stripped = _QUESTION_STARTERS.sub("", q).strip()
+    words = re.findall(r"[a-z0-9]+(?:'[a-z]+)?", stripped)
+    return [w for w in words if w not in _STOP_WORDS and len(w) > 2]
+
 def _try_extract_fact(answer: str, q: str) -> str | None:
-    """Try to pull just the specific fact from a longer answer based on the query."""
+    """Try to pull just the specific fact from a longer answer.
+    First tries aspect-keyword matching; falls back to query-keyword scoring."""
+    # 1. Try predefined aspect extraction
     aspect = _detect_aspect(q)
-    if not aspect:
+    if aspect:
+        result = _extract_aspect(answer, aspect)
+        if result:
+            return result
+    # 2. Universal: only engage if it looks like a specific question
+    if not _QUESTION_STARTERS.match(q):
         return None
-    return _extract_aspect(answer, aspect)
+    kws = _query_keywords(q)
+    if not kws:
+        return None
+    raw_lines = [s.strip() for s in re.split(r'\n+|(?<=[.!?])\s+', answer) if s.strip()]
+    clean = [re.sub(r'[*#>`_\-]+', '', l).strip() for l in raw_lines]
+    # Score each sentence by how many query keywords it contains; skip headings
+    scored = []
+    for sent in clean:
+        if _is_heading_line(sent):
+            continue
+        low = sent.lower()
+        hits = sum(1 for w in kws if w in low)
+        if hits > 0 and len(sent) > 15:
+            scored.append((hits, sent))
+    if not scored:
+        return None
+    scored.sort(key=lambda x: -x[0])
+    top = [s for _, s in scored[:2]]
+    return "  ".join(top)
 
 def _dispatch_animals(query: str, q: str) -> str:
     # Direct key match
@@ -742,6 +811,26 @@ def _quick_response(query: str, q: str) -> str:
 
 # --- MAIN ENTRY POINT ---
 
+def _kb_fact_lookup(q: str) -> str | None:
+    """For specific questions: score every KB key by keyword overlap and return the best match."""
+    if not _QUESTION_STARTERS.match(q):
+        return None
+    # Use the full query tokens for scoring (not stripped), so "who invented internet"
+    # scores the key "who invented the internet" higher than "what is the internet"
+    q_tokens = set(re.findall(r"[a-z0-9]+", q)) - _STOP_WORDS
+    if not q_tokens:
+        return None
+    best_score, best_answer = 0, None
+    for key, answer in GENERAL_KNOWLEDGE.items():
+        key_tokens = set(re.findall(r"[a-z0-9]+", key))
+        hits = len(q_tokens & key_tokens)
+        if hits > best_score:
+            best_score, best_answer = hits, answer
+    if best_score >= max(1, len(q_tokens) // 2) and best_answer:
+        fact = _try_extract_fact(best_answer, q)
+        return fact if fact else best_answer
+    return None
+
 def generate_response(query: str, mode: str, history: list, quick_mode: bool = False) -> str:
     q = _normalize(query)
     if quick_mode:
@@ -750,6 +839,10 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
         return _dispatch_update(query, history, mode)
     if _score_animals(q) >= 60:
         return _dispatch_animals(query, q)
+    # Universal specific-question pre-check: KB lookup beats domain engines
+    kb_hit = _kb_fact_lookup(q)
+    if kb_hit:
+        return kb_hit
     build_verb_score = 65 if _has_build_verb(q) and not _match(q, *(_GAME_NOUNS | _APP_NOUNS)) else 0
     scores: dict[str, int] = {
         "greeting":    _score_greeting(q),
