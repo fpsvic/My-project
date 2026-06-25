@@ -30,6 +30,8 @@ from services.science_engine import generate_science_response
 from services.history_engine import generate_history_response
 from services.game_compiler import compile_game
 from services.app_builder import build_app, detect_app_type
+from services.dynamic_builder import build_dynamic_app
+from services.update_handler import is_update_request, apply_update
 
 
 # ══════════════════════════════════════════════════════════════
@@ -445,7 +447,12 @@ def _dispatch_game(query: str, q: str, mode: str) -> str:
 
 
 def _dispatch_app(query: str, mode: str) -> str:
-    app = build_app(query)
+    # Try static fast-path first; fall back to dynamic builder for arbitrary requests
+    static_type = detect_app_type(query.lower())
+    if static_type and static_type != "calculator" or any(n in query.lower() for n in _APP_NOUNS):
+        app = build_app(query)
+    else:
+        app = build_dynamic_app(query)
     intro = (
         f"I built a **{app['title']}** for you! "
         "Click **\"Launch App\"** in the code box to open it live."
@@ -456,9 +463,37 @@ def _dispatch_app(query: str, mode: str) -> str:
             "### Thinking Process\n"
             f"- **App type**: {app['type'].replace('_', ' ').title()}\n"
             "- **Theme** picked from your description.\n"
-            "- **Single-file HTML5** built with Tailwind CSS + vanilla JS.\n\n---\n\n"
+            "- **Single-file HTML5** built with vanilla JS.\n\n---\n\n"
             + intro + block
         )
+    return intro + block
+
+
+def _dispatch_dynamic(query: str, mode: str) -> str:
+    app = build_dynamic_app(query)
+    intro = (
+        f"I built a **{app['title']}** for you! "
+        "Click **\"Launch App\"** in the code box to open it live."
+    )
+    block = f"\n\n```html\n{app['code']}\n```"
+    if mode == "forge_thinking":
+        return (
+            "### Thinking Process\n"
+            f"- **Detected entity**: {app['type'].replace('_', ' ').title()}\n"
+            "- **Fields & features** inferred from your description.\n"
+            "- **Single-file HTML5** with localStorage persistence.\n\n---\n\n"
+            + intro + block
+        )
+    return intro + block
+
+
+def _dispatch_update(query: str, history: list, mode: str) -> str:
+    app = apply_update(query, history)
+    intro = (
+        f"I updated the app — here is **{app['title']}**. "
+        "Click **\"Launch App\"** to see the changes live."
+    )
+    block = f"\n\n```html\n{app['code']}\n```"
     return intro + block
 
 
@@ -508,11 +543,19 @@ def _dispatch_programming(query: str, mode: str) -> str:
 def generate_response(query: str, mode: str, history: list) -> str:
     q = _normalize(query)
 
+    # ── Update check (before intent scoring) ──────────────────
+    if is_update_request(q, history):
+        return _dispatch_update(query, history, mode)
+
     # ── Score every intent ────────────────────────────────────
+    # "build anything" — verb present but no known noun → dynamic builder
+    build_verb_score = 65 if _has_build_verb(q) and not any(n in q for n in _GAME_NOUNS | _APP_NOUNS) else 0
+
     scores: dict[str, int] = {
         "greeting":    _score_greeting(q),
         "build_game":  _score_build_game(q),
         "build_app":   _score_build_app(q),
+        "build_any":   build_verb_score,
         "math":        _score_math(q),
         "space":       _score_space(q),
         "earth":       _score_earth(q),
@@ -551,8 +594,14 @@ def generate_response(query: str, mode: str, history: list) -> str:
     if best_intent == "build_game":
         return _dispatch_game(query, q, mode)
 
+    if best_intent == "build_any":
+        return _dispatch_dynamic(query, mode)
+
     if best_intent == "build_app":
-        return _dispatch_app(query, mode)
+        # If it matches a known static app type, use the fast-path; otherwise dynamic
+        if any(n in q for n in _APP_NOUNS):
+            return _dispatch_app(query, mode)
+        return _dispatch_dynamic(query, mode)
 
     if best_intent == "math":
         return generate_math_response(query, mode)
