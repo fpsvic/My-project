@@ -86,6 +86,15 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .token-comment { color: #4e6559; font-style: italic; }
 .token-number { color: #e5b367; }
 .token-type { color: #5fb8a6; }
+.token-fn { color: #7ec8c8; }
+.token-builtin { color: #b39ddb; }
+.token-op { color: #74a896; }
+.token-punct { color: #6a8878; }
+.token-attr { color: #f0c070; }
+.token-tag { color: #d3738b; font-weight: bold; }
+.token-property { color: #79b8d4; }
+.token-value { color: #e5b367; }
+.token-decorator { color: #c792ea; font-style: italic; }
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.85); display: none; justify-content: center; align-items: center; z-index: 10000; backdrop-filter: blur(6px); }
 .modal-overlay.show { display: flex; }
 .modal-card { background-color: #111413; border: 1px solid #232d2a; border-radius: 12px; width: 360px; padding: 25px; box-shadow: 0 15px 40px rgba(0,0,0,0.8); animation: modalScale 0.2s cubic-bezier(0.16, 1, 0.3, 1); }

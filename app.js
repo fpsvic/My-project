@@ -1697,96 +1697,229 @@ class JungleUI {
     static updateCodeHighlight() {
         let code = editor.value;
         if (code.endsWith('\n')) code += ' ';
-        let escaped = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        let escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const lang = selectedLanguages[0];
 
-        function safeSpan(cls, content) {
-            return `\x00${cls}\x01${content}\x02`;
+        // Safe placeholder encoding — prevents nested HTML from innerHTML injection
+        const spans = [];
+        function tok(cls, content) {
+            const id = spans.length;
+            spans.push(`<span class="${cls}">${content}</span>`);
+            return `\x00${id}\x00`;
         }
         function finalize(s) {
-            return s.replace(/\x00([^\x01]*)\x01([\s\S]*?)\x02/g, (_, cls, content) =>
-                `<span class="${cls}">${content}</span>`);
+            return s.replace(/\x00(\d+)\x00/g, (_, i) => spans[+i]);
+        }
+
+        // Shared operator/punctuation pass (applied after primary tokenization)
+        function addOpsAndPunct(s) {
+            return s.replace(/([^>\x00])([+\-*/%=!<>&|^~?:]+)(?=[^<\x00])/g, (m, pre, op) => pre + tok('token-op', op))
+                    .replace(/(?<=[^>\x00])([{}[\]();,.])/g, p => tok('token-punct', p));
         }
 
         if (lang === 'Python') {
-            const pyRegex = /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|\b(def|class|return|if|elif|else|while|for|in|not\s+in|is\s+not|import|from|as|with|lambda|yield|raise|try|except|finally|break|continue|pass|del|global|nonlocal|and|or|not|True|False|None|print|len|range|type|isinstance|super|self)\b|(@\w+)|\b([A-Z][A-Za-z0-9_]*)\b|\b(\d+\.?\d*)\b/g;
-            escaped = escaped.replace(pyRegex, (m, g1, g2, g3, g4, g5, g6) => {
-                if (g1) return safeSpan('token-comment', g1);
-                if (g2) return safeSpan('token-string', g2);
-                if (g3) return safeSpan('token-keyword', g3);
-                if (g4) return safeSpan('token-type', g4);
-                if (g5) return safeSpan('token-type', g5);
-                if (g6) return safeSpan('token-number', g6);
-                return m;
-            });
-        } else if (lang === 'HTML') {
-            const htmlRegex = /(&lt;!--[\s\S]*?--&gt;)|(&lt;\/?[a-zA-Z0-9:-]+(?:\s+[^&]*?)?(?:\/?&gt;))/g;
-            escaped = escaped.replace(htmlRegex, (m, g1, g2) => {
-                if (g1) return safeSpan('token-comment', g1);
-                if (g2) {
-                    let tagContent = g2;
-                    tagContent = tagContent.replace(/(\s[a-zA-Z0-9:-]+)(=)/g, (_, attr, eq) => safeSpan('token-type', attr) + eq);
-                    tagContent = tagContent.replace(/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/g, (_, s) => safeSpan('token-string', s));
-                    return safeSpan('token-keyword', tagContent);
+            escaped = escaped.replace(
+                /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?'''|f"""[\s\S]*?"""|f'''[\s\S]*?'''|f"(?:\\.|[^"\\])*"|f'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(@[\w.]+)|(\bdef\s+(\w+))|(\bclass\s+(\w+))|\b(def|class|return|if|elif|else|while|for|in|not in|is not|import|from|as|with|lambda|yield|raise|try|except|finally|break|continue|pass|del|global|nonlocal|and|or|not|is|async|await)\b|\b(True|False|None|self|cls)\b|\b(print|len|range|type|isinstance|issubclass|super|hasattr|getattr|setattr|delattr|repr|str|int|float|list|dict|set|tuple|enumerate|zip|map|filter|sorted|reversed|open|input|abs|max|min|sum|any|all|id|hash|iter|next|vars|dir|callable|staticmethod|classmethod|property)\b|\b(\d+\.?\d*(?:[eE][+-]?\d+)?[jJ]?|0x[\da-fA-F]+|0b[01]+|0o[0-7]+)\b/g,
+                (m, comment, str, dec, defFull, fnName, clsFull, clsName, kw, literal, builtin, num) => {
+                    if (comment) return tok('token-comment', comment);
+                    if (str)     return tok('token-string', str);
+                    if (dec)     return tok('token-decorator', dec);
+                    if (defFull) return tok('token-keyword', 'def') + ' ' + tok('token-fn', fnName);
+                    if (clsFull) return tok('token-keyword', 'class') + ' ' + tok('token-type', clsName);
+                    if (kw)      return tok('token-keyword', kw);
+                    if (literal) return tok('token-keyword', literal);
+                    if (builtin) return tok('token-builtin', builtin);
+                    if (num)     return tok('token-number', num);
+                    return m;
                 }
-                return m;
+            );
+        } else if (lang === 'HTML') {
+            // Highlight <style> and <script> blocks internally
+            escaped = escaped.replace(/(&lt;style[^&]*&gt;)([\s\S]*?)(&lt;\/style&gt;)/gi, (_, open, body, close) => {
+                return tok('token-tag', open) + JungleUI._highlightCSS(body, tok) + tok('token-tag', close);
             });
+            escaped = escaped.replace(/(&lt;script[^&]*&gt;)([\s\S]*?)(&lt;\/script&gt;)/gi, (_, open, body, close) => {
+                return tok('token-tag', open) + JungleUI._highlightJS(body, tok) + tok('token-tag', close);
+            });
+            escaped = escaped.replace(/(&lt;!--[\s\S]*?--&gt;)|(&lt;\/?([\w:-]+)((?:\s+[\w:-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s&>]+))?)*)\s*\/?&gt;)/g,
+                (m, comment, tag, tagName, attrs) => {
+                    if (comment) return tok('token-comment', comment);
+                    if (tag) {
+                        let out = '&lt;' + (tag.startsWith('&lt;/') ? '/' : '') + tok('token-tag', tagName);
+                        if (attrs) {
+                            out += attrs.replace(/([\w:-]+)(\s*=\s*)("(?:[^"]*)"|'(?:[^']*)'|[^\s&>]+)/g,
+                                (_, a, eq, val) => tok('token-attr', a) + eq + tok('token-string', val))
+                                .replace(/\b([\w:-]+)(?!\s*=)/g, (_, a) => tok('token-attr', a));
+                        }
+                        out += '&gt;';
+                        return out;
+                    }
+                    return m;
+                }
+            );
         } else if (lang === 'CSS') {
-            const cssRegex = /(\/\*[\s\S]*?\*\/)|(#[0-9a-fA-F]{3,8})|(\b\d+\.?\d*(?:px|em|rem|%|vh|vw|s|ms)?\b)|(["'][^"']*["'])|([.#]?[a-zA-Z][\w-]*\s*\{)|(\b(?:color|background|font|margin|padding|border|display|flex|grid|width|height|position|top|left|right|bottom|overflow|opacity|transition|transform|animation|content|cursor|box-shadow|text-align|line-height|z-index|align-items|justify-content|gap|max-width|min-width)\b)/g;
-            escaped = escaped.replace(cssRegex, (m, g1, g2, g3, g4, g5, g6) => {
-                if (g1) return safeSpan('token-comment', g1);
-                if (g2) return safeSpan('token-string', g2);
-                if (g3) return safeSpan('token-number', g3);
-                if (g4) return safeSpan('token-string', g4);
-                if (g5) return safeSpan('token-type', g5);
-                if (g6) return safeSpan('token-keyword', g6);
-                return m;
-            });
-        } else if (lang === 'Java' || lang === 'C' || lang === 'C++' || lang === 'C#') {
-            const cRegex = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|\b(public|private|protected|static|final|abstract|class|interface|extends|implements|new|return|if|else|while|for|do|switch|case|break|continue|try|catch|finally|throw|throws|import|package|void|int|long|double|float|boolean|char|byte|short|string|String|var|auto|const|nullptr|null|true|false|this|super|override|virtual|using|namespace)\b|\b([A-Z][A-Za-z0-9_]*)\b|\b(\d+\.?\d*[fFdDlL]?)\b/g;
-            escaped = escaped.replace(cRegex, (m, g1, g2, g3, g4, g5) => {
-                if (g1) return safeSpan('token-comment', g1);
-                if (g2) return safeSpan('token-string', g2);
-                if (g3) return safeSpan('token-keyword', g3);
-                if (g4) return safeSpan('token-type', g4);
-                if (g5) return safeSpan('token-number', g5);
-                return m;
-            });
+            escaped = JungleUI._highlightCSS(escaped, tok);
+        } else if (lang === 'JavaScript' || lang === 'TypeScript' || lang === 'JS' || !['Python','HTML','CSS','Java','C','C++','C#','Rust','Go','Ruby','PHP','Bash','Lua','Swift','Kotlin','Scala','R','Haskell'].includes(lang)) {
+            escaped = JungleUI._highlightJS(escaped, tok);
+        } else if (lang === 'Java' || lang === 'C#') {
+            escaped = escaped.replace(
+                /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\$"(?:[^"\\]|\\.)*")|\b((?:(?:public|private|protected|internal|static|final|abstract|sealed|override|virtual|new|async|partial|readonly|volatile|transient|synchronized|native|strictfp|extern|unsafe|ref|out|in|params)\s+)+)?(void|int|long|short|byte|double|float|boolean|bool|char|string|String|var|object|dynamic|decimal|uint|ulong|ushort|sbyte)\b|\b(public|private|protected|internal|static|final|abstract|sealed|override|virtual|new|async|partial|readonly|volatile|class|interface|enum|record|struct|extends|implements|throws|import|package|using|namespace|return|if|else|while|for|foreach|do|switch|case|break|continue|try|catch|finally|throw|null|true|false|this|base|super|instanceof|typeof|sizeof|checked|unchecked|lock|yield|goto|default|delegate|event|operator|explicit|implicit|fixed)\b|(\bvoid\s+(\w+)\s*\(|\b(\w+)\s+(\w+)\s*\()|\b([A-Z][A-Za-z0-9_<>[\]]*)\b|\b(\d+\.?\d*[fFdDlLmM]?|0x[\da-fA-F]+)\b/g,
+                (m, comment, str, mods, prim, kw, fnFull, fnName, ctorFull, ctorName, type, num) => {
+                    if (comment) return tok('token-comment', comment);
+                    if (str)  return tok('token-string', str);
+                    if (prim) return tok('token-type', (mods ? tok('token-keyword', mods.trim()) + ' ' : '') + prim);
+                    if (kw)   return tok('token-keyword', kw);
+                    if (fnFull && fnName) return 'void ' + tok('token-fn', fnName) + '(';
+                    if (type) return tok('token-type', type);
+                    if (num)  return tok('token-number', num);
+                    return m;
+                }
+            );
+        } else if (lang === 'C' || lang === 'C++') {
+            escaped = escaped.replace(
+                /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(#\w+[^\n]*)|(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')|\b(auto|const|constexpr|consteval|constinit|static|inline|extern|register|volatile|mutable|explicit|virtual|override|final|friend|operator|template|typename|namespace|using|typedef|struct|class|union|enum|public|private|protected|new|delete|return|if|else|while|for|do|switch|case|break|continue|try|catch|throw|nullptr|NULL|true|false|this|sizeof|decltype|noexcept|static_assert|co_await|co_return|co_yield)\b|\b(void|int|long|short|char|unsigned|signed|float|double|bool|size_t|uint8_t|uint16_t|uint32_t|uint64_t|int8_t|int16_t|int32_t|int64_t|ptrdiff_t|wchar_t|auto)\b|\b([A-Z][A-Za-z0-9_]*)\b|(\b\w+)(?=\s*\()|\b(\d+\.?\d*[fFlLuU]*|0x[\da-fA-F]+|0b[01]+)\b/g,
+                (m, comment, preproc, str, kw, prim, type, fnCall, num) => {
+                    if (comment) return tok('token-comment', comment);
+                    if (preproc) return tok('token-decorator', preproc);
+                    if (str)     return tok('token-string', str);
+                    if (kw)      return tok('token-keyword', kw);
+                    if (prim)    return tok('token-type', prim);
+                    if (type)    return tok('token-type', type);
+                    if (fnCall)  return tok('token-fn', fnCall);
+                    if (num)     return tok('token-number', num);
+                    return m;
+                }
+            );
         } else if (lang === 'Rust') {
-            const rustRegex = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*")|\b(fn|let|mut|const|use|pub|mod|struct|enum|impl|trait|for|in|if|else|while|loop|match|return|self|Self|super|crate|true|false|Some|None|Ok|Err|Box|Vec|String|Option|Result|async|await|move|ref|type|where|unsafe|extern)\b|(\b[A-Z][A-Z0-9_]+\b)|(\b[A-Z][a-zA-Z0-9_]*\b)|('(?:[^'\\]|\\.)'|\b\d+\.?\d*(?:u8|u16|u32|u64|i8|i16|i32|i64|f32|f64|usize|isize)?\b)/g;
-            escaped = escaped.replace(rustRegex, (m, g1, g2, g3, g4, g5, g6) => {
-                if (g1) return safeSpan('token-comment', g1);
-                if (g2) return safeSpan('token-string', g2);
-                if (g3) return safeSpan('token-keyword', g3);
-                if (g4) return safeSpan('token-type', g4);
-                if (g5) return safeSpan('token-type', g5);
-                if (g6) return safeSpan('token-number', g6);
-                return m;
-            });
+            escaped = escaped.replace(
+                /(\/\/[^\n]*|\/\/!.*|\/\*[\s\S]*?\*\/)|(b?"(?:\\.|[^"\\])*"|r#*"[\s\S]*?"#*|'(?:[^'\\]|\\.)')|(!?\[[\w:, ]*\])|(\bfn\s+(\w+))|(\bstruct\s+(\w+))|(\benum\s+(\w+))|(\btrait\s+(\w+))|(\bimpl(?:<[^>]*>)?\s+(\w+))|\b(pub|crate|mod|use|let|mut|const|static|fn|struct|enum|impl|trait|type|where|for|in|if|else|while|loop|match|return|break|continue|self|Self|super|async|await|move|ref|unsafe|extern|dyn|box|yield|become|abstract|final|override|priv|typeof|unsized|virtual|do|try)\b|\b(true|false|None|Some|Ok|Err)\b|\b(println!|print!|eprintln!|eprint!|format!|vec!|assert!|assert_eq!|assert_ne!|panic!|todo!|unimplemented!|dbg!|write!|writeln!|include!|env!|concat!|stringify!)\b|\b([A-Z][A-Z0-9_]{2,})\b|\b([A-Z][a-zA-Z0-9_]*)\b|(&amp;(?:mut\s+)?'?\w*)|(\b\d+\.?\d*(?:[eE][+-]?\d+)?(?:f32|f64|u8|u16|u32|u64|u128|i8|i16|i32|i64|i128|usize|isize)?|0x[\da-fA-F_]+|0b[01_]+|0o[0-7_]+)\b/g,
+                (m, comment, str, attr, fnFull, fnName, sFull, sName, eFull, eName, tFull, tName, iFull, iName, kw, lit, mac, constant, type, lifetime, num) => {
+                    if (comment)  return tok('token-comment', comment);
+                    if (str)      return tok('token-string', str);
+                    if (attr)     return tok('token-decorator', attr);
+                    if (fnFull)   return tok('token-keyword', 'fn') + ' ' + tok('token-fn', fnName);
+                    if (sFull)    return tok('token-keyword', 'struct') + ' ' + tok('token-type', sName);
+                    if (eFull)    return tok('token-keyword', 'enum') + ' ' + tok('token-type', eName);
+                    if (tFull)    return tok('token-keyword', 'trait') + ' ' + tok('token-type', tName);
+                    if (iFull)    return tok('token-keyword', 'impl') + ' ' + tok('token-type', iName);
+                    if (kw)       return tok('token-keyword', kw);
+                    if (lit)      return tok('token-keyword', lit);
+                    if (mac)      return tok('token-builtin', mac);
+                    if (constant) return tok('token-type', constant);
+                    if (type)     return tok('token-type', type);
+                    if (lifetime) return tok('token-decorator', lifetime);
+                    if (num)      return tok('token-number', num);
+                    return m;
+                }
+            );
         } else if (lang === 'Go') {
-            const goRegex = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|`[^`]*`)|\b(func|var|const|type|struct|interface|map|chan|go|defer|select|case|switch|return|if|else|for|range|import|package|make|new|len|cap|append|copy|delete|close|true|false|nil|error|string|int|int8|int16|int32|int64|uint|uint8|float32|float64|bool|byte|rune)\b|\b([A-Z][a-zA-Z0-9_]*)\b|\b(\d+\.?\d*)\b/g;
-            escaped = escaped.replace(goRegex, (m, g1, g2, g3, g4, g5) => {
-                if (g1) return safeSpan('token-comment', g1);
-                if (g2) return safeSpan('token-string', g2);
-                if (g3) return safeSpan('token-keyword', g3);
-                if (g4) return safeSpan('token-type', g4);
-                if (g5) return safeSpan('token-number', g5);
-                return m;
-            });
+            escaped = escaped.replace(
+                /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|`[\s\S]*?`|'(?:\\.|[^'\\])')|(\bfunc\s+(\w+))|(\btype\s+(\w+))|\b(func|var|const|type|struct|interface|map|chan|go|defer|select|switch|case|return|if|else|for|range|import|package|break|continue|fallthrough|goto|default)\b|\b(make|new|len|cap|append|copy|delete|close|panic|recover|print|println|real|imag|complex|clear)\b|\b(true|false|nil|iota)\b|\b(string|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|uintptr|float32|float64|complex64|complex128|bool|byte|rune|error|any)\b|\b([A-Z][a-zA-Z0-9_]*)\b|(\b\d+\.?\d*(?:[eE][+-]?\d+)?i?|0x[\da-fA-F]+|0b[01]+|0o[0-7]+)\b/g,
+                (m, comment, str, fnFull, fnName, tFull, tName, kw, builtin, lit, prim, type, num) => {
+                    if (comment) return tok('token-comment', comment);
+                    if (str)     return tok('token-string', str);
+                    if (fnFull)  return tok('token-keyword', 'func') + ' ' + tok('token-fn', fnName);
+                    if (tFull)   return tok('token-keyword', 'type') + ' ' + tok('token-type', tName);
+                    if (kw)      return tok('token-keyword', kw);
+                    if (builtin) return tok('token-builtin', builtin);
+                    if (lit)     return tok('token-keyword', lit);
+                    if (prim)    return tok('token-type', prim);
+                    if (type)    return tok('token-type', type);
+                    if (num)     return tok('token-number', num);
+                    return m;
+                }
+            );
+        } else if (lang === 'Ruby') {
+            escaped = escaped.replace(
+                /(#[^\n]*)|(%[qQwWiIrsx]?(?:(?:\{[\s\S]*?\})|(?:\[[\s\S]*?\])|(?:\([\s\S]*?\))|(?:\/[\s\S]*?\/))|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*'|:\w+|<<~?\w+[\s\S]*?\n\w+)|(\bdef\s+(\w+[?!]?))|(\bclass\s+(\w+))|(\bmodule\s+(\w+))|\b(def|class|module|return|if|elsif|else|unless|while|until|for|in|do|end|begin|rescue|ensure|raise|next|break|yield|include|extend|require|require_relative|attr_reader|attr_writer|attr_accessor|lambda|proc|then|case|when|self|super|nil|true|false|and|or|not|defined?)\b|\b(puts|print|p|pp|gets|rand|sleep|exit|abort|raise|require|load|sprintf|format|Array|String|Integer|Float|Hash|Symbol|Regexp|File|IO|Dir|Math|Time|Proc|Method|Range|Struct|Comparable|Enumerable|Kernel|Object|BasicObject)\b|\b([A-Z][A-Za-z0-9_:]*)\b|(@{1,2}\w+)|(\b\d+\.?\d*(?:[eE][+-]?\d+)?|0x[\da-fA-F]+|0b[01]+|0o[0-7]+)\b/g,
+                (m, comment, str, defFull, fnName, clsFull, clsName, modFull, modName, kw, builtin, type, ivar, num) => {
+                    if (comment) return tok('token-comment', comment);
+                    if (str)     return tok('token-string', str);
+                    if (defFull) return tok('token-keyword', 'def') + ' ' + tok('token-fn', fnName);
+                    if (clsFull) return tok('token-keyword', 'class') + ' ' + tok('token-type', clsName);
+                    if (modFull) return tok('token-keyword', 'module') + ' ' + tok('token-type', modName);
+                    if (kw)      return tok('token-keyword', kw);
+                    if (builtin) return tok('token-builtin', builtin);
+                    if (type)    return tok('token-type', type);
+                    if (ivar)    return tok('token-decorator', ivar);
+                    if (num)     return tok('token-number', num);
+                    return m;
+                }
+            );
+        } else if (lang === 'PHP') {
+            escaped = escaped.replace(
+                /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/)|("""[\s\S]*?"""|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|<<<(?:EOT|EOD|EOH|SQL|HTML|EOF)[\s\S]*?(?:EOT|EOD|EOH|SQL|HTML|EOF);)|\b(function\s+(\w+))|(\bclass\s+(\w+))|\b(echo|print|return|if|elseif|else|while|for|foreach|do|switch|case|break|continue|try|catch|finally|throw|class|interface|trait|extends|implements|new|null|true|false|public|private|protected|static|final|abstract|namespace|use|require|require_once|include|include_once|fn|match|yield|enum)\b|\b(array|string|int|float|bool|void|mixed|object|callable|iterable|never|self|parent|static)\b|\b(print_r|var_dump|var_export|isset|empty|unset|count|strlen|strpos|str_replace|array_push|array_pop|array_map|array_filter|sort|in_array|implode|explode|json_encode|json_decode|date|time|rand|htmlspecialchars|trim|strtolower|strtoupper|sprintf|printf|header|die|exit)\b|(\$\w+)|(\b\d+\.?\d*(?:[eE][+-]?\d+)?)\b/g,
+                (m, comment, str, fnFull, fnName, clsFull, clsName, kw, prim, builtin, variable, num) => {
+                    if (comment)  return tok('token-comment', comment);
+                    if (str)      return tok('token-string', str);
+                    if (fnFull)   return tok('token-keyword', 'function') + ' ' + tok('token-fn', fnName);
+                    if (clsFull)  return tok('token-keyword', 'class') + ' ' + tok('token-type', clsName);
+                    if (kw)       return tok('token-keyword', kw);
+                    if (prim)     return tok('token-type', prim);
+                    if (builtin)  return tok('token-builtin', builtin);
+                    if (variable) return tok('token-property', variable);
+                    if (num)      return tok('token-number', num);
+                    return m;
+                }
+            );
+        } else if (lang === 'Bash' || lang === 'Shell') {
+            escaped = escaped.replace(
+                /(#[^\n]*)|(\"(?:\\.|[^\"\\])*\"|'[^']*'|\$\{[^}]*\}|\$\([^)]*\)|\$\w+)|(\bfunction\s+(\w+)|\b(\w+)\s*\(\s*\)\s*\{)|\b(if|then|else|elif|fi|for|in|do|done|while|until|case|esac|return|exit|break|continue|local|export|readonly|source|shift|set|unset|trap|wait|jobs|bg|fg|kill|exec|eval)\b|\b(echo|printf|read|cd|ls|pwd|mkdir|rmdir|rm|cp|mv|cat|grep|sed|awk|sort|uniq|wc|head|tail|find|xargs|cut|tr|test|true|false|source|alias|type|which|command|builtin|declare|typeset|getopts)\b|(\$\w+|\$\{[^}]*\})|(\b\d+)\b/g,
+                (m, comment, str, fnFull, fnName1, fnName2, kw, builtin, variable, num) => {
+                    if (comment)  return tok('token-comment', comment);
+                    if (str)      return tok('token-string', str);
+                    if (fnFull)   return tok('token-keyword', fnName1 ? 'function' : '') + ' ' + tok('token-fn', fnName1 || fnName2) + (fnName1 ? '' : '() {');
+                    if (kw)       return tok('token-keyword', kw);
+                    if (builtin)  return tok('token-builtin', builtin);
+                    if (variable) return tok('token-property', variable);
+                    if (num)      return tok('token-number', num);
+                    return m;
+                }
+            );
         } else {
-            // JavaScript / TypeScript / default
-            const jsRegex = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|\b(const|let|var|function|return|if|else|while|for|of|in|import|export|default|class|extends|new|this|true|false|null|undefined|async|await|void|typeof|instanceof|delete|try|catch|finally|throw|switch|case|break|continue|do|yield|static|get|set|from|as|type|interface|enum|implements|declare|readonly|abstract|override|keyof|infer|never|unknown|any)\b|(\b[A-Z][A-Za-z0-9_]*\b)|\b(\d+\.?\d*n?)\b/g;
-            escaped = escaped.replace(jsRegex, (m, g1, g2, g3, g4, g5) => {
-                if (g1) return safeSpan('token-comment', g1);
-                if (g2) return safeSpan('token-string', g2);
-                if (g3) return safeSpan('token-keyword', g3);
-                if (g4) return safeSpan('token-type', g4);
-                if (g5) return safeSpan('token-number', g5);
-                return m;
-            });
+            // JS/TS default
+            escaped = JungleUI._highlightJS(escaped, tok);
         }
+
         highlightOverlay.innerHTML = finalize(escaped);
         this.updateLineNumbers();
+    }
+
+    static _highlightJS(escaped, tok) {
+        return escaped.replace(
+            /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(\/(?:[^/\\\n]|\\.)+\/[gimsuy]*)|(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|\b((?:async\s+)?function\*?\s+(\w+)|(\w+)\s*(?==\s*(?:async\s+)?(?:function|\([^)]*\)\s*=>|\w+\s*=>)))|(\b(\w+)\s*\()|\b(const|let|var|return|if|else|while|for|of|in|import|export|default|class|extends|new|this|super|async|await|void|typeof|instanceof|delete|try|catch|finally|throw|switch|case|break|continue|do|yield|static|get|set|from|as|debugger)\b|\b(type|interface|enum|implements|declare|readonly|abstract|override|keyof|infer|never|unknown|any|namespace|satisfies|asserts|is|out|accessor)\b|\b(true|false|null|undefined|NaN|Infinity)\b|\b(console|Math|JSON|Object|Array|String|Number|Boolean|Promise|Map|Set|WeakMap|WeakSet|Date|Error|RegExp|Symbol|Proxy|Reflect|globalThis|window|document|navigator|fetch|setTimeout|setInterval|clearTimeout|clearInterval|queueMicrotask|requestAnimationFrame|localStorage|sessionStorage|performance|URL|FormData|Headers|Request|Response)\b|\b([A-Z][A-Za-z0-9_]*)\b|\b(\d+\.?\d*(?:[eE][+-]?\d+)?n?|0x[\da-fA-F]+|0b[01]+|0o[0-7]+)\b/g,
+            (m, comment, regex, str, fnDecl, fnName1, fnName2, callFull, callName, kw, tsKw, lit, globalObj, type, num) => {
+                if (comment)   return tok('token-comment', comment);
+                if (regex)     return tok('token-string', regex);
+                if (str)       return tok('token-string', str);
+                if (fnDecl)    return tok('token-keyword', fnDecl.replace(fnName1 || fnName2, '').trim()) + ' ' + tok('token-fn', fnName1 || fnName2);
+                if (callFull && callName)  return tok('token-fn', callName) + '(';
+                if (kw)        return tok('token-keyword', kw);
+                if (tsKw)      return tok('token-keyword', tsKw);
+                if (lit)       return tok('token-keyword', lit);
+                if (globalObj) return tok('token-builtin', globalObj);
+                if (type)      return tok('token-type', type);
+                if (num)       return tok('token-number', num);
+                return m;
+            }
+        );
+    }
+
+    static _highlightCSS(escaped, tok) {
+        return escaped.replace(
+            /(\/\*[\s\S]*?\*\/)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(#[0-9a-fA-F]{3,8}(?=[;\s,)])|rgb\w*\([^)]*\)|hsl\w*\([^)]*\))|((?:[\w-]+\s*,\s*)*[\w-]+\s*\{)|(@[\w-]+)|(\b\d+\.?\d*(?:px|em|rem|%|vh|vw|vmin|vmax|dvh|dvw|svh|svw|ch|ex|fr|s|ms|deg|rad|turn|dpi|dpcm)?\b)|\b(animation|appearance|aspect-ratio|background|border|border-radius|bottom|box-shadow|box-sizing|clip|clip-path|color|column|content|cursor|direction|display|filter|flex|float|font|gap|grid|height|inset|justify|left|letter-spacing|line-height|list-style|margin|max-height|max-width|min-height|min-width|object-fit|opacity|order|outline|overflow|padding|place|pointer-events|position|resize|right|row-gap|scroll|shape|text|top|transform|transition|user-select|visibility|white-space|width|will-change|word|writing-mode|z-index)\b|\b(auto|none|block|flex|grid|inline|inline-block|inline-flex|inline-grid|absolute|relative|fixed|sticky|static|inherit|initial|unset|revert|normal|bold|italic|center|left|right|justify|solid|dashed|dotted|hidden|visible|scroll|clip|ellipsis|nowrap|wrap|row|column|start|end|stretch|space-between|space-around|space-evenly|transparent|currentColor)\b/g,
+            (m, comment, str, color, selector, atRule, num, property, value) => {
+                if (comment)  return tok('token-comment', comment);
+                if (str)      return tok('token-string', str);
+                if (color)    return tok('token-string', color);
+                if (selector) return tok('token-type', selector);
+                if (atRule)   return tok('token-decorator', atRule);
+                if (num)      return tok('token-number', num);
+                if (property) return tok('token-property', property);
+                if (value)    return tok('token-value', value);
+                return m;
+            }
+        );
     }
     static updateLineNumbers() {
         const count = editor.value.split('\n').length;
