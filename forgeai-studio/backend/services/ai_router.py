@@ -8,8 +8,9 @@ Intent pipeline (scored, not keyword-first):
   4. Fall back to a rich help response
 
 Intent categories:
-  GREETING · BUILD_GAME · BUILD_APP · MATH · SPACE · EARTH ·
-  SCIENCE · HISTORY · PROGRAMMING · KNOWLEDGE
+  GREETING · BUILD_GAME · BUILD_APP · BUILD_ANY ·
+  MATH · SPACE · EARTH · SCIENCE · HISTORY ·
+  PROGRAMMING · ANIMALS · KNOWLEDGE
 """
 
 import re
@@ -476,13 +477,97 @@ def _score_programming(q: str) -> int:
 
 
 # ══════════════════════════════════════════════════════════════
+# INTENT: ANIMALS
+# ══════════════════════════════════════════════════════════════
+
+_ANIMAL_NAMES = {
+    # Big cats & canids
+    "lion", "lions", "tiger", "tigers", "cheetah", "cheetahs", "leopard", "leopards",
+    "jaguar", "jaguars", "panther", "panthers", "cougar", "puma",
+    "wolf", "wolves", "coyote", "fox", "foxes",
+    # Bears
+    "bear", "bears", "polar bear", "grizzly bear", "black bear", "panda",
+    # Primates
+    "gorilla", "gorillas", "chimpanzee", "chimp", "orangutan", "baboon",
+    "monkey", "monkeys", "ape", "apes", "bonobo",
+    # Marine
+    "dolphin", "dolphins", "whale", "whales", "shark", "sharks",
+    "octopus", "octopi", "squid", "jellyfish", "seal", "seals",
+    "walrus", "sea lion", "orca", "killer whale",
+    # Birds
+    "eagle", "eagles", "owl", "owls", "hawk", "falcons", "falcon",
+    "penguin", "penguins", "parrot", "parrots", "flamingo",
+    "hummingbird", "albatross", "condor", "vulture", "toucan",
+    # Reptiles
+    "snake", "snakes", "crocodile", "crocodiles", "alligator",
+    "komodo dragon", "lizard", "gecko", "iguana", "chameleon",
+    "tortoise", "turtle", "turtles",
+    # Insects & arachnids
+    "bee", "bees", "ant", "ants", "butterfly", "butterflies",
+    "spider", "spiders", "scorpion", "dragonfly", "mosquito",
+    # Savanna / large mammals
+    "elephant", "elephants", "giraffe", "giraffes", "rhino", "rhinoceros",
+    "hippo", "hippopotamus", "zebra", "zebras", "wildebeest", "buffalo",
+    "cheetah", "hyena", "hyenas",
+    # Other
+    "kangaroo", "koala", "platypus", "armadillo", "sloth", "anteater",
+    "bat", "bats", "deer", "moose", "elk", "reindeer",
+    "horse", "horses", "donkey", "zebra", "camel", "llama",
+    "dog", "dogs", "cat", "cats", "rabbit", "rabbits",
+    # Aquatic
+    "fish", "salmon", "tuna", "clownfish", "anglerfish", "pufferfish",
+    "lobster", "crab", "starfish", "seahorse", "manta ray", "stingray",
+}
+
+_ANIMAL_QUESTION_PREFIXES = (
+    "tell me about", "what is a", "what is an", "what are", "how do",
+    "how does", "where do", "where does", "why do", "why does",
+    "what does a", "how big is", "how fast is", "how long does",
+    "how many", "can a", "do", "does a", "are",
+    "facts about", "information about", "info about",
+    "talk about", "explain",
+)
+
+
+def _score_animals(q: str) -> int:
+    score = 0
+    animal_match = any(a in q for a in _ANIMAL_NAMES)
+    if not animal_match:
+        return 0
+
+    score += 60
+
+    # boost for question patterns
+    if any(q.startswith(p) for p in _ANIMAL_QUESTION_PREFIXES):
+        score += 20
+
+    # specific topic signals
+    if any(w in q for w in ("habitat", "diet", "hunt", "prey", "predator", "endangered",
+                             "species", "behavior", "speed", "size", "weight", "lifespan",
+                             "migration", "breeding", "population", "facts")):
+        score += 15
+
+    return min(score, 95)
+
+
+# ══════════════════════════════════════════════════════════════
 # INTENT: GENERAL KNOWLEDGE
 # ══════════════════════════════════════════════════════════════
 
 def _score_knowledge(q: str) -> int:
+    # Exact key match
     for key in GENERAL_KNOWLEDGE:
         if key in q:
-            return 70
+            return 75
+    # Question patterns with known topics
+    _KW_TOPICS = {
+        "pi", "euler", "fibonacci", "pythagorean", "calculus", "prime",
+        "infinity", "matrix", "matrices", "blood type", "temperature",
+        "population", "internet", "encryption", "blockchain", "http",
+        "fastest computer", "oldest language", "boil", "egg",
+    }
+    if any(w in q for w in _KW_TOPICS):
+        return 65
     return 0
 
 
@@ -494,15 +579,45 @@ def _dispatch_greeting(mode: str) -> str:
     return (
         f"Hello! I am **ForgeAI**, your local cognitive AI running in **{mode}** mode.\n\n"
         "I can help you with:\n"
-        "- **Build apps & tools** — `make a calculator`, `build a pomodoro timer`, `create a budget tracker`\n"
+        "- **Build apps & tools** — `make a calculator`, `build a kanban board`, `create a budget tracker`\n"
         "- **Build games** — `make flappy bird`, `build a snake game`, `create a space shooter`\n"
         "- **Math** — `derivative of 3x² + 5x`, `integral of sin(x)`, `what is 144 × 37`\n"
-        "- **Space** — `how far is Mars from Earth`, `what is a black hole`\n"
+        "- **Space** — `how far is Mars from Earth`, `what is a neutron star`\n"
         "- **Earth science** — `how do volcanoes form`, `what is the Mariana Trench`\n"
         "- **Science** — `explain quantum entanglement`, `what is DNA`\n"
+        "- **Animals** — `tell me about lions`, `how fast is a cheetah`, `facts about dolphins`\n"
         "- **History** — `who was Abraham Lincoln`, `what was the New Deal`\n"
         "- **Programming** — `history of Python`, `what is recursion`, `JavaScript hello world`\n\n"
         "Just tell me what you want to **build** or ask me anything!"
+    )
+
+
+def _dispatch_animals(query: str, q: str) -> str:
+    # Try exact knowledge base lookup first
+    for key, answer in GENERAL_KNOWLEDGE.items():
+        if key in q:
+            return answer
+
+    # Try partial animal name match against knowledge keys
+    for animal in _ANIMAL_NAMES:
+        if animal in q:
+            for key, answer in GENERAL_KNOWLEDGE.items():
+                if animal in key:
+                    return answer
+
+    # Generic animal response for animals not yet in knowledge base
+    # Find which animal was mentioned
+    mentioned = next((a for a in sorted(_ANIMAL_NAMES, key=len, reverse=True) if a in q), "animal")
+    return (
+        f"### {mentioned.title()}\n\n"
+        f"You asked about **{mentioned}s** — here's what I know:\n\n"
+        "**Quick facts:**\n"
+        f"- {mentioned.title()}s are fascinating animals studied by zoologists and wildlife biologists.\n"
+        "- They play important roles in their ecosystems as predators, prey, pollinators, or decomposers.\n\n"
+        "**Want to learn more?** Try asking:\n"
+        f"> `tell me about {mentioned}s` · `how fast is a {mentioned}` · `where do {mentioned}s live`\n\n"
+        "I also have detailed entries on: **lions, tigers, wolves, sharks, elephants, dolphins, eagles, "
+        "octopuses, gorillas, cheetahs, penguins, polar bears, bees, Komodo dragons, and more!**"
     )
 
 
@@ -655,6 +770,7 @@ def generate_response(query: str, mode: str, history: list) -> str:
         "science":     _score_science(q),
         "history":     _score_history(q),
         "programming": _score_programming(q),
+        "animals":     _score_animals(q),
         "knowledge":   _score_knowledge(q),
     }
 
@@ -677,6 +793,7 @@ def generate_response(query: str, mode: str, history: list) -> str:
             "> Math: `derivative of x³ + 2x` · `what is 15% of 340`\n"
             "> Space: `how far is Neptune` · `what is a neutron star`\n"
             "> Science: `explain quantum entanglement` · `what is DNA`\n"
+            "> Animals: `tell me about lions` · `how fast is a cheetah` · `facts about dolphins`\n"
             "> History: `who was Abraham Lincoln` · `what caused the Civil War`\n"
             "> Code: `history of JavaScript` · `what is recursion` · `Python hello world`\n"
         )
@@ -713,6 +830,9 @@ def generate_response(query: str, mode: str, history: list) -> str:
 
     if best_intent == "programming":
         return _dispatch_programming(query, mode)
+
+    if best_intent == "animals":
+        return _dispatch_animals(query, q)
 
     if best_intent == "knowledge":
         for key, answer in GENERAL_KNOWLEDGE.items():
