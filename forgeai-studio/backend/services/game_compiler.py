@@ -60,7 +60,7 @@ def _detect_genre(q: str) -> str:
     )):
         return "memory"
 
-    if any(w in q for w in ("snake", "worm", "slither")):
+    if any(w in q for w in ("snake", "worm", "slither", "grow", "eat and grow", "tail")):
         return "snake"
 
     if any(w in q for w in ("tower", "defense", "defend", "td game", "base defense")):
@@ -87,7 +87,8 @@ def _detect_genre(q: str) -> str:
     if any(w in q for w in ("doodle jump", "vertical jump", "jump up", "endless jump", "bounce up")):
         return "doodle"
 
-    if any(w in q for w in ("space", "shoot", "invader", "alien", "laser", "ship", "galaga", "meteor")):
+    if any(w in q for w in ("space", "shoot", "invader", "alien", "laser", "ship", "galaga", "meteor",
+                             "defend earth", "alien attack", "galactic", "cosmos shooter")):
         return "spaceshooter"
 
     # Unknown — generate a real game from the description
