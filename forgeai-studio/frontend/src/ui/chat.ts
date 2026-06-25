@@ -30,16 +30,36 @@ export function addThinkingIndicatorUI(): HTMLElement {
       <i class="fa-solid fa-circle-notch text-slate-600 text-xs animate-spin"></i>
     </div>
     <div class="bg-slate-50 border border-slate-200/60 p-5 rounded-2xl rounded-tl-none w-full space-y-2">
-      <div class="flex items-center space-x-2 text-slate-500 text-xs font-medium">
-        <i class="fa-solid fa-brain text-slate-400"></i>
-        <span>Formulating system response...</span>
+      <div class="flex items-center space-x-2 text-slate-500 text-xs font-medium" id="thinkingLabel">
+        <i class="fa-solid fa-brain text-slate-400" id="thinkingIcon"></i>
+        <span id="thinkingText">Formulating system response...</span>
       </div>
       <div class="h-3 shimmer-bg rounded w-3/4"></div>
       <div class="h-3 shimmer-bg rounded w-1/2"></div>
     </div>`;
   feed.appendChild(row);
   feed.scrollTop = feed.scrollHeight;
+
+  // After 700ms with no response, assume web search is happening
+  const searchTimer = setTimeout(() => {
+    const icon = row.querySelector('#thinkingIcon') as HTMLElement | null;
+    const text = row.querySelector('#thinkingText') as HTMLElement | null;
+    if (icon) { icon.className = 'fa-solid fa-globe text-indigo-400'; }
+    if (text) { text.textContent = 'Searching the web...'; }
+  }, 700);
+
+  (row as any)._searchTimer = searchTimer;
   return row;
+}
+
+export function resolveThinkingIndicator(row: HTMLElement, webSearched: boolean): void {
+  clearTimeout((row as any)._searchTimer);
+  if (webSearched) {
+    const icon = row.querySelector('#thinkingIcon') as HTMLElement | null;
+    const text = row.querySelector('#thinkingText') as HTMLElement | null;
+    if (icon) { icon.className = 'fa-solid fa-globe text-indigo-400'; }
+    if (text) { text.textContent = 'Searching the web...'; }
+  }
 }
 
 export async function addAIStreamUI(fullText: string, stream = true): Promise<HTMLElement> {
@@ -211,6 +231,7 @@ export function initChatForm(): void {
         quick_mode: state.quickMode,
       });
 
+      resolveThinkingIndicator(thinkingRow, res.web_searched ?? false);
       thinkingRow.remove();
       session.messages.push({ role: 'assistant', text: res.text });
       saveSessions(state.sessions);

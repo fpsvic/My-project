@@ -29,4 +29,5 @@ export interface ChatRequest {
 export interface ChatResponse {
   text: string;
   corrections: Array<{ original: string; corrected: string }>;
+  web_searched?: boolean;
 }

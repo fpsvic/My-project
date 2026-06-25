@@ -3,6 +3,8 @@ import urllib.parse
 import json
 import re
 
+_last_searched: bool = False
+
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; ForgeAI/1.0)",
 }
@@ -61,6 +63,8 @@ def google_search(query: str) -> str | None:
 
 def web_lookup(query: str) -> str:
     """Try DuckDuckGo first, fall back to Google, then return a search link."""
+    global _last_searched
+    _last_searched = True
     result = ddg_search(query)
     if result:
         return f"### Web Search Result\n\n{result}"
