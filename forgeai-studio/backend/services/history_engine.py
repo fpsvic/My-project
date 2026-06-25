@@ -1,3 +1,7 @@
+def _kw(q: str, *words) -> bool:
+    return any(w in q for w in words)
+
+
 def _wrap(thinking: str, heading: str, body: str, mode: str) -> str:
     if mode == "forge_thinking":
         return (
@@ -12,8 +16,7 @@ def _wrap(thinking: str, heading: str, body: str, mode: str) -> str:
 def generate_history_response(query: str, mode: str) -> str:
     q = query.lower().strip()
 
-    # ── Ancient Egypt ─────────────────────────────────────────────────────────
-    if any(w in q for w in ("egypt", "pharaoh", "pyramid", "hieroglyph", "sphinx", "nile", "ramesses", "cleopatra", "tutankhamun")):
+    if _kw(q, "egypt", "pharaoh", "pyramid", "hieroglyph", "sphinx", "nile", "ramesses", "cleopatra", "tutankhamun"):
         heading = "Ancient Egypt: Pharaohs, Pyramids & Hieroglyphics"
         body = (
             "Ancient Egypt was one of the world's longest-lasting civilisations, spanning ~**3,000 years** (c. 3100–30 BC):\n\n"
@@ -38,8 +41,7 @@ def generate_history_response(query: str, mode: str) -> str:
             "- **Context:** Pharaonic rule, pyramid construction, hieroglyphic writing system."
         )
 
-    # ── Roman Empire ──────────────────────────────────────────────────────────
-    elif any(w in q for w in ("roman empire", "rome", "julius caesar", "augustus", "gladiator", "colosseum", "byzantine")):
+    elif _kw(q, "roman empire", "rome", "julius caesar", "augustus", "gladiator", "colosseum", "byzantine"):
         heading = "The Roman Empire: Rise and Fall"
         body = (
             "The Roman Empire was the most powerful state in the ancient world, lasting from **27 BC to 476 AD** (Western) / **1453 AD** (Eastern/Byzantine):\n\n"
@@ -62,8 +64,7 @@ def generate_history_response(query: str, mode: str) -> str:
             "- **Context:** Republic to empire transition, Pax Romana, causes of decline."
         )
 
-    # ── The Renaissance ───────────────────────────────────────────────────────
-    elif any(w in q for w in ("renaissance", "da vinci", "michelangelo", "raphael", "humanism", "botticelli", "medici")):
+    elif _kw(q, "renaissance", "da vinci", "michelangelo", "raphael", "humanism", "botticelli", "medici"):
         heading = "The Renaissance (c. 1300–1600)"
         body = (
             "The **Renaissance** ('Rebirth') was a transformative cultural movement that began in Italy and spread across Europe, marking the transition from the Middle Ages to modernity:\n\n"
@@ -87,8 +88,7 @@ def generate_history_response(query: str, mode: str) -> str:
             "- **Context:** Italian origins, humanist philosophy, artistic innovations, key figures."
         )
 
-    # ── Scientific Revolution ─────────────────────────────────────────────────
-    elif any(w in q for w in ("scientific revolution", "copernicus", "galileo", "kepler", "newton", "descartes", "bacon")):
+    elif _kw(q, "scientific revolution", "copernicus", "galileo", "kepler", "newton", "descartes", "bacon"):
         heading = "The Scientific Revolution (c. 1543–1687)"
         body = (
             "The **Scientific Revolution** transformed humanity's understanding of nature, establishing modern science as a discipline based on observation, experiment, and mathematics:\n\n"
@@ -111,8 +111,7 @@ def generate_history_response(query: str, mode: str) -> str:
             "- **Context:** Copernican revolution, Kepler's laws, Galileo, Newton's synthesis."
         )
 
-    # ── Age of Exploration ────────────────────────────────────────────────────
-    elif any(w in q for w in ("age of exploration", "columbus", "magellan", "vasco da gama", "exploration", "new world", "conquistador")):
+    elif _kw(q, "age of exploration", "columbus", "magellan", "vasco da gama", "exploration", "new world", "conquistador"):
         heading = "The Age of Exploration (c. 1400–1600)"
         body = (
             "The **Age of Exploration** was a period of European global maritime exploration that permanently connected the world's continents:\n\n"
@@ -136,8 +135,7 @@ def generate_history_response(query: str, mode: str) -> str:
             "- **Context:** Navigation technology, key voyages, the Columbian Exchange and its consequences."
         )
 
-    # ── Cold War ──────────────────────────────────────────────────────────────
-    elif any(w in q for w in ("cold war", "soviet union", "ussr", "nato", "berlin wall", "cuban missile", "iron curtain", "communism", "containment")):
+    elif _kw(q, "cold war", "soviet union", "ussr", "nato", "berlin wall", "cuban missile", "iron curtain", "communism", "containment"):
         heading = "The Cold War (1947–1991)"
         body = (
             "The **Cold War** was a geopolitical rivalry between the **United States** and the **Soviet Union** (USSR), fought through proxy wars, arms races, and ideological competition — never direct military conflict between the two superpowers:\n\n"
@@ -164,8 +162,7 @@ def generate_history_response(query: str, mode: str) -> str:
             "- **Context:** US-USSR ideological rivalry, key crises, arms race, eventual dissolution."
         )
 
-    # ── Space Race ────────────────────────────────────────────────────────────
-    elif any(w in q for w in ("space race", "sputnik", "apollo", "apollo 11", "moon landing", "yuri gagarin", "neil armstrong", "nasa")):
+    elif _kw(q, "space race", "sputnik", "apollo", "apollo 11", "moon landing", "yuri gagarin", "neil armstrong", "nasa"):
         heading = "The Space Race: From Sputnik to Apollo 11"
         body = (
             "The **Space Race** (1957–1969) was a Cold War competition between the USA and USSR to achieve supremacy in spaceflight:\n\n"
@@ -192,8 +189,7 @@ def generate_history_response(query: str, mode: str) -> str:
             "- **Context:** Cold War context, Sputnik shock, Apollo 11 mission details."
         )
 
-    # ── Invention of the Internet ──────────────────────────────────────────────
-    elif any(w in q for w in ("internet", "arpanet", "world wide web", "www", "tim berners-lee", "tcp/ip")):
+    elif _kw(q, "internet", "arpanet", "world wide web", "www", "tim berners-lee", "tcp/ip"):
         heading = "The Invention of the Internet"
         body = (
             "The Internet evolved over decades from a military research network to a global communication system:\n\n"
@@ -219,8 +215,7 @@ def generate_history_response(query: str, mode: str) -> str:
             "- **Context:** ARPANET origins, TCP/IP standardisation, WWW invention by Berners-Lee."
         )
 
-    # ── Manhattan Project ──────────────────────────────────────────────────────
-    elif any(w in q for w in ("manhattan project", "atomic bomb", "nuclear bomb", "hiroshima", "nagasaki", "oppenheimer")):
+    elif _kw(q, "manhattan project", "atomic bomb", "nuclear bomb", "hiroshima", "nagasaki", "oppenheimer"):
         heading = "The Manhattan Project (1942–1946)"
         body = (
             "The **Manhattan Project** was the US-led wartime programme to develop the world's first nuclear weapons:\n\n"
@@ -247,8 +242,7 @@ def generate_history_response(query: str, mode: str) -> str:
             "- **Context:** WWII context, project scale, Trinity test, Hiroshima and Nagasaki."
         )
 
-    # ── Printing Press ────────────────────────────────────────────────────────
-    elif any(w in q for w in ("printing press", "gutenberg", "movable type", "printing")):
+    elif _kw(q, "printing press", "gutenberg", "movable type", "printing"):
         heading = "The Printing Press & Its Impact (c. 1440)"
         body = (
             "**Johannes Gutenberg**'s movable-type printing press (~1440) was arguably the most transformative invention in the history of communication:\n\n"
@@ -278,8 +272,7 @@ def generate_history_response(query: str, mode: str) -> str:
             "- **Context:** Gutenberg's mechanism, Reformation, Scientific Revolution, spread of literacy."
         )
 
-    # ── George Washington / Founding Era ──────────────────────────────────────
-    elif any(w in q for w in ("washington", "founding", "hamilton", "jefferson")):
+    elif _kw(q, "washington", "founding", "hamilton", "jefferson"):
         heading = "George Washington & The Founding Era (1789–1797)"
         body = (
             "As the first President, **George Washington** established crucial precedents:\n\n"
@@ -296,8 +289,7 @@ def generate_history_response(query: str, mode: str) -> str:
             "- **Context:** Federalist vs. Democratic-Republican cabinet dynamics."
         )
 
-    # ── Lincoln / Civil War ────────────────────────────────────────────────────
-    elif any(w in q for w in ("lincoln", "civil war", "gettysburg", "emancipation")):
+    elif _kw(q, "lincoln", "civil war", "gettysburg", "emancipation"):
         heading = "Abraham Lincoln & The Constitutional Crisis (1861–1865)"
         body = (
             "Presiding over the nation's most profound crisis, **Abraham Lincoln** preserved the Union:\n\n"
@@ -314,8 +306,7 @@ def generate_history_response(query: str, mode: str) -> str:
             "- **Significance:** Wartime executive powers expansion."
         )
 
-    # ── FDR / Great Depression ────────────────────────────────────────────────
-    elif any(w in q for w in ("fdr", "roosevelt", "new deal", "depression")):
+    elif _kw(q, "fdr", "roosevelt", "new deal", "depression"):
         heading = "Franklin D. Roosevelt & The Great Transformation (1933–1945)"
         body = (
             "Elected to an unprecedented four terms, **FDR** fundamentally restructured the federal government:\n\n"
@@ -332,8 +323,7 @@ def generate_history_response(query: str, mode: str) -> str:
             "- **Impact:** Administrative state expansion."
         )
 
-    # ── Party Systems ─────────────────────────────────────────────────────────
-    elif any(w in q for w in ("party", "political", "realignment", "whig", "federalist")):
+    elif _kw(q, "party", "political", "realignment", "whig", "federalist"):
         heading = "Evolution of the American Party System"
         body = (
             "The U.S. political landscape has evolved through several distinct **Party Systems**:\n\n"
