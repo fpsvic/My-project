@@ -121,11 +121,15 @@ def _shell(title: str, t: dict, body: str, script: str, extra_head: str = "") ->
 
 
 def _build_calculator(t: dict) -> str:
+    calc_keys = ["C","±","%","÷","7","8","9","×","4","5","6","−","1","2","3","+","0",".","+/−","="]
+    calc_buttons = "".join(
+        f'<button class="btn btn-ghost py-3 text-sm font-bold rounded-xl" onclick="press(\'{k}\')">{k}</button>'
+        for k in calc_keys
+    )
     body = f"""<div class="card space-y-3">
   <div id="display" style="background:{t['bg']};border:1.5px solid {t['border']};border-radius:.75rem;padding:1rem;font-family:monospace;font-size:1.5rem;font-weight:800;text-align:right;min-height:3.5rem;word-break:break-all;color:{t['text']}">0</div>
   <div class="grid grid-cols-4 gap-2">
-    {"".join(f'<button class="btn btn-ghost py-3 text-sm font-bold rounded-xl" onclick="press(\'{k}\')">{k}</button>'
-      for k in ["C","±","%","÷","7","8","9","×","4","5","6","−","1","2","3","+","0",".","+/−","="])}
+    {calc_buttons}
   </div>
 </div>"""
     script = f"""
@@ -158,13 +162,17 @@ document.addEventListener('keydown',e=>{{
 
 
 def _build_scientific_calculator(t: dict) -> str:
+    sci_keys = ["sin","cos","tan","log","ln","√","x²","x³","π","e",
+                "C","(",")","±","%","7","8","9","÷","×","4","5","6","−","+","1","2","3","0",".","="]
+    sci_buttons = "".join(
+        f'<button class="btn btn-ghost py-2.5 text-xs font-bold rounded-xl" onclick="press(\'{k}\')">{k}</button>'
+        for k in sci_keys
+    )
     body = f"""<div class="card space-y-3">
   <div id="display" style="background:{t['bg']};border:1.5px solid {t['border']};border-radius:.75rem;padding:1rem;font-family:monospace;font-size:1.3rem;font-weight:800;text-align:right;min-height:3.5rem;word-break:break-all;color:{t['text']}">0</div>
   <div id="expr" style="font-family:monospace;font-size:.7rem;color:{t['muted']};min-height:1rem;text-align:right;padding:0 .5rem"></div>
   <div class="grid grid-cols-5 gap-1.5">
-    {"".join(f'<button class="btn btn-ghost py-2.5 text-xs font-bold rounded-xl" onclick="press(\'{k}\')">{k}</button>'
-      for k in ["sin","cos","tan","log","ln","√","x²","x³","π","e",
-                "C","(",")","±","%","7","8","9","÷","×","4","5","6","−","+","1","2","3","0",".","="])}
+    {sci_buttons}
   </div>
 </div>"""
     script = """

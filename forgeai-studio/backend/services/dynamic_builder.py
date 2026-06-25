@@ -523,12 +523,16 @@ def generate_crud_app(query: str) -> str:
     export_js = ""
     if has_export:
         headers = ",".join(f'"{f["label"]}"' for f in fields)
-        row_js = "+','+".join(f'"\\""+(item.{f["name"]}||"").toString().replace(/"/g,\'\\\\"\')+"\\""' for f in fields)
+        row_parts = []
+        for f in fields:
+            row_parts.append('"\\""+(item.' + f["name"] + '||"").toString().replace(/"/g,\'\\\\"\')+"\\""')
+        row_js = "+','+".join(row_parts)
+        newline = "\\n"
         export_js = f"""
 function exportCSV() {{
   const headers = [{headers}];
   const rows = items.map(item => [{row_js}]);
-  const csv = [headers.join(','), ...rows.map(r=>r.join(','))].join('\\n');
+  const csv = [headers.join(','), ...rows.map(r=>r.join(','))].join('{newline}');
   const a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
   a.download = '{title.replace(" ","_")}.csv';

@@ -163,11 +163,12 @@ def _trig_response(query: str, mode: str) -> str:
     computed = round(trig_fns[ratio](rad_val), 5)
 
     unit_label = "degrees" if unit == "deg" else "radians"
+    deg_sym = "°" if unit == "deg" else "\\text{ rad}"
     body = (
-        f"Evaluating **$\\{ratio}({val}\\text{{ {unit_label}}})$**:\n\n"
-        f"1. **Input Angle**: ${val}{'°' if unit == 'deg' else '\\text{ rad}'}$\n"
+        "Evaluating **$\\" + ratio + "(" + str(val) + "\\text{ " + unit_label + "})$**:\n\n"
+        "1. **Input Angle**: $" + str(val) + deg_sym + "$\n"
         f"2. **Radian Conversion**: ${rad_val:.5f}\\text{{ rad}}$\n"
-        f"3. **Result**: $\\{ratio}({rad_val:.5f}) \\approx {computed}$"
+        "3. **Result**: $\\" + ratio + "(" + f"{rad_val:.5f}" + ") \\approx " + str(computed) + "$"
         f"\n\n[MATH_CARD: formula: {ratio}({val} {unit}) | result: {computed} | style: violet]"
     )
     return _thinking_wrap(thinking, heading, body, mode)
