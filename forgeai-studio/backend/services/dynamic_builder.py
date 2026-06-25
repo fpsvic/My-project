@@ -8,6 +8,7 @@ Works by:
 
 Supports any entity (plants, recipes, employees, bugs, wines, pets, …)
 and composes features (search, filter, chart, export, dark mode, …) on demand.
+Also supports tool/calculator apps and dashboard apps.
 """
 
 import re
@@ -94,6 +95,25 @@ _ENTITY_CATALOG: dict[str, tuple[str, list]] = {
     "travel":      ("✈️", ["Destination", "Country", "Date:date", "Duration (days):number", "Status:select:Dream,Planned,Booked,Done", "Budget:number", "Notes:textarea"]),
     "photo":       ("📷", ["Title", "Location", "Date:date", "Camera/Device", "Tags", "Notes:textarea"]),
     "music":       ("🎵", ["Song/Album", "Artist", "Genre:select:Pop,Rock,Hip-Hop,R&B,Electronic,Jazz,Classical,Other", "Status:select:Want to Listen,Listening,Favourite", "Rating:select:⭐,⭐⭐,⭐⭐⭐,⭐⭐⭐⭐,⭐⭐⭐⭐⭐", "Notes:textarea"]),
+    # ── New entries ──────────────────────────────────────────
+    "sneaker":     ("👟", ["Name", "Brand", "Size", "Colorway", "Condition:select:DS,VNDS,Used", "Price:number", "Purchase Date:date", "Status:select:In Collection,For Sale,Sold"]),
+    "crypto":      ("₿", ["Coin/Token", "Symbol", "Amount:number", "Buy Price:number", "Current Price:number", "Exchange", "Date:date", "Notes:textarea"]),
+    "nft":         ("🖼️", ["Name", "Collection", "Purchase Price:number", "Floor Price:number", "Platform", "Date:date", "Status:select:Holding,Listed,Sold"]),
+    "portfolio":   ("📈", ["Asset", "Type:select:Stock,ETF,Crypto,Bond,Real Estate,Other", "Amount:number", "Buy Price:number", "Current Price:number", "Date:date", "Notes:textarea"]),
+    "stock":       ("📊", ["Ticker", "Company", "Shares:number", "Buy Price:number", "Current Price:number", "Date:date", "Broker", "Notes:textarea"]),
+    "anime":       ("🎌", ["Title", "Studio", "Genre:select:Action,Romance,Fantasy,Sci-Fi,Slice of Life,Horror,Other", "Episodes:number", "Status:select:Plan to Watch,Watching,Completed,Dropped", "Rating:select:⭐,⭐⭐,⭐⭐⭐,⭐⭐⭐⭐,⭐⭐⭐⭐⭐", "Notes:textarea"]),
+    "manga":       ("📖", ["Title", "Author", "Genre:select:Shonen,Shojo,Seinen,Josei,Isekai,Other", "Volumes:number", "Status:select:Plan to Read,Reading,Completed,Dropped", "Rating:select:⭐,⭐⭐,⭐⭐⭐,⭐⭐⭐⭐,⭐⭐⭐⭐⭐"]),
+    "podcast":     ("🎙️", ["Title", "Host", "Category:select:Tech,Business,Health,True Crime,Comedy,Education,Other", "Status:select:Subscribed,Listening,Completed", "Rating:select:⭐,⭐⭐,⭐⭐⭐,⭐⭐⭐⭐,⭐⭐⭐⭐⭐", "Notes:textarea"]),
+    "supplement":  ("💊", ["Name", "Brand", "Dosage", "Frequency:select:Daily,Twice Daily,Weekly,As Needed", "Purpose", "Start Date:date", "Notes:textarea"]),
+    "furniture":   ("🛋️", ["Item Name", "Brand", "Room:select:Living Room,Bedroom,Kitchen,Office,Bathroom,Other", "Price:number", "Condition:select:New,Like New,Good,Fair", "Purchase Date:date", "Notes:textarea"]),
+    "plant_care":  ("🌱", ["Plant Name", "Species", "Last Watered:date", "Last Fertilized:date", "Light:select:Full Sun,Partial Sun,Shade", "Soil Type", "Health:select:Thriving,Good,Struggling,Dead", "Notes:textarea"]),
+    "debt":        ("💳", ["Creditor", "Type:select:Credit Card,Student Loan,Mortgage,Car Loan,Personal,Other", "Balance:number", "Interest Rate:number", "Minimum Payment:number", "Due Date:date", "Status:select:Active,Paid Off"]),
+    "savings":     ("🏦", ["Goal Name", "Target Amount:number", "Current Amount:number", "Deadline:date", "Category:select:Emergency Fund,Vacation,House,Car,Education,Other", "Notes:textarea"]),
+    "client":      ("🤝", ["Client Name", "Company", "Email:email", "Phone", "Project", "Budget:number", "Status:select:Lead,Active,On Hold,Completed", "Notes:textarea"]),
+    "competitor":  ("⚔️", ["Company", "Website:url", "Strengths:textarea", "Weaknesses:textarea", "Pricing", "Market:select:Same,Adjacent,Different", "Notes:textarea"]),
+    "vendor":      ("🏪", ["Vendor Name", "Category", "Contact Email:email", "Phone", "Rating:select:⭐,⭐⭐,⭐⭐⭐,⭐⭐⭐⭐,⭐⭐⭐⭐⭐", "Contract End:date", "Notes:textarea"]),
+    "interview":   ("💼", ["Company", "Role", "Date:date", "Stage:select:Applied,Phone Screen,Technical,On-site,Offer,Rejected", "Notes:textarea", "Follow Up:date"]),
+    "habit_goal":  ("🏆", ["Goal", "Category:select:Health,Fitness,Learning,Finance,Relationships,Career", "Target Date:date", "Milestones:textarea", "Progress:number", "Status:select:Not Started,In Progress,Achieved,Abandoned"]),
 }
 
 # Aliases so we match more variations
@@ -102,9 +122,9 @@ _ENTITY_ALIASES: dict[str, str] = {
     "todos": "todo", "goals": "goal", "habits": "habit", "recipes": "recipe",
     "books": "book", "movies": "movie", "film": "movie", "films": "movie",
     "expenses": "expense", "spending": "expense", "spend": "expense",
-    "contacts": "contact", "customers": "customer", "clients": "customer",
+    "contacts": "contact", "customers": "customer",
     "employees": "employee", "staff": "employee", "team members": "employee",
-    "products": "product", "items": "inventory", "stock": "inventory",
+    "products": "product", "items": "inventory",
     "projects": "project", "bugs": "bug", "issues": "bug", "tickets": "bug",
     "notes": "note", "journal": "journal", "diary": "journal",
     "pets": "pet", "animals": "pet",
@@ -125,24 +145,100 @@ _ENTITY_ALIASES: dict[str, str] = {
     "photos": "photo", "images": "photo", "pictures": "photo",
     "songs": "music", "albums": "music", "tracks": "music",
     "passwords": "password", "credentials": "password",
-    "goals": "goal", "objectives": "goal",
+    "objectives": "goal",
+    # ── New aliases ──────────────────────────────────────────
+    "sneakers": "sneaker", "kicks": "sneaker", "shoes": "sneaker",
+    "cryptocurrency": "crypto", "bitcoin": "crypto", "ethereum": "crypto", "altcoin": "crypto",
+    "nfts": "nft", "digital art": "nft",
+    "stocks": "stock", "shares": "stock", "equities": "stock",
+    "animes": "anime", "animation": "anime",
+    "mangas": "manga", "comics": "manga",
+    "podcasts": "podcast",
+    "supplements": "supplement", "vitamins": "supplement",
+    "debts": "debt", "loans": "debt", "credit": "debt",
+    "clients": "client",
+    "vendors": "vendor", "suppliers": "vendor",
+    "interviews": "interview", "job applications": "interview", "applications": "interview",
 }
+
+
+def _infer_field_type(name: str) -> str:
+    """Guess a field type from its name."""
+    nl = name.lower()
+    if any(w in nl for w in ("price", "cost", "amount", "value", "budget", "fee", "salary",
+                              "balance", "rate", "shares", "quantity", "qty", "number",
+                              "count", "total", "sum", "progress", "score", "age",
+                              "weight", "height", "duration", "size", "episodes", "reps",
+                              "sets", "mileage", "year", "vintage")):
+        return "number"
+    if any(w in nl for w in ("date", "day", "deadline", "due", "start", "end",
+                              "purchased", "hired", "founded", "born", "expiry",
+                              "billing", "scheduled", "watered", "fertilized", "follow up")):
+        return "date"
+    if any(w in nl for w in ("email", "e-mail")):
+        return "email"
+    if any(w in nl for w in ("url", "website", "link", "http")):
+        return "url"
+    if any(w in nl for w in ("note", "description", "detail", "comment", "summary",
+                              "content", "body", "about", "bio", "info", "entry",
+                              "strengths", "weaknesses", "milestones", "ingredients",
+                              "steps", "feedback", "gratitude")):
+        return "textarea"
+    return "text"
+
+
+def _parse_explicit_fields(q: str) -> list:
+    """
+    Detect when the user explicitly lists field names in the query.
+    Patterns: "with fields: name, price, quantity" | "track name, price and date"
+              | "fields: X, Y, Z" | "columns: X, Y, Z"
+    Returns a list of raw field strings (with type annotations) or empty list.
+    """
+    # Pattern 1: "fields: X, Y, Z" or "columns: X, Y, Z"
+    m = re.search(r'(?:fields?|columns?)\s*:\s*(.+?)(?:\.|$)', q, re.IGNORECASE)
+    if not m:
+        # Pattern 2: "with fields X, Y and Z"
+        m = re.search(r'with\s+fields?\s+(.+?)(?:\.|$)', q, re.IGNORECASE)
+    if not m:
+        # Pattern 3: "track X, Y and Z" or "log X, Y and Z" — only if comma-separated list
+        m = re.search(r'(?:track|log|record|store)\s+(?:my\s+)?(?:\w+\s+)?(\w[\w\s]*,[\w\s,]+(?:and\s+\w[\w\s]*)?)(?:\.|$)', q, re.IGNORECASE)
+
+    if not m:
+        return []
+
+    raw = m.group(1).strip()
+    # Split on commas and "and"
+    parts = re.split(r',|\band\b', raw, flags=re.IGNORECASE)
+    fields = []
+    for part in parts:
+        name = part.strip().strip('"\'')
+        if not name or len(name) > 40:
+            continue
+        ftype = _infer_field_type(name)
+        if ftype == "text":
+            fields.append(name.title())
+        else:
+            fields.append(f"{name.title()}:{ftype}")
+    return fields if len(fields) >= 2 else []
 
 
 def _detect_entity(q: str) -> tuple[str, str, list]:
     """Returns (entity_key, emoji, fields)."""
+    # Check for explicit field definitions first
+    explicit_fields = _parse_explicit_fields(q)
+
     # Check aliases first (longer phrases before shorter)
     for alias in sorted(_ENTITY_ALIASES, key=len, reverse=True):
         if alias in q:
             key = _ENTITY_ALIASES[alias]
-            emoji, fields = _ENTITY_CATALOG[key]
-            return key, emoji, fields
+            emoji, catalog_fields = _ENTITY_CATALOG[key]
+            return key, emoji, explicit_fields if explicit_fields else catalog_fields
 
     # Check catalog directly
     for key in sorted(_ENTITY_CATALOG, key=len, reverse=True):
         if key in q or key + "s" in q:
-            emoji, fields = _ENTITY_CATALOG[key]
-            return key, emoji, fields
+            emoji, catalog_fields = _ENTITY_CATALOG[key]
+            return key, emoji, explicit_fields if explicit_fields else catalog_fields
 
     # Try to extract entity from common patterns
     patterns = [
@@ -156,9 +252,11 @@ def _detect_entity(q: str) -> tuple[str, str, list]:
         m = re.search(pat, q)
         if m:
             raw = m.group(1).strip().rstrip("s")
-            # Build generic fields around the entity name
-            return raw, "📋", _generic_fields(raw, q)
+            fields = explicit_fields if explicit_fields else _generic_fields(raw, q)
+            return raw, "📋", fields
 
+    if explicit_fields:
+        return "item", "📋", explicit_fields
     return "item", "📋", _generic_fields("item", q)
 
 
@@ -209,6 +307,33 @@ def _detect_features(q: str) -> set:
     return features
 
 
+def _detect_build_type(q: str) -> str:
+    """
+    Returns "tool", "crud", or "dashboard" based on the query.
+    - "tool": calculator, converter, checker, validator, encoder, decoder, estimator,
+              or generator (as standalone word, not "app generator")
+    - "dashboard": dashboard or analytics or overview (without tracker/manager)
+    - "crud": everything else
+    """
+    # Tool detection — standalone tool keywords
+    tool_words = ("calculator", "calc", "converter", "checker", "validator",
+                  "encoder", "decoder", "estimator")
+    for w in tool_words:
+        if re.search(rf'\b{re.escape(w)}\b', q):
+            return "tool"
+    # "generator" only when not preceded by "app"
+    if re.search(r'\bgenerator\b', q) and not re.search(r'app\s+generator', q):
+        return "tool"
+
+    # Dashboard detection
+    dashboard_words = ("dashboard", "analytics", "overview")
+    tracker_words = ("tracker", "manager", "list", "log", "journal")
+    if any(w in q for w in dashboard_words) and not any(w in q for w in tracker_words):
+        return "dashboard"
+
+    return "crud"
+
+
 # ══════════════════════════════════════════════════════════════
 # FIELD PARSING
 # ══════════════════════════════════════════════════════════════
@@ -253,11 +378,21 @@ def _make_title(entity: str, q: str) -> str:
         return f"{entity_title} Dashboard"
     if any(w in q for w in ("organizer", "organize")):
         return f"{entity_title} Organizer"
+    if any(w in q for w in ("calculator", "calc")):
+        return f"{entity_title} Calculator"
+    if any(w in q for w in ("converter",)):
+        return f"{entity_title} Converter"
+    if any(w in q for w in ("checker", "validator")):
+        return f"{entity_title} Checker"
+    if any(w in q for w in ("estimator",)):
+        return f"{entity_title} Estimator"
+    if any(w in q for w in ("generator",)):
+        return f"{entity_title} Generator"
     return f"{entity_title} Manager"
 
 
 # ══════════════════════════════════════════════════════════════
-# HTML GENERATOR
+# HTML GENERATOR — CRUD
 # ══════════════════════════════════════════════════════════════
 
 def _field_input_html(f: dict) -> str:
@@ -637,11 +772,284 @@ render();
 
 
 # ══════════════════════════════════════════════════════════════
+# HTML GENERATOR — TOOL / CALCULATOR
+# ══════════════════════════════════════════════════════════════
+
+def generate_tool_app(query: str) -> str:
+    """Build a professional single-panel tool/calculator app from a description."""
+    q = query.lower()
+    theme = _pick_theme(q)
+    title = _make_title("tool", q)
+    t = theme
+
+    # Derive a sensible title from query if possible
+    entity_key, emoji, _ = _detect_entity(q)
+    title = _make_title(entity_key, q)
+    if not any(w in title.lower() for w in ("calculator", "converter", "checker",
+                                              "validator", "encoder", "decoder",
+                                              "estimator", "generator")):
+        # Append the tool type word found in query
+        for tw in ("calculator", "converter", "checker", "validator",
+                   "encoder", "decoder", "estimator", "generator"):
+            if tw in q:
+                title = f"{entity_key.replace('_',' ').title()} {tw.title()}"
+                break
+
+    # Build input fields from context — number inputs for numeric keywords
+    tool_field_names = []
+    if any(w in q for w in ("price", "cost", "amount", "value", "fee", "rate", "salary",
+                              "income", "revenue", "profit", "discount", "tax")):
+        tool_field_names.append(("Amount", "number"))
+    if any(w in q for w in ("percent", "percentage", "rate", "interest", "discount")):
+        tool_field_names.append(("Rate (%)", "number"))
+    if any(w in q for w in ("years", "months", "days", "duration", "period", "term", "time")):
+        tool_field_names.append(("Duration", "number"))
+    if any(w in q for w in ("weight", "kg", "lbs", "pounds", "grams")):
+        tool_field_names.append(("Weight", "number"))
+    if any(w in q for w in ("height", "cm", "feet", "inches", "meter")):
+        tool_field_names.append(("Height", "number"))
+    if any(w in q for w in ("temperature", "celsius", "fahrenheit", "kelvin", "temp")):
+        tool_field_names.append(("Temperature", "number"))
+    if any(w in q for w in ("distance", "km", "miles", "meter", "length")):
+        tool_field_names.append(("Distance", "number"))
+    if any(w in q for w in ("speed", "velocity", "mph", "kph")):
+        tool_field_names.append(("Speed", "number"))
+    if any(w in q for w in ("quantity", "count", "number of", "how many")):
+        tool_field_names.append(("Quantity", "number"))
+
+    # If we detected nothing specific, make generic inputs
+    if not tool_field_names:
+        tool_field_names = [("Value A", "number"), ("Value B", "number")]
+
+    # Deduplicate while preserving order
+    seen = set()
+    unique_fields = []
+    for name, ftype in tool_field_names:
+        if name not in seen:
+            seen.add(name)
+            unique_fields.append((name, ftype))
+    tool_field_names = unique_fields
+
+    # Build field ids
+    tool_fields = [
+        {"label": name, "ftype": ftype, "id": re.sub(r"[^a-z0-9]", "_", name.lower()).strip("_")}
+        for name, ftype in tool_field_names
+    ]
+
+    # Input HTML for each field
+    inputs_html = "\n".join(
+        f'''        <div class="tool-field-group">
+          <label class="tool-label">{f["label"]}</label>
+          <input id="tinput_{f["id"]}" type="{f["ftype"]}" placeholder="Enter {f["label"].lower()}" class="tool-input">
+        </div>'''
+        for f in tool_fields
+    )
+
+    # JS to read inputs and build result
+    read_inputs_js = "\n    ".join(
+        f'const val_{f["id"]} = parseFloat(document.getElementById("tinput_{f["id"]}").value) || 0;'
+        for f in tool_fields
+    )
+
+    # Build a result lines array
+    result_lines_js = "\n    ".join(
+        f'lines.push({{ label: "{f["label"]}", value: val_{f["id"]}.toLocaleString() }});'
+        for f in tool_fields
+    )
+
+    # Sum of numeric fields as a "Total" result
+    sum_expr = " + ".join(f'val_{f["id"]}' for f in tool_fields)
+    storage_key = f'forgeai_tool_{re.sub(r"[^a-z0-9]", "_", title.lower())}'
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title}</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:{t['bg']};color:{t['text']};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;padding:20px}}
+h1{{font-size:1.5rem;font-weight:800;letter-spacing:-.02em}}
+.app{{max-width:860px;margin:0 auto}}
+.tool-header{{display:flex;align-items:center;gap:12px;margin-bottom:20px}}
+.tool-emoji{{font-size:2rem}}
+.tool-subtitle{{font-size:.78rem;color:{t['muted']};margin-top:2px}}
+.tool-layout{{display:grid;grid-template-columns:1fr 1fr;gap:16px}}
+@media(max-width:600px){{.tool-layout{{grid-template-columns:1fr}}}}
+.panel{{background:{t['surface']};border:1px solid {t['border']};border-radius:14px;padding:20px}}
+.panel-title{{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:{t['muted']};margin-bottom:14px}}
+.tool-field-group{{margin-bottom:12px}}
+.tool-label{{display:block;font-size:.7rem;font-weight:600;color:{t['muted']};text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}}
+.tool-input{{width:100%;background:{t['bg']};border:1.5px solid {t['border']};color:{t['text']};border-radius:9px;padding:10px 12px;font-size:.9rem;outline:none;font-family:inherit;transition:border-color .15s}}
+.tool-input:focus{{border-color:{t['primary']}}}
+.btn{{display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:10px;font-size:.82rem;font-weight:700;cursor:pointer;border:none;transition:.15s;white-space:nowrap}}
+.btn-primary{{background:{t['primary']};color:#fff;width:100%;justify-content:center;margin-top:8px}} .btn-primary:hover{{opacity:.85}}
+.btn-ghost{{background:transparent;border:1.5px solid {t['border']};color:{t['text']}}} .btn-ghost:hover{{background:{t['hover']}}}
+.btn-sm{{padding:5px 10px;font-size:.7rem;border-radius:7px}}
+.result-box{{background:{t['bg']};border:2px solid {t['primary']}44;border-radius:12px;padding:16px;margin-bottom:14px;min-height:80px}}
+.result-empty{{color:{t['muted']};font-size:.82rem;text-align:center;padding:20px 0}}
+.result-row{{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid {t['border']}}}
+.result-row:last-child{{border-bottom:none}}
+.result-label{{font-size:.75rem;color:{t['muted']};font-weight:600}}
+.result-value{{font-size:.88rem;font-weight:700;color:{t['text']};font-family:monospace}}
+.result-total{{background:{t['primary']}18;border-radius:8px;padding:10px 12px;margin-top:10px;display:flex;justify-content:space-between;align-items:center}}
+.result-total-label{{font-size:.75rem;font-weight:700;color:{t['primary']};text-transform:uppercase;letter-spacing:.06em}}
+.result-total-value{{font-size:1.2rem;font-weight:800;color:{t['primary']};font-family:monospace}}
+.history-section{{margin-top:16px}}
+.history-title{{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:{t['muted']};margin-bottom:10px}}
+.history-list{{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto}}
+.history-item{{background:{t['bg']};border:1px solid {t['border']};border-radius:9px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:.12s}}
+.history-item:hover{{border-color:{t['primary']}66}}
+.history-summary{{font-size:.75rem;color:{t['muted']};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+.history-result{{font-size:.82rem;font-weight:700;color:{t['primary']};font-family:monospace;margin-left:10px}}
+.history-time{{font-size:.65rem;color:{t['muted']};margin-left:8px;white-space:nowrap}}
+.history-empty{{color:{t['muted']};font-size:.78rem;text-align:center;padding:16px 0}}
+.clear-history{{font-size:.65rem;color:{t['muted']};cursor:pointer;text-decoration:underline;margin-top:6px;display:inline-block}}
+.clear-history:hover{{color:{t['text']}}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="tool-header">
+    <div class="tool-emoji">{emoji}</div>
+    <div>
+      <h1>{title}</h1>
+      <div class="tool-subtitle">Enter values and press Calculate</div>
+    </div>
+  </div>
+
+  <div class="tool-layout">
+    <!-- ── Input Panel ── -->
+    <div class="panel">
+      <div class="panel-title">⚙️ Inputs</div>
+{inputs_html}
+      <button class="btn btn-primary" onclick="calculate()">⚡ Calculate</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;justify-content:center" onclick="clearInputs()">Clear</button>
+    </div>
+
+    <!-- ── Result Panel ── -->
+    <div class="panel">
+      <div class="panel-title">📊 Result</div>
+      <div class="result-box" id="resultBox">
+        <div class="result-empty" id="resultEmpty">Results will appear here after you calculate.</div>
+        <div id="resultRows" style="display:none"></div>
+      </div>
+
+      <div class="history-section">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="history-title">🕓 History</div>
+          <span class="clear-history" onclick="clearHistory()">Clear all</span>
+        </div>
+        <div class="history-list" id="historyList">
+          <div class="history-empty">No calculations yet.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOOL_STORAGE_KEY = '{storage_key}';
+let history = [];
+
+function loadHistory() {{
+  try {{ history = JSON.parse(localStorage.getItem(TOOL_STORAGE_KEY) || '[]'); }} catch(e) {{ history = []; }}
+}}
+function saveHistory() {{
+  try {{ localStorage.setItem(TOOL_STORAGE_KEY, JSON.stringify(history.slice(0, 50))); }} catch(e) {{}}
+}}
+
+function calculate() {{
+  {read_inputs_js}
+
+  const lines = [];
+  {result_lines_js}
+  const total = {sum_expr};
+
+  // Show results
+  const rowsEl = document.getElementById('resultRows');
+  const emptyEl = document.getElementById('resultEmpty');
+  emptyEl.style.display = 'none';
+  rowsEl.style.display = 'block';
+  rowsEl.innerHTML = lines.map(l =>
+    `<div class="result-row"><span class="result-label">${{l.label}}</span><span class="result-value">${{l.value}}</span></div>`
+  ).join('') + `<div class="result-total"><span class="result-total-label">Total / Result</span><span class="result-total-value">${{total.toLocaleString(undefined,{{maximumFractionDigits:4}})}}</span></div>`;
+
+  // Save to history
+  const summary = lines.map(l => `${{l.label}}: ${{l.value}}`).join(' | ');
+  history.unshift({{
+    summary,
+    result: total.toLocaleString(undefined, {{maximumFractionDigits: 4}}),
+    time: new Date().toLocaleTimeString(),
+    inputs: lines
+  }});
+  saveHistory();
+  renderHistory();
+}}
+
+function clearInputs() {{
+  document.querySelectorAll('.tool-input').forEach(el => el.value = '');
+  document.getElementById('resultRows').style.display = 'none';
+  document.getElementById('resultEmpty').style.display = 'block';
+}}
+
+function clearHistory() {{
+  if (!confirm('Clear all history?')) return;
+  history = [];
+  saveHistory();
+  renderHistory();
+}}
+
+function loadFromHistory(idx) {{
+  const item = history[idx];
+  if (!item) return;
+  // Re-populate inputs from saved data
+  const inputs = document.querySelectorAll('.tool-input');
+  item.inputs.forEach((field, i) => {{
+    if (inputs[i]) inputs[i].value = parseFloat(field.value.replace(/,/g,'')) || '';
+  }});
+  calculate();
+}}
+
+function renderHistory() {{
+  const el = document.getElementById('historyList');
+  if (!history.length) {{
+    el.innerHTML = '<div class="history-empty">No calculations yet.</div>';
+    return;
+  }}
+  el.innerHTML = history.map((item, idx) =>
+    `<div class="history-item" onclick="loadFromHistory(${{idx}})">
+      <span class="history-summary">${{item.summary}}</span>
+      <span class="history-result">${{item.result}}</span>
+      <span class="history-time">${{item.time}}</span>
+    </div>`
+  ).join('');
+}}
+
+loadHistory();
+renderHistory();
+</script>
+</body>
+</html>"""
+    return html
+
+
+# ══════════════════════════════════════════════════════════════
 # PUBLIC ENTRY POINT
 # ══════════════════════════════════════════════════════════════
 
 def build_dynamic_app(query: str) -> dict:
     q = query.lower()
+    build_type = _detect_build_type(q)
+
+    if build_type == "tool":
+        entity_key, emoji, _ = _detect_entity(q)
+        title = _make_title(entity_key, q)
+        code = generate_tool_app(query)
+        return {"title": title, "type": "dynamic_tool", "code": code}
+
+    # "dashboard" falls through to crud for now (future: generate_dashboard_app)
     entity_key, emoji, _ = _detect_entity(q)
     title = _make_title(entity_key, q)
     code = generate_crud_app(query)
