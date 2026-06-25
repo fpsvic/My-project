@@ -22,6 +22,7 @@ from services.game_compiler import compile_game
 from services.app_builder import build_app, detect_app_type
 from services.dynamic_builder import build_dynamic_app
 from services.update_handler import is_update_request, apply_update
+from services.brain import forge, forge_greeting
 
 # --- NORMALIZATION ---
 
@@ -489,20 +490,7 @@ def _score_knowledge(q: str) -> int:
 # --- DISPATCH HELPERS ---
 
 def _dispatch_greeting(mode: str) -> str:
-    return (
-        f"Hello! I am **ForgeAI**, your local cognitive AI running in **{mode}** mode.\n\n"
-        "I can help you with:\n"
-        "- **Build apps & tools** — `make a calculator`, `build a kanban board`, `create a budget tracker`\n"
-        "- **Build games** — `make flappy bird`, `build a snake game`, `create a space shooter`\n"
-        "- **Math** — `derivative of 3x² + 5x`, `integral of sin(x)`, `what is 144 × 37`\n"
-        "- **Space** — `how far is Mars from Earth`, `what is a neutron star`\n"
-        "- **Earth science** — `how do volcanoes form`, `what is the Mariana Trench`\n"
-        "- **Science** — `explain quantum entanglement`, `what is DNA`\n"
-        "- **Animals** — `tell me about lions`, `how fast is a cheetah`, `facts about dolphins`\n"
-        "- **History** — `who was Abraham Lincoln`, `what was the New Deal`\n"
-        "- **Programming** — `history of Python`, `what is recursion`, `JavaScript hello world`\n\n"
-        "Just tell me what you want to **build** or ask me anything!"
-    )
+    return forge_greeting(mode)
 
 _ASPECT_KEYWORDS = {
     "speed":       ["fast", "speed", "mph", "km/h", "quick", "run", "swim", "fly", "sprint", "velocity", "knot"],
@@ -873,11 +861,11 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     if is_update_request(q, history):
         return _dispatch_update(query, history, mode)
     if _score_animals(q) >= 60:
-        return _dispatch_animals(query, q)
+        return forge(_dispatch_animals(query, q), q, "animals")
     # Universal specific-question pre-check: KB lookup beats domain engines
     kb_hit = _kb_fact_lookup(q)
     if kb_hit:
-        return kb_hit
+        return forge(kb_hit, q, "knowledge")
     build_verb_score = 65 if _has_build_verb(q) and not _match(q, *(_GAME_NOUNS | _APP_NOUNS)) else 0
     scores: dict[str, int] = {
         "greeting":    _score_greeting(q),
@@ -913,27 +901,33 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     if best_intent == "space":
         full = generate_space_response(query, mode)
         fact = _try_extract_fact(full, q)
-        return fact if fact else full
+        raw = fact if fact else full
+        return forge(raw, q, "space")
     if best_intent == "earth":
         full = generate_earth_response(query, mode)
         fact = _try_extract_fact(full, q)
-        return fact if fact else full
+        raw = fact if fact else full
+        return forge(raw, q, "earth")
     if best_intent == "science":
         full = generate_science_response(query, mode)
         fact = _try_extract_fact(full, q)
-        return fact if fact else full
+        raw = fact if fact else full
+        return forge(raw, q, "science")
     if best_intent == "history":
         full = generate_history_response(query, mode)
         fact = _try_extract_fact(full, q)
-        return fact if fact else full
+        raw = fact if fact else full
+        return forge(raw, q, "history")
     if best_intent == "programming":
         return _dispatch_programming(query, mode)
     if best_intent == "animals":
-        return _dispatch_animals(query, q)
+        raw = _dispatch_animals(query, q)
+        return forge(raw, q, "animals")
     if best_intent == "knowledge":
         for key, answer in GENERAL_KNOWLEDGE.items():
             if key in q or q in key:
                 fact = _try_extract_fact(answer, q)
-                return fact if fact else answer
+                raw = fact if fact else answer
+                return forge(raw, q, "knowledge")
     from services.web_search import web_lookup
     return web_lookup(query)
