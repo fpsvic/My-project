@@ -45,10 +45,15 @@ _GREETING_EXACT = {
     "greetings", "good morning", "good afternoon", "good evening",
     "whats up", "what's up", "how are you", "who are you",
     "what can you do", "what do you do", "help",
+    "wassup", "wsp", "yo yo", "heyy", "heyyy", "hi there", "hey there",
+    "hello there", "what's good", "whats good", "sup bro", "sup man",
+    "hey bro", "hey man", "good day", "morning", "evening", "night",
+    "hey hey", "hola", "bonjour", "ciao", "namaste", "salut", "ola",
 }
 _GREETING_STARTS = (
     "hello ", "hi ", "hey ", "yo ", "howdy",
     "good morning", "good afternoon", "good evening",
+    "morning", "evening", "night", "hola", "hey there", "hi there", "sup ",
 )
 
 def _score_greeting(q: str) -> int:
@@ -67,6 +72,11 @@ _BUILD_VERBS = [
     "construct", "render", "make me", "build me", "create me",
     "give me a", "can you make", "can you build", "can you create",
     "please make", "please build", "please create",
+    "i want you to", "can u make", "make me a", "gimme", "gimme a",
+    "build a", "throw together", "whip up", "spin up", "put together a",
+    "create for me", "can u build", "pls make", "pls build",
+    "could you make", "could you build", "id like", "i'd like a",
+    "make something", "generate me", "i need a", "build something",
 ]
 
 _GAME_NOUNS = {
