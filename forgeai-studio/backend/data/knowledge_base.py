@@ -283,3 +283,9 @@ CODING_HELP: dict[str, str] = {
 
     "linked list": "### Linked List\n\nA linked list is a chain of **nodes** where each node holds data and a pointer to the next node.\n\n```python\nclass Node:\n    def __init__(self, val):\n        self.val = val\n        self.next = None\n\nclass LinkedList:\n    def __init__(self):\n        self.head = None\n\n    def append(self, val):\n        new = Node(val)\n        if not self.head:\n            self.head = new; return\n        cur = self.head\n        while cur.next:\n            cur = cur.next\n        cur.next = new\n\n    def to_list(self):\n        result, cur = [], self.head\n        while cur:\n            result.append(cur.val)\n            cur = cur.next\n        return result\n```\n\n**O(1) prepend, O(n) search, O(n) append without tail pointer.**",
 }
+
+# Per-language code-concept examples used by ai_router._dispatch_programming.
+# Keys are canonical language names (matching LANG_HISTORY); values are dicts
+# mapping concept keys (matching _PROG_CONCEPTS_MAP values) to code snippets.
+# Currently empty — populate as needed.
+LANG_EXAMPLES: dict = {}

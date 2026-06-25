@@ -279,10 +279,7 @@ def _generic_fields(entity: str, q: str) -> list:
         fields.append("Tags")
     if any(w in q for w in ("location", "place", "where", "address")):
         fields.append("Location")
-    if any(w in q for w in ("description", "detail", "note", "comment", "info")):
-        fields.append("Notes:textarea")
-    else:
-        fields.append("Notes:textarea")
+    fields.append("Notes:textarea")
     return fields
 
 
