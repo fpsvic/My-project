@@ -59,15 +59,45 @@ def _detect_genre(q: str) -> str:
         return "memory"
 
     if any(w in q for w in (
-        "space", "shoot", "invader", "alien", "laser", "ship", "galaga",
-        "asteroid", "meteor",
+        "space", "invader", "alien", "galaga",
     )):
         return "spaceshooter"
+
+    if any(w in q for w in ("asteroid", "asteroids", "space rock", "rotate and shoot")):
+        return "asteroids"
 
     if any(w in q for w in ("snake", "worm", "slither")):
         return "snake"
 
-    # Unknown — use description to generate a fitting game
+    if any(w in q for w in ("tower defense", "tower defence", "td game", "place tower",
+                             "build tower", "defend base", "base defense", "tower game")):
+        return "tower_defense"
+
+    if any(w in q for w in ("whack", "mole", "whack-a-mole", "hit the mole")):
+        return "whack"
+
+    if any(w in q for w in ("2048", "sliding tile", "number merge", "merge tile",
+                             "number puzzle", "tile merge")):
+        return "2048"
+
+    if any(w in q for w in ("blackjack", "black jack", "21 card", "poker", "casino card",
+                             "card game", "deal me", "deal cards")):
+        return "blackjack"
+
+    if any(w in q for w in ("fishing", "go fishing", "catch fish", "reel", "fish game")):
+        return "fishing"
+
+    if any(w in q for w in ("chess",)):
+        return "chess"
+
+    if any(w in q for w in ("doodle jump", "vertical jump", "jump up", "bounce up",
+                             "endless jump", "jump higher")):
+        return "doodle"
+
+    if any(w in q for w in ("shoot", "laser", "ship", "fire", "gun", "blast")):
+        return "spaceshooter"
+
+    # Unknown — generate a real game from the description
     return "universal"
 
 
@@ -1008,37 +1038,1396 @@ window.onkeydown=e=>{{
 </script></body></html>"""
 
 
-def _build_universal(theme: dict, speed: float, speed_label: str, query: str) -> str:
-    """
-    Smart fallback: analyze the query to pick the closest fitting game type.
-    Uses action verbs and nouns to decide, then generates a real game.
-    """
+# ══════════════════════════════════════════════════════════════
+# NEW GAME BUILDERS
+# ══════════════════════════════════════════════════════════════
+
+def _build_whack(theme: dict) -> str:
+    bg = theme["bg"]
+    primary = theme["primary"]
+    accent = theme["accent"]
+    secondary = theme["secondary"]
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Whack-a-Mole</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{{background:{bg};margin:0}}
+.hole{{width:70px;height:70px;border-radius:50%;background:#1e293b;border:3px solid {secondary};
+      display:flex;align-items:center;justify-content:center;font-size:32px;cursor:pointer;
+      transition:transform 0.1s;user-select:none}}
+.hole.active{{background:{primary}33;border-color:{primary};transform:scale(1.1)}}
+.hole:active{{transform:scale(0.95)}}
+</style></head>
+<body class="text-white min-h-screen flex flex-col items-center justify-center p-4">
+<div class="bg-slate-900/90 border-2 border-slate-700/50 rounded-2xl p-5 shadow-2xl flex flex-col items-center w-full max-w-xs space-y-3">
+  <div class="flex justify-between w-full text-xs font-mono">
+    <span id="timer" style="color:{accent}">TIME: 30</span>
+    <span class="text-slate-400 text-[10px] uppercase tracking-widest font-bold">WHACK-A-MOLE</span>
+    <span id="score" style="color:{primary}">SCORE: 0</span>
+  </div>
+  <div class="grid grid-cols-3 gap-3" id="board"></div>
+  <button id="startBtn" class="w-full py-2 rounded-xl text-xs font-bold" style="background:{primary}">START</button>
+</div>
+<script>
+const board=document.getElementById('board'),scoreEl=document.getElementById('score'),timerEl=document.getElementById('timer');
+let score=0,timeLeft=30,running=false,moleInterval,timerInterval,activeHole=-1;
+const holes=[];
+for(let i=0;i<9;i++){{
+  const h=document.createElement('div');h.className='hole';h.innerHTML='🟫';
+  h.dataset.idx=i;
+  h.onclick=()=>{{
+    if(!running||activeHole!==i)return;
+    score+=10;scoreEl.innerText='SCORE: '+score;
+    h.innerHTML='💥';h.classList.remove('active');activeHole=-1;
+    setTimeout(()=>{{h.innerHTML='🟫';}},200);
+  }};
+  board.appendChild(h);holes.push(h);
+}}
+function showMole(){{
+  if(activeHole>=0){{holes[activeHole].innerHTML='🟫';holes[activeHole].classList.remove('active');}}
+  activeHole=Math.floor(Math.random()*9);
+  holes[activeHole].innerHTML='🐹';holes[activeHole].classList.add('active');
+  setTimeout(()=>{{
+    if(activeHole>=0){{holes[activeHole].innerHTML='🟫';holes[activeHole].classList.remove('active');activeHole=-1;}}
+  }},800);
+}}
+document.getElementById('startBtn').onclick=()=>{{
+  score=0;timeLeft=30;running=true;
+  scoreEl.innerText='SCORE: 0';timerEl.innerText='TIME: 30';
+  holes.forEach(h=>{{h.innerHTML='🟫';h.classList.remove('active');}});activeHole=-1;
+  clearInterval(moleInterval);clearInterval(timerInterval);
+  moleInterval=setInterval(showMole,700);
+  timerInterval=setInterval(()=>{{
+    timeLeft--;timerEl.innerText='TIME: '+timeLeft;
+    if(timeLeft<=0){{
+      running=false;clearInterval(moleInterval);clearInterval(timerInterval);
+      holes.forEach(h=>h.classList.remove('active'));
+      timerEl.innerText='DONE!';
+    }}
+  }},1000);
+}};
+</script></body></html>"""
+
+
+def _build_2048(theme: dict) -> str:
+    bg = theme["bg"]
+    primary = theme["primary"]
+    accent = theme["accent"]
+    tile_colors_js = (
+        "{2:'#334155',4:'#475569',8:'#c2410c',16:'#dc2626',"
+        "32:'#db2777',64:'#9333ea',128:'#d97706',256:'#ca8a04',"
+        "512:'#16a34a',1024:'#0891b2',2048:'#4f46e5'}"
+    )
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>2048</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{{background:{bg};margin:0}}
+.tile{{width:65px;height:65px;border-radius:8px;display:flex;align-items:center;
+      justify-content:center;font-weight:800;font-size:20px;transition:all 0.1s;
+      background:#1e293b;color:#e2e8f0;border:2px solid #334155}}
+</style></head>
+<body class="text-white min-h-screen flex flex-col items-center justify-center p-4">
+<div class="bg-slate-900/90 border-2 border-slate-700/50 rounded-2xl p-5 shadow-2xl flex flex-col items-center w-full max-w-xs space-y-3">
+  <div class="flex justify-between w-full text-xs font-mono">
+    <span class="text-slate-400 text-[10px] uppercase tracking-widest font-bold">2048</span>
+    <span id="score" style="color:{primary}">SCORE: 0</span>
+  </div>
+  <div id="grid" class="grid grid-cols-4 gap-2"></div>
+  <div id="msg" class="text-xs font-bold" style="color:{accent}">Use Arrow Keys to merge tiles!</div>
+  <button id="newBtn" class="w-full py-2 rounded-xl text-xs font-bold" style="background:{primary}">NEW GAME</button>
+</div>
+<script>
+const gridEl=document.getElementById('grid'),scoreEl=document.getElementById('score'),msgEl=document.getElementById('msg');
+const COLORS={tile_colors_js};
+let board,score;
+function newGame(){{
+  board=Array.from({{length:4}},()=>Array(4).fill(0));
+  score=0;msgEl.innerText='Merge tiles to reach 2048!';
+  addTile();addTile();render();
+}}
+function addTile(){{
+  const empty=[];
+  for(let r=0;r<4;r++)for(let c=0;c<4;c++)if(!board[r][c])empty.push([r,c]);
+  if(!empty.length)return;
+  const[r,c]=empty[Math.floor(Math.random()*empty.length)];
+  board[r][c]=Math.random()<0.9?2:4;
+}}
+function render(){{
+  gridEl.innerHTML='';
+  board.forEach(row=>row.forEach(v=>{{
+    const d=document.createElement('div');d.className='tile';
+    if(v){{d.innerText=v;d.style.background=COLORS[v]||'#{primary.lstrip("#")}';
+           d.style.fontSize=v>=1000?'14px':v>=100?'17px':'20px';}}
+    gridEl.appendChild(d);
+  }}));
+  scoreEl.innerText='SCORE: '+score;
+}}
+function slide(row){{
+  let r=row.filter(x=>x);
+  for(let i=0;i<r.length-1;i++){{
+    if(r[i]===r[i+1]){{score+=r[i]*2;r[i]*=2;r[i+1]=0;}}
+  }}
+  r=r.filter(x=>x);
+  while(r.length<4)r.push(0);
+  return r;
+}}
+function move(dir){{
+  let moved=false;
+  const b=board.map(r=>[...r]);
+  if(dir==='left'){{board=board.map(r=>{{const s=slide(r);if(s.join()!==r.join())moved=true;return s;}});}}
+  else if(dir==='right'){{board=board.map(r=>{{const s=slide([...r].reverse()).reverse();if(s.join()!==r.join())moved=true;return s;}});}}
+  else if(dir==='up'){{
+    for(let c=0;c<4;c++){{
+      const col=board.map(r=>r[c]);const s=slide(col);
+      if(s.join()!==col.join())moved=true;
+      s.forEach((v,r)=>board[r][c]=v);
+    }}
+  }}
+  else if(dir==='down'){{
+    for(let c=0;c<4;c++){{
+      const col=board.map(r=>r[c]).reverse();const s=slide(col).reverse();
+      if(s.join()!==col.join())moved=true;
+      s.forEach((v,r)=>board[r][c]=v);
+    }}
+  }}
+  if(moved){{addTile();render();}}
+  if(board.flat().includes(2048))msgEl.innerText='🎉 You reached 2048!';
+  else if(!board.flat().includes(0)&&!canMove())msgEl.innerText='Game Over! Score: '+score;
+}}
+function canMove(){{
+  for(let r=0;r<4;r++)for(let c=0;c<4;c++){{
+    if(board[r][c]===0)return true;
+    if(c<3&&board[r][c]===board[r][c+1])return true;
+    if(r<3&&board[r][c]===board[r+1][c])return true;
+  }}
+  return false;
+}}
+window.addEventListener('keydown',e=>{{
+  const map={{'ArrowLeft':'left','ArrowRight':'right','ArrowUp':'up','ArrowDown':'down'}};
+  if(map[e.key]){{e.preventDefault();move(map[e.key]);}}
+}});
+document.getElementById('newBtn').onclick=newGame;
+newGame();
+</script></body></html>"""
+
+
+def _build_blackjack(theme: dict) -> str:
+    bg = theme["bg"]
+    primary = theme["primary"]
+    accent = theme["accent"]
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Blackjack</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{{background:{bg};margin:0}}
+.card{{display:inline-flex;align-items:center;justify-content:center;width:48px;height:68px;
+      border-radius:8px;background:#1e293b;border:2px solid #475569;font-size:13px;
+      font-weight:700;margin:3px;color:#e2e8f0}}
+.card.red{{color:#f43f5e}}
+</style></head>
+<body class="text-white min-h-screen flex flex-col items-center justify-center p-4">
+<div class="bg-slate-900/90 border-2 border-slate-700/50 rounded-2xl p-5 shadow-2xl flex flex-col w-full max-w-xs space-y-3">
+  <div class="flex justify-between text-xs font-mono">
+    <span class="text-slate-400 text-[10px] uppercase tracking-widest font-bold">BLACKJACK</span>
+    <span id="balance" style="color:{primary}">💰 100</span>
+  </div>
+  <div>
+    <p class="text-[10px] text-slate-400 font-bold uppercase mb-1">Dealer <span id="dealerTotal" class="ml-1" style="color:{accent}"></span></p>
+    <div id="dealerHand" class="flex flex-wrap min-h-[76px]"></div>
+  </div>
+  <div>
+    <p class="text-[10px] text-slate-400 font-bold uppercase mb-1">You <span id="playerTotal" class="ml-1" style="color:{primary}"></span></p>
+    <div id="playerHand" class="flex flex-wrap min-h-[76px]"></div>
+  </div>
+  <div id="msg" class="text-center text-sm font-bold py-1" style="color:{accent}">Press Deal to play</div>
+  <div class="grid grid-cols-3 gap-2">
+    <button id="dealBtn" class="py-2 rounded-xl text-xs font-bold col-span-3" style="background:{primary}">DEAL (Bet 10)</button>
+    <button id="hitBtn" class="py-2 rounded-xl text-xs font-bold bg-slate-700 disabled:opacity-30" disabled>HIT</button>
+    <button id="standBtn" class="py-2 rounded-xl text-xs font-bold bg-slate-700 disabled:opacity-30" disabled>STAND</button>
+    <button id="dblBtn" class="py-2 rounded-xl text-xs font-bold bg-slate-700 disabled:opacity-30" disabled>DOUBLE</button>
+  </div>
+</div>
+<script>
+const SUITS=['♠','♥','♦','♣'],RANKS=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+const RED_SUITS=new Set(['♥','♦']);
+let deck=[],playerHand=[],dealerHand=[],balance=100,bet=10,playing=false;
+const dealerEl=document.getElementById('dealerHand'),playerEl=document.getElementById('playerHand');
+const dealerTotalEl=document.getElementById('dealerTotal'),playerTotalEl=document.getElementById('playerTotal');
+const msgEl=document.getElementById('msg'),balanceEl=document.getElementById('balance');
+const hitBtn=document.getElementById('hitBtn'),standBtn=document.getElementById('standBtn'),dblBtn=document.getElementById('dblBtn');
+
+function buildDeck(){{
+  deck=[];
+  for(const s of SUITS)for(const r of RANKS)deck.push({{r,s}});
+  deck.sort(()=>Math.random()-0.5);
+}}
+function cardVal(c){{
+  if(['J','Q','K'].includes(c.r))return 10;
+  if(c.r==='A')return 11;
+  return parseInt(c.r);
+}}
+function handTotal(hand){{
+  let t=hand.reduce((a,c)=>a+cardVal(c),0),aces=hand.filter(c=>c.r==='A').length;
+  while(t>21&&aces>0){{t-=10;aces--;}}
+  return t;
+}}
+function renderCard(c,hidden){{
+  const d=document.createElement('div');d.className='card'+(RED_SUITS.has(c.s)?' red':'');
+  d.innerText=hidden?'🂠':c.r+c.s;return d;
+}}
+function renderHands(hideDealer){{
+  dealerEl.innerHTML='';playerEl.innerHTML='';
+  dealerHand.forEach((c,i)=>dealerEl.appendChild(renderCard(c,hideDealer&&i===1)));
+  playerHand.forEach(c=>playerEl.appendChild(renderCard(c,false)));
+  playerTotalEl.innerText=handTotal(playerHand);
+  dealerTotalEl.innerText=hideDealer?'?':handTotal(dealerHand);
+}}
+function setButtons(active){{
+  hitBtn.disabled=!active;standBtn.disabled=!active;dblBtn.disabled=!active;
+}}
+function endRound(msg,win){{
+  playing=false;renderHands(false);setButtons(false);
+  if(win===1)balance+=bet;else if(win===-1)balance-=bet;else if(win===2)balance+=bet*2;
+  balanceEl.innerText='💰 '+balance;
+  msgEl.innerText=msg;
+  if(balance<bet){{msgEl.innerText+=' — Out of money!';document.getElementById('dealBtn').disabled=true;}}
+}}
+document.getElementById('dealBtn').onclick=()=>{{
+  if(balance<bet)return;
+  buildDeck();playerHand=[deck.pop(),deck.pop()];dealerHand=[deck.pop(),deck.pop()];
+  playing=true;msgEl.innerText='';renderHands(true);setButtons(true);
+  if(handTotal(playerHand)===21){{endRound('Blackjack! You win!',2);}}
+}};
+hitBtn.onclick=()=>{{
+  playerHand.push(deck.pop());renderHands(true);
+  if(handTotal(playerHand)>21)endRound('Bust! You lose.',−1);
+}};
+standBtn.onclick=()=>{{
+  while(handTotal(dealerHand)<17)dealerHand.push(deck.pop());
+  const p=handTotal(playerHand),d=handTotal(dealerHand);
+  if(d>21||p>d)endRound('You win! '+(d>21?'Dealer bust!':''),1);
+  else if(p===d)endRound('Push — tie!',0);
+  else endRound('Dealer wins.',−1);
+}};
+dblBtn.onclick=()=>{{
+  playerHand.push(deck.pop());renderHands(true);
+  if(handTotal(playerHand)>21){{bet*=2;endRound('Bust! You lose.',−1);bet=10;return;}}
+  const prevBet=bet;bet*=2;
+  while(handTotal(dealerHand)<17)dealerHand.push(deck.pop());
+  const p=handTotal(playerHand),d=handTotal(dealerHand);
+  if(d>21||p>d)endRound('You win! Double down!',1);
+  else if(p===d)endRound('Push.',0);
+  else endRound('Dealer wins.',−1);
+  bet=prevBet;
+}};
+</script></body></html>"""
+
+
+def _build_asteroids(theme: dict, speed: float, speed_label: str) -> str:
+    p = theme["primary"]
+    a = theme["accent"]
+    s = theme["secondary"]
+    bg = theme["bg"]
+    bullet_speed = round(5 * speed * 100) / 100
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Asteroids</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{{background:{bg};margin:0}}</style></head>
+<body class="text-white min-h-screen flex flex-col items-center justify-center p-4">
+<div class="bg-slate-900/90 border-2 border-slate-700/50 rounded-2xl p-5 shadow-2xl flex flex-col items-center w-full max-w-xs">
+  <div class="flex justify-between w-full mb-3 text-xs font-mono">
+    <span class="text-slate-400 text-[10px] uppercase tracking-widest font-bold">ASTEROIDS ({speed_label})</span>
+    <span id="hud" style="color:{p}">SCORE:0 ♥♥♥</span>
+  </div>
+  <canvas id="c" width="300" height="300" class="rounded-xl border border-slate-800" style="background:#020617"></canvas>
+  <button id="startBtn" class="mt-3 w-full py-2 rounded-xl text-xs font-bold" style="background:{p}">LAUNCH</button>
+  <p class="text-slate-500 text-[10px] mt-2">←→ Rotate · ↑ Thrust · Space Shoot</p>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+const hudEl=document.getElementById('hud'),startBtn=document.getElementById('startBtn');
+const W=300,H=300,TAU=Math.PI*2;
+let ship,bullets,asteroids,keys={{}},score,lives,gameInterval,running;
+
+function mkAsteroid(x,y,size){{
+  const angle=Math.random()*TAU,spd=(Math.random()*0.8+0.4)*(2-size*0.3);
+  const pts=[];const sides=7+Math.floor(Math.random()*4);
+  for(let i=0;i<sides;i++){{
+    const a=(i/sides)*TAU,r=size*(0.7+Math.random()*0.3);
+    pts.push([Math.cos(a)*r,Math.sin(a)*r]);
+  }}
+  return{{x,y,vx:Math.cos(angle)*spd,vy:Math.sin(angle)*spd,size,pts,angle:0,rot:(Math.random()-0.5)*0.04}};
+}}
+
+function initGame(){{
+  ship={{x:150,y:150,angle:-Math.PI/2,vx:0,vy:0,dead:false}};
+  bullets=[];score=0;lives=3;
+  asteroids=[mkAsteroid(30,30,40),mkAsteroid(270,30,40),mkAsteroid(150,270,40)];
+}}
+
+function drawShip(x,y,angle,color){{
+  ctx.save();ctx.translate(x,y);ctx.rotate(angle);
+  ctx.strokeStyle=color;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(12,0);ctx.lineTo(-8,7);ctx.lineTo(-5,0);ctx.lineTo(-8,-7);ctx.closePath();ctx.stroke();
+  ctx.restore();
+}}
+
+function update(){{
+  if(!running)return;
+  if(keys['ArrowLeft'])ship.angle-=0.06;
+  if(keys['ArrowRight'])ship.angle+=0.06;
+  if(keys['ArrowUp']){{ship.vx+=Math.cos(ship.angle)*0.2;ship.vy+=Math.sin(ship.angle)*0.2;}}
+  ship.vx*=0.98;ship.vy*=0.98;
+  ship.x=(ship.x+ship.vx+W)%W;ship.y=(ship.y+ship.vy+H)%H;
+
+  bullets.forEach(b=>{{b.x=(b.x+b.vx+W)%W;b.y=(b.y+b.vy+H)%H;b.life--;}});
+  bullets=bullets.filter(b=>b.life>0);
+
+  asteroids.forEach(ast=>{{
+    ast.x=(ast.x+ast.vx+W)%W;ast.y=(ast.y+ast.vy+H)%H;ast.angle+=ast.rot;
+  }});
+
+  // Bullet-asteroid collisions
+  const newAsts=[];
+  asteroids.forEach(ast=>{{
+    let hit=false;
+    bullets.forEach(b=>{{
+      if(!hit&&Math.hypot(b.x-ast.x,b.y-ast.y)<ast.size){{
+        hit=true;b.life=0;
+        const pts=ast.size===40?3:ast.size===22?1:0;
+        score+=pts===3?20:pts===1?50:100;
+        if(ast.size>15){{
+          newAsts.push(mkAsteroid(ast.x,ast.y,ast.size*0.55));
+          newAsts.push(mkAsteroid(ast.x,ast.y,ast.size*0.55));
+        }}
+      }}
+    }});
+    if(!hit)newAsts.push(ast);
+  }});
+  asteroids=newAsts;
+  if(!asteroids.length){{
+    asteroids=[mkAsteroid(30,30,40),mkAsteroid(270,30,40),mkAsteroid(150,20,40),mkAsteroid(20,150,40)];
+  }}
+
+  // Ship-asteroid collision
+  if(!ship.dead){{
+    asteroids.forEach(ast=>{{
+      if(Math.hypot(ship.x-ast.x,ship.y-ast.y)<ast.size-4){{
+        lives--;ship.x=150;ship.y=150;ship.vx=0;ship.vy=0;
+        if(lives<=0)gameOver();
+      }}
+    }});
+  }}
+
+  hudEl.innerText='SCORE:'+score+' '+'♥'.repeat(Math.max(0,lives));
+  draw();
+}}
+
+function draw(){{
+  ctx.fillStyle='#020617';ctx.fillRect(0,0,W,H);
+  // Stars
+  ctx.fillStyle='rgba(255,255,255,0.25)';
+  for(let i=0;i<40;i++)ctx.fillRect((i*83)%W,(i*61)%H,1,1);
+  // Asteroids
+  ctx.strokeStyle='{a}';ctx.lineWidth=1.5;
+  asteroids.forEach(ast=>{{
+    ctx.save();ctx.translate(ast.x,ast.y);ctx.rotate(ast.angle);
+    ctx.beginPath();ast.pts.forEach(([px,py],i)=>i?ctx.lineTo(px,py):ctx.moveTo(px,py));
+    ctx.closePath();ctx.stroke();ctx.restore();
+  }});
+  // Bullets
+  ctx.fillStyle='{p}';
+  bullets.forEach(b=>{{ctx.beginPath();ctx.arc(b.x,b.y,2,0,TAU);ctx.fill();}});
+  // Ship
+  drawShip(ship.x,ship.y,ship.angle,'{p}');
+  if(keys['ArrowUp']){{
+    // Thrust flame
+    ctx.save();ctx.translate(ship.x,ship.y);ctx.rotate(ship.angle);
+    ctx.strokeStyle='{s}';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(-5,3);ctx.lineTo(-12,0);ctx.lineTo(-5,-3);ctx.stroke();
+    ctx.restore();
+  }}
+}}
+
+function gameOver(){{
+  running=false;clearInterval(gameInterval);
+  ctx.fillStyle='rgba(2,6,23,0.9)';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='{a}';ctx.font='bold 20px monospace';ctx.textAlign='center';
+  ctx.fillText('GAME OVER',W/2,H/2-10);
+  ctx.fillStyle='#94a3b8';ctx.font='13px monospace';
+  ctx.fillText('Score: '+score,W/2,H/2+15);ctx.textAlign='left';
+}}
+
+startBtn.onclick=()=>{{
+  initGame();running=true;
+  if(gameInterval)clearInterval(gameInterval);
+  gameInterval=setInterval(update,16);
+}};
+window.addEventListener('keydown',e=>{{
+  keys[e.key]=true;
+  if(e.key===' '){{
+    bullets.push({{x:ship.x,y:ship.y,vx:Math.cos(ship.angle)*{bullet_speed},vy:Math.sin(ship.angle)*{bullet_speed},life:60}});
+    e.preventDefault();
+  }}
+  if(['ArrowLeft','ArrowRight','ArrowUp'].includes(e.key))e.preventDefault();
+}});
+window.addEventListener('keyup',e=>delete keys[e.key]);
+</script></body></html>"""
+
+
+def _build_fishing(theme: dict, speed: float, speed_label: str) -> str:
+    p = theme["primary"]
+    a = theme["accent"]
+    bg = theme["bg"]
+    fish_speed = round(1.5 * speed * 100) / 100
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Fishing Game</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{{background:{bg};margin:0}}</style></head>
+<body class="text-white min-h-screen flex flex-col items-center justify-center p-4">
+<div class="bg-slate-900/90 border-2 border-slate-700/50 rounded-2xl p-5 shadow-2xl flex flex-col items-center w-full max-w-xs">
+  <div class="flex justify-between w-full mb-3 text-xs font-mono">
+    <span class="text-slate-400 text-[10px] uppercase tracking-widest font-bold">FISHING ({speed_label})</span>
+    <span id="score" style="color:{p}">CAUGHT: 0</span>
+  </div>
+  <canvas id="c" width="300" height="300" class="rounded-xl border border-slate-800"></canvas>
+  <button id="castBtn" class="mt-3 w-full py-2 rounded-xl text-xs font-bold" style="background:{p}">CAST LINE</button>
+  <p class="text-slate-500 text-[10px] mt-2">Cast then click REEL IN when a fish bites!</p>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+const scoreEl=document.getElementById('score'),castBtn=document.getElementById('castBtn');
+const W=300,H=300,WATER_Y=100;
+let fish=[],lineY=0,lineActive=false,reeling=false,hooked=null,caught=0,gameInterval,frame=0;
+const FISH_EMOJIS=['🐟','🐠','🐡','🦈','🐙'];
+const FISH_PTS=[10,15,20,50,30];
+
+function initFish(){{
+  fish=[];
+  for(let i=0;i<5;i++){{
+    fish.push({{
+      x:Math.random()*260+20,y:WATER_Y+40+Math.random()*130,
+      vx:({fish_speed}*(Math.random()+0.5))*(Math.random()<0.5?1:-1),
+      emoji:FISH_EMOJIS[i],pts:FISH_PTS[i],size:i===3?28:18,hooked:false
+    }});
+  }}
+}}
+
+function draw(){{
+  frame++;
+  ctx.fillStyle='#020617';ctx.fillRect(0,0,W,H);
+  // Sky
+  ctx.fillStyle='#0f2b4a';ctx.fillRect(0,0,W,WATER_Y);
+  // Water
+  const grad=ctx.createLinearGradient(0,WATER_Y,0,H);
+  grad.addColorStop(0,'#0369a1');grad.addColorStop(1,'#082f49');
+  ctx.fillStyle=grad;ctx.fillRect(0,WATER_Y,W,H-WATER_Y);
+  // Water shimmer
+  ctx.strokeStyle='rgba(125,211,252,0.2)';ctx.lineWidth=1;
+  for(let i=0;i<5;i++){{
+    const wx=((frame*1.5+i*60)%W);
+    ctx.beginPath();ctx.moveTo(wx,WATER_Y+2);ctx.lineTo(wx+30,WATER_Y+2);ctx.stroke();
+  }}
+  // Dock / land
+  ctx.fillStyle='#92400e';ctx.fillRect(0,70,60,WATER_Y-70);
+  ctx.fillStyle='#78350f';ctx.fillRect(0,66,70,8);
+  // Rod
+  ctx.strokeStyle='#d97706';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(15,60);ctx.lineTo(70,75);ctx.stroke();
+  // Line
+  if(lineActive||reeling){{
+    ctx.strokeStyle='rgba(255,255,255,0.6)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(70,75);ctx.lineTo(70,lineY);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='{a}';ctx.beginPath();ctx.arc(70,lineY,4,0,Math.PI*2);ctx.fill();
+  }}
+  // Fish
+  fish.forEach(f=>{{
+    if(!f.hooked){{
+      ctx.font=f.size+'px serif';ctx.textAlign='center';
+      ctx.fillText(f.emoji,f.x,f.y);
+    }}
+  }});
+  // Hooked fish rising
+  if(reeling&&hooked){{
+    ctx.font=hooked.size+'px serif';ctx.textAlign='center';
+    ctx.fillText(hooked.emoji,70,lineY);
+  }}
+  // Fisherman
+  ctx.font='24px serif';ctx.fillText('🧑',4,68);
+  ctx.textAlign='left';
+}}
+
+function update(){{
+  fish.forEach(f=>{{
+    if(f.hooked)return;
+    f.x+=f.vx;
+    if(f.x<10||f.x>W-10)f.vx=-f.vx;
+    // Nibble detection
+    if(lineActive&&!hooked&&Math.abs(f.x-70)<f.size&&Math.abs(f.y-lineY)<f.size){{
+      hooked=f;f.hooked=true;
+      castBtn.innerText='🎣 REEL IN!';castBtn.style.background='{a}';
+    }}
+  }});
+  if(reeling){{
+    lineY-=4;
+    if(lineY<75){{
+      if(hooked){{caught++;scoreEl.innerText='CAUGHT: '+caught;hooked=null;}}
+      lineActive=false;reeling=false;
+      castBtn.innerText='CAST LINE';castBtn.style.background='{p}';
+      initFish();
+    }}
+  }}
+  draw();
+}}
+
+castBtn.onclick=()=>{{
+  if(!lineActive&&!reeling){{
+    lineY=WATER_Y+10;lineActive=true;hooked=null;
+    castBtn.innerText='⏳ Waiting...';castBtn.style.background='#475569';
+    // Auto-descend line
+    const drop=setInterval(()=>{{
+      if(lineY<H-20&&lineActive)lineY+=3;else clearInterval(drop);
+    }},20);
+  }} else if(hooked){{
+    lineActive=false;reeling=true;
+  }} else {{
+    lineActive=false;reeling=true; // reel empty
+    castBtn.innerText='CAST LINE';castBtn.style.background='{p}';
+  }}
+}};
+
+initFish();
+gameInterval=setInterval(update,16);
+</script></body></html>"""
+
+
+def _build_doodle(theme: dict, speed: float, speed_label: str) -> str:
+    p = theme["primary"]
+    a = theme["accent"]
+    s = theme["secondary"]
+    bg = theme["bg"]
+    move_spd = round(3 * speed * 100) / 100
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Doodle Jump</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{{background:{bg};margin:0}}</style></head>
+<body class="text-white min-h-screen flex flex-col items-center justify-center p-4">
+<div class="bg-slate-900/90 border-2 border-slate-700/50 rounded-2xl p-5 shadow-2xl flex flex-col items-center w-full max-w-xs">
+  <div class="flex justify-between w-full mb-3 text-xs font-mono">
+    <span class="text-slate-400 text-[10px] uppercase tracking-widest font-bold">DOODLE JUMP ({speed_label})</span>
+    <span id="score" style="color:{p}">HEIGHT: 0</span>
+  </div>
+  <canvas id="c" width="280" height="380" class="rounded-xl border border-slate-800" style="background:#020617"></canvas>
+  <button id="startBtn" class="mt-3 w-full py-2 rounded-xl text-xs font-bold" style="background:{p}">START</button>
+  <p class="text-slate-500 text-[10px] mt-2">← → to move · Auto-jump on platforms</p>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+const scoreEl=document.getElementById('score'),startBtn=document.getElementById('startBtn');
+const W=280,H=380;
+let player,platforms,cameraY,height,keys={{}},gameInterval,running;
+
+function genPlatforms(startY,count){{
+  const plats=[];
+  let y=startY;
+  for(let i=0;i<count;i++){{
+    plats.push({{x:Math.random()*(W-70),y,w:70,h=10}});
+    y-=55+Math.random()*30;
+  }}
+  return plats;
+}}
+
+function init(){{
+  player={{x:W/2-12,y:H-80,w:24,h:24,vy:0}};
+  cameraY=0;height=0;
+  platforms=[{{x:W/2-35,y:H-40,w:70,h:10}},...genPlatforms(H-120,20)];
+  player.vy=-10;
+}}
+
+function update(){{
+  if(!running)return;
+  if(keys['ArrowLeft'])player.x-={move_spd};
+  if(keys['ArrowRight'])player.x+={move_spd};
+  player.x=(player.x+W)%W;
+  player.vy+=0.3;player.y+=player.vy;
+
+  // Platform collisions (only when falling)
+  if(player.vy>0){{
+    platforms.forEach(p=>{{
+      if(player.x+player.w>p.x&&player.x<p.x+p.w&&
+         player.y+player.h>=p.y&&player.y+player.h<=p.y+15){{
+        player.vy=-11;player.y=p.y-player.h;
+      }}
+    }});
+  }}
+
+  // Camera scrolls up when player is in top half
+  if(player.y-cameraY<H/2){{
+    const shift=H/2-(player.y-cameraY);
+    cameraY-=shift;height+=shift;
+    scoreEl.innerText='HEIGHT: '+Math.floor(height/10);
+    // Generate new platforms above
+    const topY=cameraY;
+    if(!platforms.some(p=>p.y<topY+50)){{
+      platforms.push(...genPlatforms(topY,5));
+    }}
+    // Remove platforms below screen
+    platforms=platforms.filter(p=>p.y<cameraY+H+100);
+  }}
+
+  // Fall death
+  if(player.y-cameraY>H+50){{
+    running=false;clearInterval(gameInterval);
+    ctx.fillStyle='rgba(2,6,23,0.9)';ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='{a}';ctx.font='bold 20px monospace';ctx.textAlign='center';
+    ctx.fillText('FELL DOWN!',W/2,H/2-10);
+    ctx.fillStyle='#94a3b8';ctx.font='13px monospace';
+    ctx.fillText('Height: '+Math.floor(height/10),W/2,H/2+12);ctx.textAlign='left';
+    return;
+  }}
+
+  draw();
+}}
+
+function draw(){{
+  ctx.fillStyle='#020617';ctx.fillRect(0,0,W,H);
+  // Stars
+  ctx.fillStyle='rgba(255,255,255,0.2)';
+  for(let i=0;i<30;i++)ctx.fillRect((i*79+Math.floor(cameraY/10))%W,(i*53)%H,1,1);
+  // Platforms
+  platforms.forEach(p=>{{
+    const sy=p.y-cameraY;
+    if(sy>-20&&sy<H+20){{
+      ctx.fillStyle='{s}';
+      ctx.beginPath();ctx.roundRect(p.x,sy,p.w,p.h,4);ctx.fill();
+    }}
+  }});
+  // Player
+  const py=player.y-cameraY;
+  ctx.fillStyle='{p}';ctx.beginPath();ctx.roundRect(player.x,py,player.w,player.h,5);ctx.fill();
+  ctx.fillStyle='#fff';ctx.font='16px serif';ctx.textAlign='center';
+  ctx.fillText('😊',player.x+player.w/2,py+player.h);
+  ctx.textAlign='left';
+}}
+
+startBtn.onclick=()=>{{
+  init();running=true;
+  if(gameInterval)clearInterval(gameInterval);
+  gameInterval=setInterval(update,16);
+}};
+window.addEventListener('keydown',e=>{{keys[e.key]=true;if(['ArrowLeft','ArrowRight'].includes(e.key))e.preventDefault();}});
+window.addEventListener('keyup',e=>delete keys[e.key]);
+</script></body></html>"""
+
+
+def _build_tower_defense(theme: dict, speed: float, speed_label: str) -> str:
+    p = theme["primary"]
+    a = theme["accent"]
+    s = theme["secondary"]
+    bg = theme["bg"]
+    enemy_spd = round(0.8 * speed * 100) / 100
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Tower Defense</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{{background:{bg};margin:0}}canvas{{cursor:crosshair}}</style></head>
+<body class="text-white min-h-screen flex flex-col items-center justify-center p-4">
+<div class="bg-slate-900/90 border-2 border-slate-700/50 rounded-2xl p-5 shadow-2xl flex flex-col items-center w-full max-w-xs">
+  <div class="flex justify-between w-full mb-3 text-xs font-mono">
+    <span class="text-slate-400 text-[10px] uppercase tracking-widest font-bold">TOWER DEF ({speed_label})</span>
+    <span id="hud" style="color:{p}">WAVE 1 | LIVES 10 | 💰50</span>
+  </div>
+  <canvas id="c" width="300" height="280" class="rounded-xl border border-slate-800" style="background:#0f172a"></canvas>
+  <button id="startBtn" class="mt-3 w-full py-2 rounded-xl text-xs font-bold" style="background:{p}">START WAVE</button>
+  <p class="text-slate-500 text-[10px] mt-2">Click on grass to place a tower (costs 25 gold)</p>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+const hudEl=document.getElementById('hud'),startBtn=document.getElementById('startBtn');
+const W=300,H=280;
+// Path: enemies walk along this x-waypoints at fixed y rows
+const PATH=[{{x:0,y:40}},{{x:260,y:40}},{{x:260,y:120}},{{x:40,y:120}},{{x:40,y:200}},{{x:300,y:200}}];
+let towers=[],enemies=[],bullets=[];
+let wave=1,lives=10,gold=50,gameInterval,running=false;
+
+function ptOnPath(t){{
+  let total=0;const segs=[];
+  for(let i=1;i<PATH.length;i++){{
+    const dx=PATH[i].x-PATH[i-1].x,dy=PATH[i].y-PATH[i-1].y;
+    const d=Math.hypot(dx,dy);segs.push({{dx,dy,d,x0:PATH[i-1].x,y0:PATH[i-1].y}});total+=d;
+  }}
+  let dist=t*total;
+  for(const seg of segs){{
+    if(dist<=seg.d){{const f=dist/seg.d;return{{x:seg.x0+seg.dx*f,y:seg.y0+seg.dy*f}};}}
+    dist-=seg.d;
+  }}
+  return PATH[PATH.length-1];
+}}
+
+function spawnWave(){{
+  const n=3+wave*2;
+  for(let i=0;i<n;i++){{
+    setTimeout(()=>{{
+      enemies.push({{t:-i*0.04,hp:2+wave,maxHp:2+wave,speed:{enemy_spd}*0.003,x:0,y:40,done:false}});
+    }},i*600);
+  }}
+}}
+
+function isOnPath(x,y){{
+  for(let i=1;i<PATH.length;i++){{
+    const ax=PATH[i-1].x,ay=PATH[i-1].y,bx=PATH[i].x,by=PATH[i].y;
+    const dx=bx-ax,dy=by-ay,d2=dx*dx+dy*dy;
+    const t=Math.max(0,Math.min(1,((x-ax)*dx+(y-ay)*dy)/d2));
+    if(Math.hypot(x-ax-t*dx,y-ay-t*dy)<22)return true;
+  }}
+  return false;
+}}
+
+c.onclick=e=>{{
+  if(!running)return;
+  const rect=c.getBoundingClientRect(),mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  if(gold<25||isOnPath(mx,my)||towers.length>=8)return;
+  towers.push({{x:mx,y:my,range:70,cooldown:0,color:'{p}'}});
+  gold-=25;
+}};
+
+function update(){{
+  enemies.forEach(en=>{{
+    en.t+=en.speed;
+    if(en.t>=1){{lives--;en.done=true;return;}}
+    const pos=ptOnPath(en.t);en.x=pos.x;en.y=pos.y;
+  }});
+  enemies=enemies.filter(en=>!en.done&&en.hp>0);
+  if(lives<=0){{gameOver();return;}}
+
+  towers.forEach(t=>{{
+    t.cooldown=Math.max(0,t.cooldown-1);
+    if(t.cooldown>0)return;
+    const target=enemies.find(en=>Math.hypot(en.x-t.x,en.y-t.y)<t.range);
+    if(target){{
+      bullets.push({{x:t.x,y:t.y,tx:target,speed:4}});t.cooldown=40;
+    }}
+  }});
+
+  bullets.forEach(b=>{{
+    if(!b.tx||b.tx.hp<=0){{b.done=true;return;}}
+    const dx=b.tx.x-b.x,dy=b.tx.y-b.y,d=Math.hypot(dx,dy);
+    if(d<6){{b.tx.hp--;b.done=true;if(b.tx.hp<=0)gold+=10;}}
+    else{{b.x+=dx/d*b.speed;b.y+=dy/d*b.speed;}}
+  }});
+  bullets=bullets.filter(b=>!b.done);
+
+  if(enemies.length===0){{wave++;gold+=30;spawnWave();}}
+
+  hudEl.innerText='WAVE '+wave+' | LIVES '+lives+' | 💰'+gold;
+  draw();
+}}
+
+function draw(){{
+  ctx.fillStyle='#0f172a';ctx.fillRect(0,0,W,H);
+  // Path
+  ctx.strokeStyle='#334155';ctx.lineWidth=28;ctx.lineJoin='round';ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(PATH[0].x,PATH[0].y);
+  PATH.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.stroke();
+  ctx.strokeStyle='#1e293b';ctx.lineWidth=24;ctx.stroke();
+
+  // Tower ranges (faint)
+  towers.forEach(t=>{{
+    ctx.fillStyle='rgba(99,102,241,0.06)';
+    ctx.beginPath();ctx.arc(t.x,t.y,t.range,0,Math.PI*2);ctx.fill();
+  }});
+
+  // Towers
+  towers.forEach(t=>{{
+    ctx.fillStyle='{s}';ctx.beginPath();ctx.arc(t.x,t.y,10,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='{p}';ctx.beginPath();ctx.arc(t.x,t.y,5,0,Math.PI*2);ctx.fill();
+  }});
+
+  // Enemies
+  enemies.forEach(en=>{{
+    ctx.fillStyle='#166534';ctx.beginPath();ctx.arc(en.x,en.y,9,0,Math.PI*2);ctx.fill();
+    // HP bar
+    const bw=20,bh=4,bx=en.x-bw/2,by=en.y-16;
+    ctx.fillStyle='#334155';ctx.fillRect(bx,by,bw,bh);
+    ctx.fillStyle='#22c55e';ctx.fillRect(bx,by,bw*(en.hp/en.maxHp),bh);
+    ctx.fillStyle='#86efac';ctx.font='bold 9px monospace';ctx.textAlign='center';
+    ctx.fillText('Z',en.x,en.y+4);
+  }});
+
+  // Bullets
+  ctx.fillStyle='{a}';
+  bullets.forEach(b=>{{ctx.beginPath();ctx.arc(b.x,b.y,3,0,Math.PI*2);ctx.fill();}});
+  ctx.textAlign='left';
+}}
+
+function gameOver(){{
+  running=false;clearInterval(gameInterval);
+  ctx.fillStyle='rgba(2,6,23,0.9)';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='{a}';ctx.font='bold 20px monospace';ctx.textAlign='center';
+  ctx.fillText('BASE DESTROYED',W/2,H/2);ctx.textAlign='left';
+}}
+
+startBtn.onclick=()=>{{
+  towers=[];enemies=[];bullets=[];wave=1;lives=10;gold=50;running=true;
+  spawnWave();
+  if(gameInterval)clearInterval(gameInterval);
+  gameInterval=setInterval(update,16);
+}};
+</script></body></html>"""
+
+
+def _build_chess(theme: dict) -> str:
+    p = theme["primary"]
+    bg = theme["bg"]
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Chess</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{{background:{bg};margin:0}}
+.sq{{width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+     font-size:22px;cursor:pointer;user-select:none;transition:background 0.1s}}
+.sq.light{{background:#f1f5f9}}.sq.dark{{background:#475569}}
+.sq.selected{{background:{p}!important}}.sq.legal{{background:#fbbf24!important;opacity:0.7}}
+</style></head>
+<body class="text-white min-h-screen flex flex-col items-center justify-center p-4">
+<div class="bg-slate-900/90 border-2 border-slate-700/50 rounded-2xl p-5 shadow-2xl flex flex-col items-center w-full max-w-xs space-y-3">
+  <div class="flex justify-between w-full text-xs font-mono">
+    <span class="text-slate-400 text-[10px] uppercase tracking-widest font-bold">CHESS</span>
+    <span id="turn" style="color:{p}">White's turn</span>
+  </div>
+  <div id="board" class="border-2 border-slate-600 rounded-lg overflow-hidden"></div>
+  <button id="resetBtn" class="w-full py-2 rounded-xl text-xs font-bold" style="background:{p}">RESET BOARD</button>
+</div>
+<script>
+const W_PIECES=['♜','♞','♝','♛','♚','♝','♞','♜'];
+const INIT=[
+  ['♜','♞','♝','♛','♚','♝','♞','♜'],
+  ['♟','♟','♟','♟','♟','♟','♟','♟'],
+  Array(8).fill(''),Array(8).fill(''),Array(8).fill(''),Array(8).fill(''),
+  ['♙','♙','♙','♙','♙','♙','♙','♙'],
+  ['♖','♘','♗','♕','♔','♗','♘','♖']
+];
+const BLACK=new Set(['♜','♞','♝','♛','♚','♟']);
+const WHITE=new Set(['♖','♘','♗','♕','♔','♙']);
+let board,selected,turn,boardEl;
+
+function isBlack(p){{return BLACK.has(p);}}
+function isWhite(p){{return WHITE.has(p);}}
+function isOwn(p){{return turn==='white'?isWhite(p):isBlack(p);}}
+function isEnemy(p){{return turn==='white'?isBlack(p):isWhite(p);}}
+
+function legalMoves(r,c){{
+  const p=board[r][c],moves=[];
+  const add=(nr,nc)=>{{
+    if(nr<0||nr>7||nc<0||nc>7)return false;
+    if(isOwn(board[nr][nc]))return false;
+    moves.push([nr,nc]);
+    return!isEnemy(board[nr][nc]); // can keep going if empty
+  }};
+  const ray=(dr,dc)=>{{for(let i=1;i<8;i++)if(!add(r+dr*i,c+dc*i))break;}};
+
+  if(p==='♙'){{// white pawn
+    if(!board[r-1][c]){{add(r-1,c);if(r===6&&!board[r-2][c])add(r-2,c);}}
+    if(c>0&&isBlack(board[r-1][c-1]))add(r-1,c-1);
+    if(c<7&&isBlack(board[r-1][c+1]))add(r-1,c+1);
+  }}else if(p==='♟'){{// black pawn
+    if(!board[r+1][c]){{add(r+1,c);if(r===1&&!board[r+2][c])add(r+2,c);}}
+    if(c>0&&isWhite(board[r+1][c-1]))add(r+1,c-1);
+    if(c<7&&isWhite(board[r+1][c+1]))add(r+1,c+1);
+  }}else if(p==='♖'||p==='♜'){{ray(1,0);ray(-1,0);ray(0,1);ray(0,-1);}}
+  else if(p==='♗'||p==='♝'){{ray(1,1);ray(1,-1);ray(-1,1);ray(-1,-1);}}
+  else if(p==='♕'||p==='♛'){{ray(1,0);ray(-1,0);ray(0,1);ray(0,-1);ray(1,1);ray(1,-1);ray(-1,1);ray(-1,-1);}}
+  else if(p==='♔'||p==='♚'){{[-1,0,1].forEach(dr=>[-1,0,1].forEach(dc=>{{if(dr||dc)add(r+dr,c+dc);}}));}}
+  else if(p==='♘'||p==='♞'){{
+    [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]].forEach(([dr,dc])=>add(r+dr,c+dc));
+  }}
+  return moves;
+}}
+
+function render(sel,legals){{
+  boardEl.innerHTML='';
+  board.forEach((row,r)=>{{
+    row.forEach((piece,c)=>{{
+      const sq=document.createElement('div');
+      sq.className='sq '+((r+c)%2===0?'light':'dark');
+      if(sel&&sel[0]===r&&sel[1]===c)sq.classList.add('selected');
+      if(legals&&legals.some(([lr,lc])=>lr===r&&lc===c))sq.classList.add('legal');
+      sq.innerText=piece;
+      sq.style.color=isBlack(piece)?'#0f172a':isWhite(piece)?'#1e293b':'';
+      sq.onclick=()=>handleClick(r,c);
+      boardEl.appendChild(sq);
+    }});
+  }});
+}}
+
+function handleClick(r,c){{
+  if(selected){{
+    const moves=legalMoves(selected[0],selected[1]);
+    const isLegal=moves.some(([mr,mc])=>mr===r&&mc===c);
+    if(isLegal){{
+      board[r][c]=board[selected[0]][selected[1]];
+      board[selected[0]][selected[1]]='';
+      // Pawn promotion
+      if(board[r][c]==='♙'&&r===0)board[r][c]='♕';
+      if(board[r][c]==='♟'&&r===7)board[r][c]='♛';
+      turn=turn==='white'?'black':'white';
+      document.getElementById('turn').innerText=(turn==='white'?'White':'Black')+"'s turn";
+      selected=null;render();
+    }}else if(isOwn(board[r][c])){{selected=[r,c];render([r,c],legalMoves(r,c));}}
+    else{{selected=null;render();}}
+  }}else if(isOwn(board[r][c])){{selected=[r,c];render([r,c],legalMoves(r,c));}}
+}}
+
+function reset(){{
+  board=INIT.map(r=>[...r]);turn='white';selected=null;
+  document.getElementById('turn').innerText="White's turn";
+  render();
+}}
+boardEl=document.getElementById('board');
+boardEl.style.display='grid';boardEl.style.gridTemplateColumns='repeat(8,36px)';
+document.getElementById('resetBtn').onclick=reset;
+reset();
+</script></body></html>"""
+
+
+# ══════════════════════════════════════════════════════════════
+# DESCRIPTION-DRIVEN UNIVERSAL GENERATOR
+# ══════════════════════════════════════════════════════════════
+
+_PLAYER_NOUNS = [
+    "dinosaur", "dino", "knight", "wizard", "ninja", "pirate", "robot",
+    "spaceship", "rocket", "tank", "frog", "cat", "dog", "monkey", "bear",
+    "dragon", "ghost", "witch", "hero", "warrior", "soldier", "alien",
+    "ball", "cube", "star", "plane", "submarine", "penguin",
+    "chicken", "duck", "cow", "pig", "horse", "unicorn", "fox", "wolf",
+    "bunny", "rabbit", "turtle", "hamster", "mouse", "rat",
+]
+_COLLECT_NOUNS = [
+    "coin", "star", "gem", "crystal", "fruit", "apple", "banana",
+    "cherry", "pizza", "cookie", "candy", "heart", "ring", "key",
+    "treasure", "gold", "diamond", "orb", "token", "dot", "pellet",
+    "mushroom", "berry", "flower", "egg", "fish",
+]
+_ENEMY_NOUNS = [
+    "zombie", "monster", "enemy", "villain", "spike", "fire",
+    "bomb", "bullet", "trap", "demon", "skeleton",
+    "goblin", "orc", "troll", "vampire", "spider", "cactus",
+    "rock", "block", "wall", "missile", "meteor", "barrel",
+]
+
+
+def _extract_entities(query: str) -> tuple:
     q = query.lower()
+    player = next((n for n in _PLAYER_NOUNS if n in q), "hero")
+    collectible = next((n for n in _COLLECT_NOUNS if n in q), "coin")
+    enemy = next((n for n in _ENEMY_NOUNS if n in q), "enemy")
 
-    # Action-verb / noun analysis
-    if any(w in q for w in ("fight", "battle", "combat", "beat", "enemy", "warrior", "attack")):
-        return _build_zombie(theme, speed, speed_label)
+    if any(w in q for w in ("avoid", "dodge", "escape", "survive", "evade", "flee", "run")):
+        mode = "avoider"
+    elif any(w in q for w in ("shoot", "blast", "destroy", "kill", "attack", "fire", "zap")):
+        mode = "shooter"
+    elif any(w in q for w in ("jump", "hop", "leap", "bounce", "platform", "run and jump")):
+        mode = "runner"
+    else:
+        mode = "collector"
 
-    if any(w in q for w in ("collect", "coin", "gem", "item", "pick up", "gather")):
-        return _build_platformer(theme, speed, speed_label, query)
+    return player, collectible, enemy, mode
 
-    if any(w in q for w in ("escape", "navigate", "path", "find", "explore", "dungeon")):
-        return _build_maze(theme, speed, speed_label)
 
-    if any(w in q for w in ("match", "flip", "pair", "reveal", "hidden")):
-        return _build_memory(theme)
+def _build_from_description(theme: dict, speed: float, speed_label: str, query: str) -> str:
+    player, collectible, enemy, mode = _extract_entities(query)
+    p = theme["primary"]
+    a = theme["accent"]
+    s = theme["secondary"]
+    bg = theme["bg"]
+    player_upper = player.upper()
+    collect_upper = collectible.upper()
+    enemy_upper = enemy.upper()
+    move_spd = round(3 * speed * 100) / 100
+    fall_spd = round(2.5 * speed * 100) / 100
+    obs_spd = round(1.8 * speed * 100) / 100
 
-    if any(w in q for w in ("fly", "pilot", "aircraft", "plane", "hover", "float")):
-        return _build_flappy(theme, speed, speed_label)
+    if mode == "collector":
+        title = f"{player_upper} {collect_upper} COLLECTOR"
+        return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>{title}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{{background:{bg};margin:0}}</style></head>
+<body class="text-white min-h-screen flex flex-col items-center justify-center p-4">
+<div class="bg-slate-900/90 border-2 border-slate-700/50 rounded-2xl p-5 shadow-2xl flex flex-col items-center w-full max-w-xs">
+  <div class="flex justify-between w-full mb-3 text-xs font-mono">
+    <span class="text-slate-400 text-[10px] uppercase tracking-widest font-bold">{title}</span>
+    <span id="score" style="color:{p}">SCORE: 0</span>
+  </div>
+  <canvas id="c" width="300" height="300" class="rounded-xl border border-slate-800" style="background:#020617"></canvas>
+  <button id="startBtn" class="mt-3 w-full py-2 rounded-xl text-xs font-bold" style="background:{p}">START</button>
+  <p class="text-slate-500 text-[10px] mt-2">Arrow keys / WASD to move and collect {collectible}s</p>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+const scoreEl=document.getElementById('score'),startBtn=document.getElementById('startBtn');
+const W=300,H=300;
+let player={{x:140,y:260,w:24,h:24,speed:{move_spd}}};
+let items=[],obstacles=[],score=0,lives=3,keys={{}},gameInterval,frame=0;
 
-    if any(w in q for w in ("bounce", "ball", "break", "destroy", "shatter")):
-        return _build_brickbreaker(theme, speed, speed_label)
+function spawnItem(){{items.push({{x:Math.random()*(W-20)+10,y:-20,vy:{fall_spd},size:18}});}}
+function spawnObs(){{obstacles.push({{x:Math.random()*(W-20)+10,y:-20,vy:{obs_spd},size:16}});}}
 
-    if any(w in q for w in ("click", "tap", "buy", "upgrade", "earn", "farm")):
-        return _build_clicker(theme)
+function update(){{
+  frame++;
+  if(keys['ArrowLeft']||keys['a'])player.x=Math.max(0,player.x-player.speed);
+  if(keys['ArrowRight']||keys['d'])player.x=Math.min(W-player.w,player.x+player.speed);
+  if(keys['ArrowUp']||keys['w'])player.y=Math.max(0,player.y-player.speed);
+  if(keys['ArrowDown']||keys['s'])player.y=Math.min(H-player.h,player.y+player.speed);
 
-    # Default: platformer is the most versatile generic game
-    return _build_platformer(theme, speed, speed_label, query)
+  if(frame%60===0)spawnItem();
+  if(frame%90===0)spawnObs();
+
+  items.forEach(it=>it.y+=it.vy);
+  obstacles.forEach(ob=>ob.y+=ob.vy);
+  items=items.filter(it=>it.y<H+30);
+  obstacles=obstacles.filter(ob=>ob.y<H+30);
+
+  // Collect items
+  items=items.filter(it=>{{
+    if(Math.abs(it.x-player.x-12)<20&&Math.abs(it.y-player.y-12)<20){{score+=10;scoreEl.innerText='SCORE: '+score;return false;}}
+    return true;
+  }});
+  // Hit obstacles
+  obstacles=obstacles.filter(ob=>{{
+    if(Math.abs(ob.x-player.x-12)<18&&Math.abs(ob.y-player.y-12)<18){{lives--;ob.y=H+100;if(lives<=0)gameOver();return false;}}
+    return true;
+  }});
+
+  draw();
+}}
+
+function draw(){{
+  ctx.fillStyle='#020617';ctx.fillRect(0,0,W,H);
+  // Grid
+  ctx.strokeStyle='rgba(51,65,85,0.3)';ctx.lineWidth=0.5;
+  for(let i=0;i<W;i+=30){{ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,H);ctx.stroke();}}
+  for(let j=0;j<H;j+=30){{ctx.beginPath();ctx.moveTo(0,j);ctx.lineTo(W,j);ctx.stroke();}}
+  // Items
+  ctx.fillStyle='{p}';
+  items.forEach(it=>{{ctx.beginPath();ctx.arc(it.x,it.y,it.size/2,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#020617';ctx.font='bold 10px monospace';ctx.textAlign='center';
+    ctx.fillText('{collect_upper[0]}',it.x,it.y+4);ctx.fillStyle='{p}';
+  }});
+  // Obstacles
+  ctx.fillStyle='{a}';
+  obstacles.forEach(ob=>{{ctx.beginPath();ctx.arc(ob.x,ob.y,ob.size/2,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#020617';ctx.font='bold 9px monospace';ctx.textAlign='center';
+    ctx.fillText('!',ob.x,ob.y+3);ctx.fillStyle='{a}';
+  }});
+  // Player
+  ctx.fillStyle='{s}';ctx.beginPath();ctx.roundRect(player.x,player.y,player.w,player.h,6);ctx.fill();
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 8px monospace';ctx.textAlign='center';
+  ctx.fillText('{player_upper[:4]}',player.x+12,player.y+14);
+  // Lives
+  ctx.fillStyle='{p}';ctx.font='bold 11px monospace';ctx.textAlign='left';
+  ctx.fillText('♥'.repeat(lives),6,16);
+}}
+
+function gameOver(){{
+  clearInterval(gameInterval);
+  ctx.fillStyle='rgba(2,6,23,0.9)';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='{a}';ctx.font='bold 20px monospace';ctx.textAlign='center';
+  ctx.fillText('GAME OVER',W/2,H/2-10);
+  ctx.fillStyle='#94a3b8';ctx.font='13px monospace';
+  ctx.fillText('Score: '+score,W/2,H/2+12);ctx.textAlign='left';
+}}
+
+startBtn.onclick=()=>{{
+  player={{x:140,y:260,w:24,h:24,speed:{move_spd}}};
+  items=[];obstacles=[];score=0;lives=3;frame=0;
+  scoreEl.innerText='SCORE: 0';
+  if(gameInterval)clearInterval(gameInterval);
+  gameInterval=setInterval(update,16);
+}};
+window.addEventListener('keydown',e=>{{keys[e.key]=true;if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key))e.preventDefault();}});
+window.addEventListener('keyup',e=>delete keys[e.key]);
+</script></body></html>"""
+
+    elif mode == "avoider":
+        title = f"{player_upper} DODGE {enemy_upper}"
+        return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>{title}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{{background:{bg};margin:0}}</style></head>
+<body class="text-white min-h-screen flex flex-col items-center justify-center p-4">
+<div class="bg-slate-900/90 border-2 border-slate-700/50 rounded-2xl p-5 shadow-2xl flex flex-col items-center w-full max-w-xs">
+  <div class="flex justify-between w-full mb-3 text-xs font-mono">
+    <span class="text-slate-400 text-[10px] uppercase tracking-widest font-bold">{title}</span>
+    <span id="score" style="color:{p}">SCORE: 0</span>
+  </div>
+  <canvas id="c" width="300" height="300" class="rounded-xl border border-slate-800" style="background:#020617"></canvas>
+  <button id="startBtn" class="mt-3 w-full py-2 rounded-xl text-xs font-bold" style="background:{p}">START</button>
+  <p class="text-slate-500 text-[10px] mt-2">Arrow keys / WASD to dodge {enemy}s</p>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+const scoreEl=document.getElementById('score'),startBtn=document.getElementById('startBtn');
+const W=300,H=300;
+let player={{x:140,y:260,w:24,h:24,speed:{move_spd}}};
+let obstacles=[],score=0,lives=3,keys={{}},gameInterval,frame=0,diff=1;
+
+function spawnObs(){{
+  obstacles.push({{
+    x:Math.random()*(W-20)+10,y:-20,
+    vy:({fall_spd}+diff*0.1)*(0.8+Math.random()*0.4),size:18
+  }});
+}}
+
+function update(){{
+  frame++;score++;diff=1+Math.floor(frame/300)*0.5;
+  if(keys['ArrowLeft']||keys['a'])player.x=Math.max(0,player.x-player.speed);
+  if(keys['ArrowRight']||keys['d'])player.x=Math.min(W-player.w,player.x+player.speed);
+  if(keys['ArrowUp']||keys['w'])player.y=Math.max(0,player.y-player.speed);
+  if(keys['ArrowDown']||keys['s'])player.y=Math.min(H-player.h,player.y+player.speed);
+
+  if(frame%Math.max(20,50-Math.floor(frame/200))===0)spawnObs();
+  obstacles.forEach(ob=>ob.y+=ob.vy);
+  obstacles=obstacles.filter(ob=>ob.y<H+30);
+
+  obstacles=obstacles.filter(ob=>{{
+    if(Math.abs(ob.x-player.x-12)<20&&Math.abs(ob.y-player.y-12)<20){{
+      lives--;ob.y=H+100;if(lives<=0)gameOver();return false;
+    }}
+    return true;
+  }});
+
+  scoreEl.innerText='SCORE: '+score;draw();
+}}
+
+function draw(){{
+  ctx.fillStyle='#020617';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(51,65,85,0.3)';ctx.lineWidth=0.5;
+  for(let i=0;i<W;i+=30){{ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,H);ctx.stroke();}}
+  for(let j=0;j<H;j+=30){{ctx.beginPath();ctx.moveTo(0,j);ctx.lineTo(W,j);ctx.stroke();}}
+  ctx.fillStyle='{a}';
+  obstacles.forEach(ob=>{{ctx.beginPath();ctx.arc(ob.x,ob.y,ob.size/2,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#020617';ctx.font='bold 9px monospace';ctx.textAlign='center';
+    ctx.fillText('{enemy_upper[0]}',ob.x,ob.y+3);ctx.fillStyle='{a}';
+  }});
+  ctx.fillStyle='{s}';ctx.beginPath();ctx.roundRect(player.x,player.y,player.w,player.h,6);ctx.fill();
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 7px monospace';ctx.textAlign='center';
+  ctx.fillText('{player_upper[:4]}',player.x+12,player.y+14);
+  ctx.fillStyle='{p}';ctx.font='bold 11px monospace';ctx.textAlign='left';
+  ctx.fillText('♥'.repeat(lives),6,16);
+}}
+
+function gameOver(){{
+  clearInterval(gameInterval);
+  ctx.fillStyle='rgba(2,6,23,0.9)';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='{a}';ctx.font='bold 20px monospace';ctx.textAlign='center';
+  ctx.fillText('GAME OVER',W/2,H/2-10);
+  ctx.fillStyle='#94a3b8';ctx.font='13px monospace';
+  ctx.fillText('Score: '+score,W/2,H/2+12);ctx.textAlign='left';
+}}
+
+startBtn.onclick=()=>{{
+  player={{x:140,y:260,w:24,h:24,speed:{move_spd}}};
+  obstacles=[];score=0;lives=3;frame=0;diff=1;
+  scoreEl.innerText='SCORE: 0';
+  if(gameInterval)clearInterval(gameInterval);
+  gameInterval=setInterval(update,16);
+}};
+window.addEventListener('keydown',e=>{{keys[e.key]=true;if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key))e.preventDefault();}});
+window.addEventListener('keyup',e=>delete keys[e.key]);
+</script></body></html>"""
+
+    elif mode == "shooter":
+        title = f"{player_upper} SHOOTER"
+        bullet_spd = round(6 * speed * 100) / 100
+        return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>{title}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{{background:{bg};margin:0}}</style></head>
+<body class="text-white min-h-screen flex flex-col items-center justify-center p-4">
+<div class="bg-slate-900/90 border-2 border-slate-700/50 rounded-2xl p-5 shadow-2xl flex flex-col items-center w-full max-w-xs">
+  <div class="flex justify-between w-full mb-3 text-xs font-mono">
+    <span class="text-slate-400 text-[10px] uppercase tracking-widest font-bold">{title}</span>
+    <span id="score" style="color:{p}">SCORE: 0</span>
+  </div>
+  <canvas id="c" width="300" height="300" class="rounded-xl border border-slate-800" style="background:#020617"></canvas>
+  <button id="startBtn" class="mt-3 w-full py-2 rounded-xl text-xs font-bold" style="background:{p}">START</button>
+  <p class="text-slate-500 text-[10px] mt-2">← → move · Space to shoot {enemy}s</p>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+const scoreEl=document.getElementById('score'),startBtn=document.getElementById('startBtn');
+const W=300,H=300;
+let playerX=140,bullets=[],enemies=[],score=0,lives=3,keys={{}},gameInterval,frame=0,eDir=1;
+
+function spawnEnemies(){{
+  enemies=[];
+  for(let r=0;r<3;r++)for(let col=0;col<5;col++)
+    enemies.push({{x:col*50+25,y:r*35+30,w:30,h:22,hp:1}});
+}}
+
+function update(){{
+  frame++;
+  if(keys['ArrowLeft'])playerX=Math.max(0,playerX-4);
+  if(keys['ArrowRight'])playerX=Math.min(270,playerX+4);
+
+  bullets.forEach(b=>b.y-={bullet_spd});
+  bullets=bullets.filter(b=>b.y>0);
+
+  let edgeHit=false;
+  enemies.forEach(en=>{{en.x+=eDir*{obs_spd};if(en.x>=270||en.x<=10)edgeHit=true;}});
+  if(edgeHit){{eDir=-eDir;enemies.forEach(en=>en.y+=12);}}
+
+  bullets.forEach(b=>{{
+    enemies.forEach(en=>{{
+      if(en.hp>0&&b.x>en.x&&b.x<en.x+en.w&&b.y<en.y+en.h&&b.y>en.y){{
+        en.hp=0;b.y=-100;score+=10;scoreEl.innerText='SCORE: '+score;
+      }}
+    }});
+  }});
+  enemies=enemies.filter(en=>en.hp>0);
+
+  enemies.forEach(en=>{{if(en.y>270){{lives--;en.y=-100;if(lives<=0)gameOver();}}}});
+  if(!enemies.length)spawnEnemies();
+
+  draw();
+}}
+
+function draw(){{
+  ctx.fillStyle='#020617';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(51,65,85,0.3)';ctx.lineWidth=0.5;
+  for(let i=0;i<W;i+=30){{ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,H);ctx.stroke();}}
+  // Enemies
+  ctx.fillStyle='{a}';
+  enemies.forEach(en=>{{ctx.fillRect(en.x,en.y,en.w,en.h);
+    ctx.fillStyle='#020617';ctx.font='bold 8px monospace';ctx.textAlign='center';
+    ctx.fillText('{enemy_upper[:3]}',en.x+en.w/2,en.y+en.h/2+3);ctx.fillStyle='{a}';
+  }});
+  // Bullets
+  ctx.fillStyle='{p}';
+  bullets.forEach(b=>ctx.fillRect(b.x,b.y,4,10));
+  // Player
+  ctx.fillStyle='{s}';ctx.fillRect(playerX,275,30,18);
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 8px monospace';ctx.textAlign='center';
+  ctx.fillText('{player_upper[:4]}',playerX+15,275+12);
+  // Lives
+  ctx.fillStyle='{p}';ctx.font='bold 11px monospace';ctx.textAlign='left';
+  ctx.fillText('♥'.repeat(lives),6,16);
+}}
+
+function gameOver(){{
+  clearInterval(gameInterval);
+  ctx.fillStyle='rgba(2,6,23,0.9)';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='{a}';ctx.font='bold 20px monospace';ctx.textAlign='center';
+  ctx.fillText('GAME OVER',W/2,H/2-10);
+  ctx.fillStyle='#94a3b8';ctx.font='13px monospace';
+  ctx.fillText('Score: '+score,W/2,H/2+12);ctx.textAlign='left';
+}}
+
+startBtn.onclick=()=>{{
+  playerX=140;bullets=[];score=0;lives=3;frame=0;eDir=1;
+  scoreEl.innerText='SCORE: 0';spawnEnemies();
+  if(gameInterval)clearInterval(gameInterval);
+  gameInterval=setInterval(update,16);
+}};
+window.addEventListener('keydown',e=>{{
+  keys[e.key]=true;
+  if(e.key===' '){{bullets.push({{x:playerX+13,y:270}});e.preventDefault();}}
+  if(['ArrowLeft','ArrowRight'].includes(e.key))e.preventDefault();
+}});
+window.addEventListener('keyup',e=>delete keys[e.key]);
+</script></body></html>"""
+
+    else:  # runner
+        title = f"{player_upper} RUNNER"
+        run_spd = round(3 * speed * 100) / 100
+        return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>{title}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{{background:{bg};margin:0}}</style></head>
+<body class="text-white min-h-screen flex flex-col items-center justify-center p-4">
+<div class="bg-slate-900/90 border-2 border-slate-700/50 rounded-2xl p-5 shadow-2xl flex flex-col items-center w-full max-w-xs">
+  <div class="flex justify-between w-full mb-3 text-xs font-mono">
+    <span class="text-slate-400 text-[10px] uppercase tracking-widest font-bold">{title}</span>
+    <span id="score" style="color:{p}">SCORE: 0</span>
+  </div>
+  <canvas id="c" width="300" height="280" class="rounded-xl border border-slate-800" style="background:#020617"></canvas>
+  <button id="startBtn" class="mt-3 w-full py-2 rounded-xl text-xs font-bold" style="background:{p}">RUN!</button>
+  <p class="text-slate-500 text-[10px] mt-2">Space / Up arrow to jump over {enemy}s</p>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+const scoreEl=document.getElementById('score'),startBtn=document.getElementById('startBtn');
+const W=300,H=280,GROUND=220;
+let player={{x:50,y:GROUND-36,w:30,h:36,vy:0,onGround:true}};
+let obstacles=[],score=0,lives=3,gameInterval,frame=0,keys={{}},speed={run_spd};
+
+function spawnObs(){{
+  const h=20+Math.floor(Math.random()*25);
+  obstacles.push({{x:W+20,y:GROUND-h,w:20,h,color:'{a}'}});
+}}
+
+function update(){{
+  frame++;score++;speed=Math.min(speed+0.001,6);
+  if((keys[' ']||keys['ArrowUp'])&&player.onGround){{player.vy=-11;player.onGround=false;}}
+  player.vy+=0.5;player.y+=player.vy;
+  if(player.y>=GROUND-player.h){{player.y=GROUND-player.h;player.vy=0;player.onGround=true;}}
+
+  if(frame%Math.max(40,90-Math.floor(frame/100))===0)spawnObs();
+  obstacles.forEach(ob=>ob.x-=speed);
+  obstacles=obstacles.filter(ob=>ob.x>-30);
+
+  obstacles.forEach(ob=>{{
+    if(player.x+player.w>ob.x&&player.x<ob.x+ob.w&&player.y+player.h>ob.y){{
+      lives--;ob.x=-100;if(lives<=0)gameOver();
+    }}
+  }});
+
+  scoreEl.innerText='SCORE: '+score;draw();
+}}
+
+function draw(){{
+  ctx.fillStyle='#020617';ctx.fillRect(0,0,W,H);
+  // Ground
+  ctx.fillStyle='#1e293b';ctx.fillRect(0,GROUND,W,H-GROUND);
+  ctx.fillStyle='#334155';ctx.fillRect(0,GROUND,W,3);
+  // Background scenery
+  ctx.fillStyle='rgba(99,102,241,0.15)';
+  for(let i=0;i<5;i++){{const bx=(i*80-frame*0.3)%W;ctx.fillRect(bx,140,15,GROUND-140);}}
+  // Obstacles
+  obstacles.forEach(ob=>{{
+    ctx.fillStyle=ob.color;ctx.fillRect(ob.x,ob.y,ob.w,ob.h);
+    ctx.fillStyle='#020617';ctx.font='bold 8px monospace';ctx.textAlign='center';
+    ctx.fillText('{enemy_upper[:3]}',ob.x+ob.w/2,ob.y+ob.h/2+3);
+  }});
+  // Player
+  ctx.fillStyle='{s}';ctx.beginPath();ctx.roundRect(player.x,player.y,player.w,player.h,5);ctx.fill();
+  ctx.fillStyle='#e2e8f0';ctx.font='bold 7px monospace';ctx.textAlign='center';
+  ctx.fillText('{player_upper[:4]}',player.x+player.w/2,player.y+player.h/2+3);
+  // Lives
+  ctx.fillStyle='{p}';ctx.font='bold 11px monospace';ctx.textAlign='left';
+  ctx.fillText('♥'.repeat(lives),6,16);
+}}
+
+function gameOver(){{
+  clearInterval(gameInterval);
+  ctx.fillStyle='rgba(2,6,23,0.9)';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='{a}';ctx.font='bold 20px monospace';ctx.textAlign='center';
+  ctx.fillText('GAME OVER',W/2,H/2-10);
+  ctx.fillStyle='#94a3b8';ctx.font='13px monospace';
+  ctx.fillText('Score: '+score,W/2,H/2+12);ctx.textAlign='left';
+}}
+
+startBtn.onclick=()=>{{
+  player={{x:50,y:GROUND-36,w:30,h:36,vy:0,onGround:true}};
+  obstacles=[];score=0;lives=3;frame=0;speed={run_spd};
+  scoreEl.innerText='SCORE: 0';
+  if(gameInterval)clearInterval(gameInterval);
+  gameInterval=setInterval(update,16);
+}};
+window.addEventListener('keydown',e=>{{keys[e.key]=true;if([' ','ArrowUp','ArrowLeft','ArrowRight'].includes(e.key))e.preventDefault();}});
+window.addEventListener('keyup',e=>delete keys[e.key]);
+</script></body></html>"""
 
 
 # ══════════════════════════════════════════════════════════════
