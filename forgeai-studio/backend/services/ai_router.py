@@ -492,23 +492,35 @@ def _dispatch_greeting(mode: str) -> str:
     )
 
 _ASPECT_KEYWORDS = {
-    "speed":    ["fast", "speed", "mph", "km/h", "quick", "run", "swim", "fly", "sprint"],
-    "size":     ["big", "size", "large", "heavy", "weight", "tall", "long", "huge", "giant", "small"],
-    "diet":     ["eat", "diet", "food", "feed", "prey on", "hunt", "consume"],
-    "habitat":  ["live", "habitat", "home", "found", "range", "region", "continent", "where"],
-    "predator": ["predator", "threat", "eats", "hunted by", "enemy", "danger"],
-    "lifespan": ["live", "lifespan", "age", "old", "years", "long"],
-    "behavior": ["behave", "social", "pack", "group", "herd", "pride", "lone", "nocturnal", "sleep", "smart", "intelligent"],
+    "speed":       ["fast", "speed", "mph", "km/h", "quick", "run", "swim", "fly", "sprint", "velocity", "knot"],
+    "size":        ["big", "size", "large", "heavy", "weight", "tall", "long", "huge", "giant", "small", "diameter", "radius", "mass", "meter", "km", "mile", "wide"],
+    "diet":        ["eat", "diet", "food", "feed", "prey on", "hunt", "consume", "herbivore", "carnivore", "omnivore"],
+    "habitat":     ["live", "habitat", "home", "found", "range", "region", "continent", "where", "ocean", "forest", "desert", "biome"],
+    "predator":    ["predator", "threat", "eats", "hunted by", "enemy", "danger"],
+    "lifespan":    ["lifespan", "age", "years", "live for", "lives up to", "live up to", "life span"],
+    "behavior":    ["behave", "social", "pack", "group", "herd", "pride", "lone", "nocturnal", "sleep", "smart", "intelligent", "communicate"],
+    "temperature": ["hot", "cold", "temperature", "degrees", "celsius", "fahrenheit", "kelvin", "warm", "heat", "°c", "°f"],
+    "distance":    ["far", "distance", "away", "light-year", "light year", "parsec", "au ", "km from", "miles from", "million km", "billion km"],
+    "date":        ["when", "year", "date", "founded", "born", "invented", "discovered", "created", "established", "built", "started", "fell", "ended", "began", "happened"],
+    "count":       ["how many", "number of", "count", "moons", "planets", "species", "bones", "teeth", "legs", "eyes", "heart"],
+    "composition": ["made of", "consist", "composed", "element", "chemical", "formula", "contain", "ingredient", "structure", "makeup"],
+    "inventor":    ["who made", "who invented", "who created", "who discovered", "who built", "who designed", "inventor", "creator", "discovered by", "founded by"],
 }
 
 _ASPECT_INTROS = {
-    "speed":    ["Speed-wise, ", "When it comes to speed, ", "In terms of how fast — ", ""],
-    "size":     ["Size-wise, ", "As for size, ", "In terms of size, ", ""],
-    "diet":     ["Diet-wise, ", "As for what they eat — ", "When it comes to food, ", ""],
-    "habitat":  ["Habitat-wise, ", "As for where they live — ", "In terms of range, ", ""],
-    "predator": ["As for predators — ", "In the wild, ", "When it comes to threats — ", ""],
-    "lifespan": ["Lifespan-wise, ", "In terms of how long they live — ", ""],
-    "behavior": ["Behaviour-wise, ", "As for how they act — ", ""],
+    "speed":       ["Speed-wise, ", "When it comes to speed, ", "In terms of how fast — ", ""],
+    "size":        ["Size-wise, ", "As for size, ", "In terms of size, ", ""],
+    "diet":        ["Diet-wise, ", "As for what they eat — ", "When it comes to food, ", ""],
+    "habitat":     ["Habitat-wise, ", "As for where they live — ", "In terms of range, ", ""],
+    "predator":    ["As for predators — ", "In the wild, ", "When it comes to threats — ", ""],
+    "lifespan":    ["Lifespan-wise, ", "In terms of how long they live — ", ""],
+    "behavior":    ["Behaviour-wise, ", "As for how they act — ", ""],
+    "temperature": ["Temperature-wise, ", "In terms of heat — ", ""],
+    "distance":    ["Distance-wise, ", "In terms of how far — ", ""],
+    "date":        ["", "In terms of when — ", "Historically, "],
+    "count":       ["", "As for the number — ", ""],
+    "composition": ["In terms of what it's made of — ", "Composition-wise, ", ""],
+    "inventor":    ["", "As for who made it — ", "Credit-wise, "],
 }
 
 import random
@@ -525,11 +537,37 @@ def _extract_aspect(answer: str, aspect: str) -> str | None:
     intro = random.choice(_ASPECT_INTROS.get(aspect, [""]))
     return intro + "  ".join(matches[:2])
 
+_SPECIFIC_PATTERNS = [
+    (r"how (fast|quick|speedy)", "speed"),
+    (r"how (big|large|heavy|tall|wide|long|massive|small|tiny)", "size"),
+    (r"how (hot|cold|warm|cool)", "temperature"),
+    (r"how far", "distance"),
+    (r"how many", "count"),
+    (r"how long (does|do|did|will|can|could).{0,20}(live|last|take|survive)", "lifespan"),
+    (r"what (year|date|time) (did|was|were|is)", "date"),
+    (r"when (did|was|were|is|does)", "date"),
+    (r"who (made|invented|created|discovered|built|designed|founded)", "inventor"),
+    (r"what is (it|[\w\s]+) made of", "composition"),
+    (r"what (eats|hunts|kills|attacks|preys on)", "predator"),
+    (r"what (do|does|did).{0,30}eat", "diet"),
+    (r"where (do|does|did).{0,30}(live|found|come from|habitat|home)", "habitat"),
+]
+
 def _detect_aspect(q: str) -> str | None:
+    for pattern, aspect in _SPECIFIC_PATTERNS:
+        if re.search(pattern, q):
+            return aspect
     for aspect, keywords in _ASPECT_KEYWORDS.items():
         if any(k in q for k in keywords):
             return aspect
     return None
+
+def _try_extract_fact(answer: str, q: str) -> str | None:
+    """Try to pull just the specific fact from a longer answer based on the query."""
+    aspect = _detect_aspect(q)
+    if not aspect:
+        return None
+    return _extract_aspect(answer, aspect)
 
 def _dispatch_animals(query: str, q: str) -> str:
     # Direct key match
@@ -745,13 +783,21 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     if best_intent == "math":
         return generate_math_response(query, mode)
     if best_intent == "space":
-        return generate_space_response(query, mode)
+        full = generate_space_response(query, mode)
+        fact = _try_extract_fact(full, q)
+        return fact if fact else full
     if best_intent == "earth":
-        return generate_earth_response(query, mode)
+        full = generate_earth_response(query, mode)
+        fact = _try_extract_fact(full, q)
+        return fact if fact else full
     if best_intent == "science":
-        return generate_science_response(query, mode)
+        full = generate_science_response(query, mode)
+        fact = _try_extract_fact(full, q)
+        return fact if fact else full
     if best_intent == "history":
-        return generate_history_response(query, mode)
+        full = generate_history_response(query, mode)
+        fact = _try_extract_fact(full, q)
+        return fact if fact else full
     if best_intent == "programming":
         return _dispatch_programming(query, mode)
     if best_intent == "animals":
@@ -759,6 +805,7 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     if best_intent == "knowledge":
         for key, answer in GENERAL_KNOWLEDGE.items():
             if key in q or q in key:
-                return answer
+                fact = _try_extract_fact(answer, q)
+                return fact if fact else answer
     from services.web_search import web_lookup
     return web_lookup(query)
