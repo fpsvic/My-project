@@ -827,8 +827,7 @@ def _kb_fact_lookup(q: str) -> str | None:
         if key in q and len(key) > best_len:
             best_len, best_answer = len(key), answer
     if best_answer and best_len >= 5:  # skip single-word key matches
-        fact = _try_extract_fact(best_answer, q)
-        return fact if fact else best_answer
+        return best_answer  # let forge/vary_structure handle extraction
 
     # Pass 2: token-based fallback — only for question-form queries
     if not _QUESTION_STARTERS.match(q):
@@ -849,10 +848,7 @@ def _kb_fact_lookup(q: str) -> str | None:
             continue
         if hits > best_score or (hits == best_score and ratio > best_ratio):
             best_score, best_ratio, best_answer = hits, ratio, answer
-    if best_answer:
-        fact = _try_extract_fact(best_answer, q)
-        return fact if fact else best_answer
-    return None
+    return best_answer  # let forge/vary_structure handle extraction
 
 def generate_response(query: str, mode: str, history: list, quick_mode: bool = False) -> str:
     q = _normalize(query)
