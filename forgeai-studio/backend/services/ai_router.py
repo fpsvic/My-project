@@ -89,6 +89,16 @@ _GAME_NOUNS = {
     "card game", "memory game", "whack a mole", "asteroids",
     "pac man", "pacman", "frogger", "centipede", "galaga",
     "donkey kong", "mario", "pinball", "minesweeper",
+    "battle royale", "top down shooter", "rpg", "role playing",
+    "dungeon crawler", "roguelike", "roguelite", "city builder",
+    "resource management", "survival game", "crafting game",
+    "rhythm game", "typing game", "word game", "trivia game",
+    "quiz game", "number game", "reaction game", "reflex game",
+    "catch game", "dodge game", "jump game", "run game", "fly game",
+    "pilot game", "driving game", "car game", "racing game",
+    "bike game", "sport game", "football game", "basketball game",
+    "baseball game", "tennis game", "golf game", "boxing game",
+    "fight game", "fighting game", "war game",
 }
 
 _APP_NOUNS = {
@@ -168,7 +178,11 @@ _MATH_STRONG = {
     "power rule", "polynomial", "calculus",
 }
 _MATH_TRIG = {"sin", "cos", "tan", "csc", "sec", "cot", "arcsin", "arccos", "arctan"}
-_MATH_QUESTION = {"solve", "compute", "calculate", "evaluate", "simplify", "find the value"}
+_MATH_QUESTION = {
+    "solve", "compute", "calculate", "evaluate", "simplify", "find the value",
+    "what is", "whats", "how much is", "how many", "work out", "figure out",
+    "what does", "tell me", "give me", "find", "determine", "show me",
+}
 
 def _is_pure_math_expr(q: str) -> bool:
     clean = re.sub(
