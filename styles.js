@@ -81,7 +81,7 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 #code-editor::-webkit-scrollbar-track { background: #080a0d; }
 #code-editor::-webkit-scrollbar-thumb { background: #1c2522; border: 2px solid #080a0d; border-radius: 5px; }
 #code-editor::-webkit-scrollbar-thumb:hover { background: #528b74; }
-.token-keyword { color: #ff5555; font-weight: bold; }
+.token-keyword { color: #ff5555; }
 .token-string { color: #50FA7B; }
 .token-comment { color: #6272A4; font-style: italic; }
 .token-number { color: #FFB86C; }
@@ -91,7 +91,7 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .token-op { color: #bd93f9; }
 .token-punct { color: #7f848e; }
 .token-attr { color: #FFB86C; }
-.token-tag { color: #FF79C6; font-weight: bold; }
+.token-tag { color: #FF79C6; }
 .token-property { color: #9cdcfe; }
 .token-value { color: #FFB86C; }
 .token-decorator { color: #bd93f9; font-style: italic; }
