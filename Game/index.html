@@ -1279,104 +1279,122 @@ function drawPlayer(){
   const cat=idef?idef.cat:'MELEE';
   const isRanged=cat==='RANGED';
   const atkProg=player.atkMaxCd>0?(1-player.atkCd/player.atkMaxCd):1;
+  const swinging=player.atkCd>0&&!isRanged;
 
-  // direction unit vector [down,up,left,right]
+  // facing direction vector [down,up,left,right]
   const DVEC=[[0,1],[0,-1],[-1,0],[1,0]];
   const [dvx,dvy]=DVEC[player.dir];
   const facingAng=Math.atan2(dvy,dvx);
 
-  // hand position: right-side of body + slightly forward
-  // perpendicular-right of facing = (dvy, -dvx)
-  const hx=sx+dvy*9+dvx*6;
-  const hy=sy-10+bob-dvx*0 + (-dvx)*0; // flatten: just use simple per-dir
-  // simpler explicit offsets [down,up,left,right]
+  // hand offset [down,up,left,right]
   const HOFF=[[10,-8],[10,-20],[-13,-12],[13,-12]];
   const [hox,hoy]=HOFF[player.dir];
   const whx=sx+hox, why=sy+hoy+bob;
 
-  // ── weapon draw helper ────────────────────────────────────────────────────
+  // ── big swing trail arc — drawn BEFORE the body so it looks like it passes through ──
+  if(swinging&&item){
+    const bladeLen=(idef.range?idef.range*8:24)+10;
+    const SWING=1.9; // total arc width in radians
+    const swingStart=facingAng-SWING/2;
+    const swingNow=swingStart+atkProg*SWING;
+    const trailCol=item.rarColor||idef.color||'#ffdd44';
+    const cx=sx, cy=sy-8+bob;
+
+    ctx.save();
+    // filled arc sector — trail
+    ctx.shadowColor=trailCol; ctx.shadowBlur=18;
+    ctx.globalAlpha=0.38*(1-atkProg*0.5);
+    ctx.fillStyle=trailCol;
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,bladeLen,swingStart,swingNow);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur=0;
+
+    // inner lighter core of trail
+    ctx.globalAlpha=0.18*(1-atkProg*0.4);
+    ctx.fillStyle='#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,bladeLen*0.55,swingStart,swingNow);
+    ctx.closePath();
+    ctx.fill();
+
+    // bright leading-edge arc line
+    ctx.globalAlpha=0.9*(1-atkProg*0.6);
+    ctx.strokeStyle='#ffffff';
+    ctx.lineWidth=3;
+    ctx.shadowColor=trailCol; ctx.shadowBlur=20;
+    ctx.beginPath();
+    ctx.arc(cx,cy,bladeLen,swingNow-0.06,swingNow);
+    ctx.stroke();
+    ctx.shadowBlur=0;
+    ctx.restore();
+  }
+
+  // ── weapon draw (held weapon — blade + bow) ───────────────────────────────
   const drawWeapon=()=>{
     if(!item)return;
     if(!isRanged){
-      // MELEE: rotated blade
-      const bladeLen=idef.range?idef.range*7:20;
-      const sweepAng=player.atkCd>0?(atkProg*1.6-0.8):0;
+      const bladeLen=idef.range?idef.range*8:24;
+      const sweepAng=swinging?(atkProg*1.9-0.95):0;
       const rot=facingAng+Math.PI/2+sweepAng;
       ctx.save(); ctx.translate(whx,why); ctx.rotate(rot);
+      // pommel / handle
+      ctx.fillStyle='#553311'; ctx.fillRect(-2,4,4,9);
       // guard
-      ctx.fillStyle='#885522';
-      ctx.fillRect(-4,0,8,5);
-      // handle
-      ctx.fillStyle='#553311';
-      ctx.fillRect(-2,5,4,8);
+      ctx.fillStyle='#886622'; ctx.fillRect(-5,0,10,5);
       // blade
       const bladeCol=item.rarColor||idef.color||'#aaaacc';
-      ctx.shadowColor=bladeCol; ctx.shadowBlur=6;
+      ctx.shadowColor=bladeCol; ctx.shadowBlur=swinging?14:5;
       ctx.fillStyle=bladeCol;
-      ctx.fillRect(-2,-bladeLen,4,bladeLen);
-      // blade tip triangle
-      ctx.beginPath();ctx.moveTo(-2,-bladeLen);ctx.lineTo(2,-bladeLen);ctx.lineTo(0,-bladeLen-7);ctx.closePath();ctx.fill();
+      ctx.fillRect(-2.5,-bladeLen,5,bladeLen);
+      // highlight stripe on blade
+      ctx.fillStyle='rgba(255,255,255,0.45)';
+      ctx.fillRect(-0.5,-bladeLen,1.5,bladeLen);
+      // tip
+      ctx.fillStyle=bladeCol;
+      ctx.beginPath();ctx.moveTo(-2.5,-bladeLen);ctx.lineTo(2.5,-bladeLen);ctx.lineTo(0,-bladeLen-9);ctx.closePath();ctx.fill();
       ctx.shadowBlur=0;
       ctx.restore();
-      // swing arc glow
-      if(player.atkCd>0&&atkProg<0.85){
-        const alpha=0.55*(1-atkProg);
-        ctx.strokeStyle=`rgba(255,220,60,${alpha})`;
-        ctx.lineWidth=10*(1-atkProg)+2;
-        ctx.beginPath();
-        ctx.arc(sx,sy-8+bob,bladeLen+6,facingAng-0.9,facingAng+0.9);
-        ctx.stroke();
-      }
     } else {
-      // RANGED: draw weapon icon + barrel line
       const isCrossbow=item.kind==='Crossbow';
       ctx.save(); ctx.translate(whx,why); ctx.rotate(facingAng+Math.PI/2);
-      // stock
-      ctx.fillStyle='#775533';
-      ctx.fillRect(-3,0,6,isCrossbow?12:9);
-      // barrel
+      ctx.fillStyle='#775533'; ctx.fillRect(-3,0,6,isCrossbow?12:9);
       ctx.fillStyle=isCrossbow?'#445566':'#887744';
       ctx.fillRect(-2,-18,4,18);
       if(isCrossbow){
-        // crossbow arms
-        ctx.fillStyle='#664422';
-        ctx.fillRect(-10,-12,20,3);
-        // string
+        ctx.fillStyle='#664422'; ctx.fillRect(-10,-12,20,3);
         ctx.strokeStyle='rgba(220,220,180,0.8)'; ctx.lineWidth=1;
         ctx.beginPath();ctx.moveTo(-10,-10);ctx.lineTo(0,-14);ctx.lineTo(10,-10);ctx.stroke();
       } else {
-        // bow curve
         ctx.strokeStyle='#886633'; ctx.lineWidth=2.5;
         ctx.beginPath();ctx.arc(0,-8,10,-0.9,0.9);ctx.stroke();
-        // string
         ctx.strokeStyle='rgba(220,220,180,0.7)'; ctx.lineWidth=1;
         ctx.beginPath();ctx.moveTo(-9,-1);ctx.lineTo(0,-5);ctx.lineTo(9,-1);ctx.stroke();
       }
       ctx.restore();
-      // muzzle flash on fire
+      // muzzle flash
       if(player.atkCd>0&&atkProg<0.12){
-        const fx=whx+dvx*20, fy=why+dvy*20;
-        ctx.save();
-        ctx.shadowColor='#ffff44'; ctx.shadowBlur=14;
-        ctx.fillStyle='rgba(255,230,80,0.9)';
-        ctx.beginPath();ctx.arc(fx,fy,6,0,Math.PI*2);ctx.fill();
-        ctx.shadowBlur=0;
-        ctx.restore();
+        ctx.save(); ctx.shadowColor='#ffff44'; ctx.shadowBlur=16;
+        ctx.fillStyle='rgba(255,230,80,0.95)';
+        ctx.beginPath();ctx.arc(whx+dvx*20,why+dvy*20,7,0,Math.PI*2);ctx.fill();
+        ctx.shadowBlur=0; ctx.restore();
       }
     }
   };
 
-  // shadow + wading ripple
+  // shadow
   ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.beginPath();ctx.ellipse(sx,sy+10,11,4,0,0,Math.PI*2);ctx.fill();
   if(player.wading){ctx.fillStyle='rgba(46,143,192,0.5)'; ctx.fillRect(sx-11,sy+2,22,10);}
 
-  // weapon behind player when facing up
-  if(player.dir===1) drawWeapon();
+  if(player.dir===1) drawWeapon(); // weapon behind when facing up
 
   // body
   ctx.fillStyle='#3366cc'; ctx.fillRect(sx-8,sy-16+bob,16,18);
   ctx.strokeStyle='#1133aa'; ctx.lineWidth=1.5; ctx.strokeRect(sx-8,sy-16+bob,16,18);
-  // blocky head
+  // head
   ctx.fillStyle='#f5d5a0'; ctx.fillRect(sx-9,sy-30+bob,18,18);
   ctx.strokeStyle='#cc9966'; ctx.lineWidth=1.5; ctx.strokeRect(sx-9,sy-30+bob,18,18);
   const ex=player.dir===2?-3:(player.dir===3?3:0);
@@ -1386,10 +1404,9 @@ function drawPlayer(){
   ctx.fillStyle='#994433'; ctx.fillRect(sx-4+ex,sy-19+bob+ey,8,2);
   ctx.fillStyle='#cc8855'; ctx.fillRect(sx-1+ex,sy-22+bob+ey,2,2);
 
-  // weapon in front when facing down/left/right
-  if(player.dir!==1) drawWeapon();
+  if(player.dir!==1) drawWeapon(); // weapon in front for other dirs
 
-  // crossbow reload bar (above head)
+  // crossbow reload bar
   if(item&&item.kind==='Crossbow'&&player.atkCd>0){
     const prog=1-player.atkCd/player.atkMaxCd;
     ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(sx-18,sy-44+bob,36,6);
