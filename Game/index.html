@@ -812,96 +812,246 @@ function updateCamera(){
 }
 
 // ── Title screen ───────────────────────────────────────────────────────────
-// preview minimap canvas (tiny, drawn before any world gen)
 let titleBg=null;
+// floating orbs for title ambiance
+const titleOrbs=Array.from({length:18},(_,i)=>({
+  x:hash(i,0,1)*CW, y:hash(i,0,2)*CH,
+  vx:(hash(i,0,5)-0.5)*12, vy:(hash(i,0,6)-0.5)*10,
+  r:18+hash(i,0,3)*28,
+  color:`hsl(${180+hash(i,0,4)*80|0},70%,55%)`,
+  phase:hash(i,0,7)*Math.PI*2
+}));
+
 function buildTitleBg(){
   const c=document.createElement('canvas'); c.width=CW; c.height=CH;
   const cx=c.getContext('2d');
-  // simple gradient sky
   const g=cx.createLinearGradient(0,0,0,CH);
-  g.addColorStop(0,'#0a1a3a'); g.addColorStop(1,'#1a3a6a');
+  g.addColorStop(0,'#060d1f'); g.addColorStop(0.5,'#0c2040'); g.addColorStop(1,'#0a1830');
   cx.fillStyle=g; cx.fillRect(0,0,CW,CH);
-  // stars
-  for(let i=0;i<120;i++){
-    const sx=hash(i,0,1)*CW, sy=hash(i,0,2)*CH*0.6;
-    const sr=0.5+hash(i,0,3)*1.5;
-    cx.fillStyle=`rgba(255,255,255,${0.4+hash(i,0,4)*0.6})`;
+  // stars — two layers (tiny + slightly bigger)
+  for(let i=0;i<200;i++){
+    const sx=hash(i,0,1)*CW, sy=hash(i,0,2)*CH;
+    const sr=hash(i,0,3)<0.8?0.6:1.4;
+    cx.fillStyle=`rgba(255,255,255,${0.3+hash(i,0,4)*0.7})`;
     cx.beginPath(); cx.arc(sx,sy,sr,0,Math.PI*2); cx.fill();
   }
   return c;
+}
+
+function titleKey(label,x,y){
+  const kw=label.length<=2?28:label.length*8+12, kh=22;
+  ctx.fillStyle='rgba(255,255,255,0.12)';
+  ctx.beginPath(); ctx.roundRect(x-kw/2,y-kh+4,kw,kh,5); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.roundRect(x-kw/2,y-kh+4,kw,kh,5); ctx.stroke();
+  ctx.fillStyle='#e8f4ff'; ctx.font='bold 11px monospace'; ctx.textAlign='center';
+  ctx.fillText(label,x,y);
 }
 
 function drawTitle(){
   if(!titleBg) titleBg=buildTitleBg();
   ctx.drawImage(titleBg,0,0);
 
-  // animated water at bottom
-  for(let x=0;x<CW;x+=2){
-    const h=CH*0.62+Math.sin(titleTime*1.2+x*0.04)*6+Math.sin(titleTime*0.7+x*0.07)*4;
-    const alpha=0.7;
-    ctx.fillStyle=`rgba(26,107,154,${alpha})`;
-    ctx.fillRect(x,h,2,CH-h);
-  }
-  // water shimmer layer
-  ctx.fillStyle=`rgba(46,143,192,0.35)`;
-  for(let x=0;x<CW;x+=2){
-    const h=CH*0.62+Math.sin(titleTime*1.8+x*0.05+1)*4+Math.sin(titleTime*0.9+x*0.09)*3;
-    ctx.fillRect(x,h,2,CH-h);
+  // animated drifting glow orbs
+  for(const o of titleOrbs){
+    o.x+=o.vx*0.016; o.y+=o.vy*0.016;
+    if(o.x<-o.r)o.x=CW+o.r; if(o.x>CW+o.r)o.x=-o.r;
+    if(o.y<-o.r)o.y=CH+o.r; if(o.y>CH+o.r)o.y=-o.r;
+    const alpha=0.04+Math.sin(titleTime*0.6+o.phase)*0.02;
+    ctx.save();
+    const rg=ctx.createRadialGradient(o.x,o.y,0,o.x,o.y,o.r);
+    rg.addColorStop(0,o.color.replace('55%','55%').replace('hsl','hsla').replace(')',`,${alpha+0.05})`));
+    rg.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(o.x,o.y,o.r,0,Math.PI*2); ctx.fill();
+    ctx.restore();
   }
 
-  // land silhouette
-  ctx.fillStyle='#1f3a18';
-  ctx.beginPath();
-  ctx.moveTo(0,CH);
-  for(let x=0;x<=CW;x+=8){
-    const y=CH*0.58+Math.sin(x*0.015)*14+Math.sin(x*0.04+0.5)*8+Math.sin(x*0.008)*20;
+  // twinkling stars
+  for(let i=0;i<200;i++){
+    const sx=hash(i,0,1)*CW, sy=hash(i,0,2)*CH;
+    const twinkle=0.4+Math.sin(titleTime*2.5+hash(i,0,8)*10)*0.3;
+    ctx.globalAlpha=(0.3+hash(i,0,4)*0.7)*twinkle;
+    ctx.fillStyle='#ffffff';
+    const sr=hash(i,0,3)<0.8?0.6:1.4;
+    ctx.beginPath(); ctx.arc(sx,sy,sr,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // mountains silhouette (back layer)
+  ctx.fillStyle='#0d2010';
+  ctx.beginPath(); ctx.moveTo(0,CH);
+  for(let x=0;x<=CW;x+=6){
+    const y=CH*0.52+Math.sin(x*0.012)*22+Math.sin(x*0.035+1)*12+Math.sin(x*0.007)*30;
     ctx.lineTo(x,y);
   }
   ctx.lineTo(CW,CH); ctx.closePath(); ctx.fill();
 
-  // title text with shadow
+  // mountains front layer
+  ctx.fillStyle='#152a10';
+  ctx.beginPath(); ctx.moveTo(0,CH);
+  for(let x=0;x<=CW;x+=6){
+    const y=CH*0.60+Math.sin(x*0.018+0.5)*16+Math.sin(x*0.05+2)*9+Math.sin(x*0.01+1)*18;
+    ctx.lineTo(x,y);
+  }
+  ctx.lineTo(CW,CH); ctx.closePath(); ctx.fill();
+
+  // animated water
+  for(let x=0;x<CW;x+=2){
+    const h=CH*0.72+Math.sin(titleTime*1.1+x*0.035)*7+Math.sin(titleTime*0.65+x*0.065)*4;
+    ctx.fillStyle='rgba(18,80,130,0.85)'; ctx.fillRect(x,h,2,CH-h);
+  }
+  ctx.fillStyle='rgba(40,120,180,0.3)';
+  for(let x=0;x<CW;x+=2){
+    const h=CH*0.72+Math.sin(titleTime*1.7+x*0.045+1)*5+Math.sin(titleTime*0.85+x*0.08)*3;
+    ctx.fillRect(x,h,2,CH-h);
+  }
+  // water shimmer streaks
+  for(let i=0;i<12;i++){
+    const wx=(hash(i,0,9)*CW+titleTime*20)%CW;
+    const wy=CH*0.74+hash(i,0,10)*(CH*0.24);
+    ctx.fillStyle=`rgba(120,200,255,${0.04+Math.sin(titleTime*2+i)*0.03})`;
+    ctx.fillRect(wx,wy,30+hash(i,0,11)*50,2);
+  }
+
+  // foreground grass strip
+  ctx.fillStyle='#1a3c14';
+  ctx.beginPath(); ctx.moveTo(0,CH);
+  for(let x=0;x<=CW;x+=4){
+    const y=CH*0.78+Math.sin(x*0.04+titleTime*0.3)*4+Math.sin(x*0.015)*8;
+    ctx.lineTo(x,y);
+  }
+  ctx.lineTo(CW,CH); ctx.closePath(); ctx.fill();
+
+  // ── TITLE TEXT ──────────────────────────────────────────────────────────────
   ctx.textAlign='center';
-  ctx.font='bold 62px monospace';
-  ctx.fillStyle='rgba(0,0,0,0.6)';
-  ctx.fillText('TOP-DOWN WORLD',HALF_CW+3,180+3);
-  const tg=ctx.createLinearGradient(0,120,0,200);
-  tg.addColorStop(0,'#ffe87a'); tg.addColorStop(1,'#ffaa22');
+  // glow halo
+  const pulse=Math.sin(titleTime*1.8)*6;
+  ctx.save();
+  ctx.shadowColor='#ffcc00'; ctx.shadowBlur=30+pulse;
+  ctx.font='bold 66px monospace'; ctx.fillStyle='rgba(0,0,0,0)';
+  ctx.fillText('TOP-DOWN WORLD',HALF_CW,158);
+  ctx.restore();
+  // drop shadow
+  ctx.font='bold 66px monospace';
+  ctx.fillStyle='rgba(0,0,0,0.7)';
+  ctx.fillText('TOP-DOWN WORLD',HALF_CW+4,162);
+  // gradient fill
+  const tg=ctx.createLinearGradient(0,100,0,170);
+  tg.addColorStop(0,'#fff5aa'); tg.addColorStop(0.45,'#ffcc22'); tg.addColorStop(1,'#e07800');
   ctx.fillStyle=tg;
-  ctx.fillText('TOP-DOWN WORLD',HALF_CW,180);
+  ctx.fillText('TOP-DOWN WORLD',HALF_CW,158);
+  // highlight edge
+  ctx.strokeStyle='rgba(255,240,120,0.25)'; ctx.lineWidth=1;
+  ctx.strokeText('TOP-DOWN WORLD',HALF_CW,158);
 
-  ctx.font='16px monospace';
-  ctx.fillStyle='rgba(180,220,255,0.85)';
-  ctx.fillText('Explore a procedurally generated world',HALF_CW,218);
+  // subtitle
+  ctx.font='italic 15px monospace';
+  ctx.fillStyle='rgba(160,220,255,0.8)';
+  ctx.fillText('✦  Explore a procedurally generated world  ✦',HALF_CW,188);
 
-  // Play button
-  const btnW=200, btnH=52, btnX=HALF_CW-btnW/2, btnY=280;
+  // separator line
+  const lineY=204;
+  const lg=ctx.createLinearGradient(HALF_CW-220,0,HALF_CW+220,0);
+  lg.addColorStop(0,'rgba(255,200,50,0)'); lg.addColorStop(0.5,'rgba(255,200,50,0.6)'); lg.addColorStop(1,'rgba(255,200,50,0)');
+  ctx.strokeStyle=lg; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(HALF_CW-220,lineY); ctx.lineTo(HALF_CW+220,lineY); ctx.stroke();
+
+  // ── PLAY BUTTON ─────────────────────────────────────────────────────────────
+  const btnW=224, btnH=54, btnX=HALF_CW-btnW/2, btnY=222;
   playBtn={x:btnX,y:btnY,w:btnW,h:btnH};
-  const hovered=false; // real hover set by mousemove
-  ctx.fillStyle='rgba(0,0,0,0.45)';
-  ctx.beginPath(); ctx.roundRect(btnX+3,btnY+4,btnW,btnH,10); ctx.fill();
+  // shadow
+  ctx.fillStyle='rgba(0,0,0,0.5)';
+  ctx.beginPath(); ctx.roundRect(btnX+4,btnY+5,btnW,btnH,12); ctx.fill();
+  // gradient body
+  const pulseBg=Math.sin(titleTime*2)*0.06;
   const bg=ctx.createLinearGradient(btnX,btnY,btnX,btnY+btnH);
-  bg.addColorStop(0,'#44cc66'); bg.addColorStop(1,'#228844');
+  bg.addColorStop(0,`hsl(140,${70+pulseBg*100|0}%,45%)`);
+  bg.addColorStop(1,`hsl(140,${60+pulseBg*100|0}%,28%)`);
   ctx.fillStyle=bg;
-  ctx.beginPath(); ctx.roundRect(btnX,btnY,btnW,btnH,10); ctx.fill();
-  ctx.strokeStyle='#88ffaa'; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.roundRect(btnX,btnY,btnW,btnH,10); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(btnX,btnY,btnW,btnH,12); ctx.fill();
+  // inner highlight
+  ctx.fillStyle='rgba(255,255,255,0.15)';
+  ctx.beginPath(); ctx.roundRect(btnX+2,btnY+2,btnW-4,btnH/2-2,10); ctx.fill();
+  // border glow
+  ctx.shadowColor='#55ff88'; ctx.shadowBlur=10+pulse;
+  ctx.strokeStyle='rgba(136,255,170,0.8)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.roundRect(btnX,btnY,btnW,btnH,12); ctx.stroke();
+  ctx.shadowBlur=0;
+  // label
   ctx.font='bold 22px monospace'; ctx.fillStyle='#ffffff';
-  ctx.fillText('▶  NEW GAME',HALF_CW,btnY+34);
+  ctx.fillText('▶   NEW GAME',HALF_CW,btnY+35);
+  ctx.font='10px monospace'; ctx.fillStyle='rgba(180,255,200,0.6)';
+  ctx.fillText('ENTER  or  click',HALF_CW,btnY+btnH+16);
 
-  // seed hint
-  ctx.font='11px monospace'; ctx.fillStyle='rgba(160,200,255,0.6)';
-  ctx.fillText('Each game generates a unique world',HALF_CW,360);
+  // ── CONTROLS PANEL ──────────────────────────────────────────────────────────
+  const panX=HALF_CW-310, panY=302, panW=620, panH=198;
+  // panel backdrop
+  ctx.fillStyle='rgba(0,8,24,0.72)';
+  ctx.beginPath(); ctx.roundRect(panX,panY,panW,panH,12); ctx.fill();
+  ctx.strokeStyle='rgba(80,140,220,0.35)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.roundRect(panX,panY,panW,panH,12); ctx.stroke();
+  // panel header
+  const hg=ctx.createLinearGradient(panX,panY,panX+panW,panY);
+  hg.addColorStop(0,'rgba(30,80,180,0)'); hg.addColorStop(0.5,'rgba(30,80,180,0.5)'); hg.addColorStop(1,'rgba(30,80,180,0)');
+  ctx.fillStyle=hg; ctx.fillRect(panX,panY,panW,28);
+  ctx.font='bold 12px monospace'; ctx.fillStyle='#88ccff'; ctx.textAlign='center';
+  ctx.fillText('— CONTROLS —',HALF_CW,panY+18);
 
-  // controls
-  ctx.fillStyle='rgba(0,0,0,0.4)';
-  ctx.beginPath(); ctx.roundRect(HALF_CW-180,390,360,70,8); ctx.fill();
-  ctx.font='12px monospace'; ctx.fillStyle='#aabbcc';
-  ctx.fillText('WASD / Arrows — Move          F — Attack',HALF_CW,412);
-  ctx.fillText('E — Talk to NPCs         1-8 — Equip item',HALF_CW,432);
-  ctx.fillText('Walk into shallow water to wade (slow)',HALF_CW,452);
+  // key helper: draws a key badge + label
+  function krow(keys2,label,x,y){
+    let kx=x;
+    for(const k of keys2){
+      const kw=k.length<=2?26:k.length*7+12;
+      ctx.fillStyle='rgba(255,255,255,0.10)';
+      ctx.beginPath(); ctx.roundRect(kx,y-15,kw,20,4); ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.30)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.roundRect(kx,y-15,kw,20,4); ctx.stroke();
+      ctx.fillStyle='#ddeeff'; ctx.font='bold 10px monospace'; ctx.textAlign='center';
+      ctx.fillText(k,kx+kw/2,y);
+      kx+=kw+4;
+    }
+    ctx.fillStyle='#7a9ab8'; ctx.font='11px monospace'; ctx.textAlign='left';
+    ctx.fillText(label,kx+6,y);
+  }
 
-  ctx.font='10px monospace'; ctx.fillStyle='rgba(100,140,180,0.5)';
-  ctx.fillText('Press ENTER or click NEW GAME',HALF_CW,490);
+  // left column
+  const col1=panX+24, col2=panX+panW/2+16, row1=panY+52, rowGap=30;
+  krow(['W','A','S','D'],'Move',col1,row1);
+  krow(['↑','←','↓','→'],'Also move',col1,row1+rowGap);
+  krow(['F'],'Attack / Shoot',col1,row1+rowGap*2);
+  krow(['E'],'Talk / Recruit ally',col1,row1+rowGap*3);
+  krow(['1','-','8'],'Equip item slot',col1,row1+rowGap*4);
+
+  // right column — tips
+  const tipY=panY+50;
+  ctx.font='bold 11px monospace'; ctx.fillStyle='#ffdd88'; ctx.textAlign='left';
+  ctx.fillText('Tips',col2,tipY);
+  ctx.strokeStyle='rgba(255,220,100,0.3)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(col2,tipY+3); ctx.lineTo(col2+120,tipY+3); ctx.stroke();
+  const tips=[
+    '🌊 Shallow water slows you',
+    '🌉 Bridges cross deep water',
+    '⚔  Find allies in villages',
+    '💜 Higher rarity = stronger stats',
+    '⭐ Defeat enemies to level up',
+  ];
+  ctx.font='11px monospace'; ctx.fillStyle='#9ab8cc';
+  for(let i=0;i<tips.length;i++) ctx.fillText(tips[i],col2,tipY+22+i*26);
+
+  // rarity legend strip
+  const legY=panY+panH-22;
+  ctx.font='10px monospace'; ctx.fillStyle='rgba(120,160,200,0.6)'; ctx.textAlign='center';
+  ctx.fillText('Item Rarities:',HALF_CW-160,legY);
+  const rarNames=[['Common','#aaaaaa'],['Uncommon','#44dd55'],['Epic','#cc55ff'],['Legendary','#ffaa22'],['Mythic','#ff2255']];
+  let rx=HALF_CW-60;
+  for(const [rn,rc] of rarNames){
+    ctx.fillStyle=rc; ctx.font='bold 10px monospace'; ctx.textAlign='left';
+    ctx.shadowColor=rc; ctx.shadowBlur=5;
+    ctx.fillText(rn,rx,legY);
+    ctx.shadowBlur=0;
+    rx+=rn.length*7+10;
+  }
+
   ctx.textAlign='left';
 }
 
