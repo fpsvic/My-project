@@ -364,7 +364,7 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
             terminalStatus.textContent = "FAILED TO RUN";
             terminalStatus.className = "text-rose-500 font-bold";
         } else {
-            terminalViewBody.textContent = "✓ Ran successfully — no errors.";
+            terminalViewBody.textContent = stdout || "✓ Ran successfully — no output.";
             terminalStatus.textContent = "SUCCESS";
             terminalStatus.className = "text-emerald-400 font-bold";
         }
