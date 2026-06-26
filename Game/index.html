@@ -90,12 +90,18 @@ function classify(h){
   return T.SNOW;
 }
 function generateWorld(seed){
+  const mode=seed%6;
   for(let y=0;y<WH;y++){
     for(let x=0;x<WW;x++){
       const cx=(x/WW-0.5)*2, cy=(y/WH-0.5)*2;
-      const dist=Math.sqrt(cx*cx+cy*cy);
-      const h=smoothN(x,y,seed)-dist*0.5;
-      tiles[y*WW+x]=classify(h);
+      let falloff;
+      if(mode===0)      falloff=Math.sqrt(cx*cx+cy*cy)*0.55;                                         // round island
+      else if(mode===1) falloff=Math.sqrt(cx*cx*0.28+cy*cy)*0.65;                                    // east-west ridge
+      else if(mode===2){const d1=Math.sqrt((cx+0.55)**2+(cy*1.4)**2),d2=Math.sqrt((cx-0.55)**2+(cy*1.4)**2); falloff=Math.min(d1,d2)*0.72;} // twin islands
+      else if(mode===3) falloff=Math.sqrt(cx*cx+cy*cy)*0.20;                                         // large continent
+      else if(mode===4) falloff=Math.sqrt(cx*cx+cy*cy*0.22)*0.65;                                    // north-south spine
+      else              falloff=Math.sqrt((cx-0.15)**2*0.45+cy*cy)*0.60;                              // offset peninsula
+      tiles[y*WW+x]=classify(smoothN(x,y,seed)-falloff);
     }
   }
 }
@@ -148,8 +154,8 @@ function carvePath(x1,y1,x2,y2){
   let x=x1,y=y1;
   while(x!==x2||y!==y2){
     const t=tiles[y*WW+x];
-    if(t===T.DEEP_WATER||t===T.SHALLOW_WATER) tiles[y*WW+x]=T.BRIDGE;
-    else if(TWALK[t]&&t!==T.FOREST) tiles[y*WW+x]=T.PATH;
+    if(TWALK[t]&&t!==T.FOREST&&t!==T.SHALLOW_WATER&&t!==T.DEEP_WATER)
+      tiles[y*WW+x]=T.PATH;
     if(x<x2)x++; else if(x>x2)x--;
     if(y<y2)y++; else if(y>y2)y--;
   }
@@ -299,6 +305,43 @@ const ITEM_DEF={
 };
 const ITEM_KINDS=Object.keys(ITEM_DEF);
 
+// ── Procedural NPC dialogue ────────────────────────────────────────────────
+const WB={
+  threat:['Orcs','Slimes','Trolls','Skeletons','Bandits','Wolves','Goblins','Dark Knights','Witches','Wraiths'],
+  place:['old forest','mountains','haunted cave','swamp','river valley','ruins','dark grove','eastern road','cliffs','the deep wilds'],
+  item:['sword','ancient tome','mysterious potion','enchanted ring','old map','strange gem','runic stone','lost locket','spell scroll'],
+  adj:['strange','dangerous','cursed','ancient','mysterious','enchanted','forgotten','haunted','peculiar','unsettling'],
+  weather:['stormy','foggy','unnervingly clear','bitterly cold','oddly warm','misty','unusually still'],
+  feeling:['worried','strangely calm','suspicious','restless','hopeful','on edge','exhausted'],
+  verb:['spotted','heard about','saw','found traces of','narrowly avoided','was nearly caught by'],
+  cadj:['enormous','sickly','furious','unusually quiet','desperate','cunning','relentless'],
+};
+const DT={
+  Villager:['I {verb} {cadj} {threat} near the {place} this morning.','The {adj} {place} gives me nightmares.','Someone left a {item} outside my door — {adj}, if you ask me.','It has been so {weather}. Something is wrong.','I feel {feeling} about everything beyond the village.','A traveler said the {place} is {adj} now.','Keep your {item} close — {threat} are nearer than you think.','My grandmother warned me about the {adj} {place}.','Three people went to the {place}. None returned.','Folk say {threat} gather at the {place} when it is {weather}.','I could use a {item}, truth be told.','There is a {adj} smell coming from the {place}.','The {threat} have been {cadj} this season.','I heard shouting from the {place} last night.','A {cadj} creature {verb} near the fields.','Stay away from the {adj} {place} after dark.','My neighbour {verb} something truly {adj} near the {place}.'],
+  Merchant:['A {adj} {item} just arrived — only for the right buyer.','Trade has been slow since {threat} blocked the {place}.','The price of {item} has tripled since the {adj} season.','Watch out for {threat} on the roads — bad for business.','I will trade a {item} for information about the {place}.','Everything costs more when {threat} patrol the {place}.','Best goods come from the {adj} {place} — if you dare.','Last shipment of {item} was raided by {threat}.','A fine {item} is worth more than any rumour from the {place}.','I {verb} a {cadj} merchant carrying a {adj} {item}.','Supply is short because {threat} own the {place} now.','Buy a {item} now before {threat} cut off the route.','I heard of a {adj} {item} hidden in the {place}.','Business was better before {threat} showed up.','The {adj} {place} route is risky but the profit is worth it.'],
+  Guard:['Stay alert — {threat} were {verb} near the {place}.','I will not let {cadj} {threat} through my watch.','The {adj} {place} is off limits after dark.','Report any {cadj} {threat} to the garrison immediately.','We lost a patrol in the {adj} {place} last week.','Keep your {item} ready. I mean it.','The perimeter is holding, but {threat} grow bolder.','It is {weather} — perfect cover for {threat}.','A {adj} figure was {verb} near the {place} at dawn.','I have seen {cadj} {threat}. This is different.','Three guards were {verb} near the {adj} {place}.','I do not trust anything from the {place} anymore.','Stand your ground if you face {threat}. Show no fear.','The {place} was {adj} even before the {threat} arrived.','Carry a {item} and stay on the lit path.'],
+  Elder:['The {adj} {place} holds memories older than this village.','In my youth we never feared {threat} in the {place}.','A {adj} {item} was buried near the {place} long ago.','The old texts speak of {adj} {threat} in the deep {place}.','I remember when the {place} was not {adj}.','The {threat} did not always haunt the {place}. Something changed.','Long ago, a {adj} {item} sealed the evil of the {place}.','Youth underestimates the {cadj} {threat}. I have seen them.','The {place} changes when the weather turns {weather}.','A hero once defeated {cadj} {threat} at the {place}.','My father said the {adj} {item} was the key to it all.','The {place} was once full of life. Now it is {adj}.','Balance disturbed — when {threat} multiply, the {place} suffers.','Study the {adj} ruins. They tell the history of this land.','The {adj} seasons were kinder. Something shifted long ago.'],
+  Wanderer:['I {verb} {cadj} {threat} three days east of here.','Every {adj} {place} hides something worth finding.','The world is vast. I have seen {adj} things in many a {place}.','I carry this {item} from a very {adj} {place} far away.','The road is {weather} but I press on regardless.','Once I entered a {adj} {place} with no visible exit. Almost.','I traded my last {item} for news of the {place}.','{cadj} {threat} nearly caught me at the {place}.','There is a {adj} {place} two days west. Worth visiting.','I feel {feeling} lately. Too many {adj} things on the road.','A {adj} {item} saved my life in the {place} once.','Every wanderer fears the {adj} {place} at night.','I have met others who {verb} {threat} near the {place}.','Rest when you can. The {adj} road drains you.','The {place} looks different from each direction. Strange.'],
+  Fisherman:['The fish are {cadj} today near the {adj} water.','I {verb} something large lurking below the dock.','The water turns {adj} when the weather is {weather}.','Best fishing is at dawn when everything is {feeling}.','I caught something {cadj} yesterday. Nearly capsized me.','Shh. The {cadj} ones are close to the surface now.','The lake near the {place} is full of {adj} things.','Something ate my bait whole. Never seen that before.','A fisherman I knew {verb} a {adj} {item} in the river.','Water is too still today. I feel {feeling}.','They say the deep water near the {place} is {adj}.','When the weather gets {weather}, the big ones surface.','The dock has been {adj} since {threat} came near.','I fished here for decades. The water used to be {adj}.','Something {adj} has been circling the boat at night.'],
+  Farmer:['My crops near the {place} are failing again.','The {threat} trampled half my field last harvest.','I {verb} wolf tracks near the {adj} barn.','Good soil grows in the {place} if {threat} stay away.','It has been {weather} — bad for crops, worse for spirits.','Something {adj} has been eating the livestock at night.','The fence near the {place} collapsed again. {cadj} {threat}.','I found {adj} footprints near the east field this morning.','A {cadj} creature {verb} near the fields yesterday.','The harvest depends on keeping {threat} away.','No time for adventure — someone must tend the fields.','I need a {item} more than I need excitement, honestly.','Hard work and a good {item} — all a farmer really needs.','The soil smells {adj} near the {place} this season.','Strange lights from the {adj} {place} kept the hens awake.'],
+  Baker:['Fresh bread keeps my mind off the {adj} {threat} outside.','The flour from the {place} is finest — when the road is clear.','A warm loaf on a {weather} night beats any {item}.','I heard {threat} raided the mill near the {place}.','I traded a loaf for a {adj} {item} once. Great deal.','The oven keeps me warm even when things are {adj} outside.','A traveler brought a {item} from the {adj} {place} last year.','Even {cadj} {threat} cannot resist fresh bread. Probably.','I baked through three {weather} winters in this very spot.','My secret ingredient is something {adj} from the {place}.','The {adj} grain near the {place} makes the best loaves.','Trade routes blocked by {threat} ruins my supply of {item}.','Smell that? Nothing in the {place} smells half as good.','I feel {feeling} whenever I hear {threat} near the village.','A baker is the last line of morale. I take it seriously.'],
+  Healer:['The {adj} herb from the {place} cures most ailments.','I {verb} someone badly hurt by {cadj} {threat}.','Wounds from {threat} near the {place} are uniquely {adj}.','This {item} was prepared from plants in the {adj} {place}.','Overexposure to the {adj} {place} causes strange symptoms.','I feel {feeling} — too many hurt by {threat} lately.','A proper {item} and rest cures most things. Most.','The {adj} moss near the {place} has extraordinary properties.','Once I healed a person who {verb} {cadj} {threat} alone.','Do not enter the {adj} {place} without a healing {item}.','Knowledge of the {adj} flora saved many lives.','Even {cadj} {threat} can be treated if you know how.','The {place} air turns {adj} when {threat} nest nearby.','I need rare ingredients from the {adj} {place}.','The cure for {adj} ailments is always in the last place you look.'],
+  Bard:['I composed a ballad about {cadj} {threat} in the {place}.','Every {adj} {place} deserves a song. I have written many.','I heard: someone {verb} {cadj} {threat} and lived to tell it.','Music soothes even the most {adj} {threat}, I believe.','The legend of the {adj} {item} in the {place} — magnificent.','I sang through a {weather} night in the {adj} {place} once.','Let me write an epic about YOUR deeds in the {adj} {place}.','A bard without good material is just someone talking loudly.','The legend of the {adj} {place} predates this kingdom.','I feel {feeling} today — perfect mood for a ballad.','I {verb} something {adj} and wrote my greatest song about it.','They say {cadj} {threat} are repelled by music. I test this.','Every {threat} has a story. Not all are worth telling though.','A {adj} {item} from the {place} inspired my finest work.','The {weather} nights in the {place} make the best material.'],
+  Knight:['I {verb} {cadj} {threat} at the {place}. They fled.','Honour demands I protect this land from all {threat}.','My {item} was forged from ore found near the {place}.','A knight never retreats from {cadj} {threat}. Ever.','The {adj} {place} has been contested for generations.','I have faced {cadj} {threat} in places far more {adj}.','Stand firm — even {cadj} {threat} hesitate before conviction.','The {adj} {place} is no place for the unprepared.','I carry this {item} as a reminder of the {place} battle.','The {threat} that roam the {place} will face justice.','My shield has deflected blows from {cadj} {threat} before.','The order sent me to cleanse the {adj} {place} of {threat}.','Every scar I carry came from {cadj} {threat} in the field.','Courage and a sharp {item} — that is all one truly needs.','The {adj} {place} holds no fear for the properly trained.'],
+  Ranger:['Fresh tracks — {cadj} {threat} passed through the {place}.','I can read the {adj} {place} like a book. Bad news today.','The {threat} have a new den near the {adj} {place}.','Moving quietly through the {adj} {place} saved my life once.','I {verb} {cadj} {threat} at the {place} at dawn.','Nature warns you if you listen. The {adj} {place} is uneasy.','My {item} is made from wood of the {adj} {place}. Never fails.','The {threat} behave {cadj} when the weather is {weather}.','Stay downwind of anything in the {adj} {place}.','I have tracked {cadj} {threat} for three days through the {place}.','The {adj} {place} is alive. It knows who belongs there.','Wildlife fled the {place} a week ago. {threat} moved in.','A {item} is useless if you cannot read the signs.','The {place} used to be safe before the {cadj} {threat} came.','Three trails, three sets of tracks. They are hunting in packs.'],
+  Scholar:['Fascinating — the {adj} {place} shows signs of ancient civilization.','My research on {cadj} {threat} remains inconclusive.','This {adj} {item} I found near the {place} defies classification.','Knowledge of {adj} {threat} behaviour could save many lives.','This inscription near the {place} predates written language.','The {place} geology is {adj} — rich in minerals and mystery.','I have documented seventeen types of {adj} {threat}. This makes more.','The {item} in my satchel came from the {adj} {place}. Priceless.','Academically speaking, the {adj} {place} is extraordinary.','I mapped the entire {adj} {place} last winter. Very {weather}.','Did you know {cadj} {threat} communicate through vibration?','The {adj} {place} contains flora not recorded anywhere.','My paper on {cadj} {threat} was not well received. Yet.','A {adj} {item} found here could rewrite history.','I feel {feeling} whenever I think about what the {place} hides.'],
+  Innkeeper:['A traveler passed through with a {adj} {item} from the {place}.','I heard {cadj} {threat} were spotted near the {adj} road.','The last guest said the {place} is completely {adj} now.','A warm bed beats wandering near {adj} {threat}, I promise.','Trade has slowed. The {place} route is too {adj} these days.','The wizard who stayed here {verb} something {adj} in the {place}.','Two adventurers left for the {adj} {place} last week. One returned.','A {item} was left behind by a guest. Very {adj}, if you ask me.','The road was once safe. Now {cadj} {threat} own the {place}.','I feel {feeling} when armed folk head toward the {place}.','This inn has stood longer than the {adj} trouble out there.','Stories of the {adj} {place} bring adventurers every week.','The {place} road is {weather} and {adj} this time of year.','A traveler paid me with a {adj} {item} once. Unusual night.','I have heard every story about the {adj} {place}. Still surprised.'],
+  Ally:['My blade is ready for whatever hides in that {adj} {place}.','I {verb} {cadj} {threat} before we met. No problem.','Together we can handle any {cadj} {threat} in the {place}.','Your back is safe with me, even in the {adj} {place}.','I feel {feeling} but ready. Let us face those {threat}.','A good {item} and a trusted ally — what more do we need?','The {adj} {place} ahead holds {threat}. I am not worried.','Stay close. The {place} looks {adj} from here.','We make a good team against {cadj} {threat}, you and I.','I sense {adj} danger near that {place}. Ready when you are.','That {cadj} {threat} will not know what hit them.','The {adj} {place} is risky, but adventure awaits.','I have your back through {weather} weather and {adj} enemies.','A scar from the {adj} {place} is just a story waiting to be told.','After this, I could use a rest and a good meal.'],
+};
+function genDialogue(npc){
+  let s=(npc.seed^((npc.msgCount||0)*0x9e3779b9))>>>0;
+  function rnd(n){s=((s*1664525+1013904223)>>>0); return (s>>>16)%n;}
+  const lines=DT[npc.job]||DT.Villager;
+  return lines[rnd(lines.length)].replace(/\{(\w+)\}/g,(_,k)=>{
+    const b=WB[k]; return b?b[rnd(b.length)]:k;
+  });
+}
+
 // ── Item rarity ────────────────────────────────────────────────────────────
 const RARITIES=[
   {name:'Common',   color:'#aaaaaa', weight:55, mult:1.0},
@@ -439,7 +482,7 @@ function makeNPC(x,y,job,name,seed,extra={}){
   return {x,y,tx:x,ty:y,job,name,
     speech:'',speechTimer:0,idleTimer:2+Math.random()*3,
     moving:false,dir:0,frame:0,frameT:0,speed:45,
-    seed,fisherman:false,
+    seed,fisherman:false,msgCount:0,
     ally:false,following:false,hp:80,maxHp:80,atkTimer:0,dead:false,
     ...extra};
 }
@@ -531,9 +574,9 @@ function talkNearby(){
         n.speech='With you till the end!';
         n.speechTimer=2.5;
       } else {
-        const lines=NPC_DIALOGUE[n.job];
-        n.speech=lines[(n.seed+floats.length)%lines.length];
-        n.speechTimer=3.5;
+        n.speech=genDialogue(n);
+        n.msgCount=(n.msgCount||0)+1;
+        n.speechTimer=4.0;
       }
       return;
     }
@@ -1211,18 +1254,112 @@ function drawTile(t,tx,ty,px,py){
 function drawEnemy(e){
   const d=ENEMY_DEF[e.kind];
   const sx=e.x-camX|0, sy=e.y-camY|0;
-  const bob=Math.sin(e.frameT*8)*2;
-  ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.beginPath();ctx.ellipse(sx,sy+d.size-2,d.size*0.8,d.size*0.3,0,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle=e.hitFlash>0?'#ffffff':d.color; ctx.beginPath();ctx.arc(sx,sy-d.size+bob,d.size,0,Math.PI*2);ctx.fill();
-  ctx.strokeStyle='rgba(0,0,0,0.5)'; ctx.lineWidth=1.5; ctx.stroke();
-  ctx.fillStyle='#000';
-  const eo=e.dir===2?-4:(e.dir===3?4:0);
-  ctx.beginPath();ctx.arc(sx-3+eo,sy-d.size-2+bob,2,0,Math.PI*2);ctx.fill();
-  ctx.beginPath();ctx.arc(sx+3+eo,sy-d.size-2+bob,2,0,Math.PI*2);ctx.fill();
-  const bw=d.size*3, bh=4, bx=sx-bw/2, by=sy-d.size*2-8;
-  ctx.fillStyle='#550000';ctx.fillRect(bx,by,bw,bh);
-  ctx.fillStyle='#ee2222';ctx.fillRect(bx,by,bw*(e.hp/e.maxHp),bh);
-  ctx.strokeStyle='#000';ctx.lineWidth=0.5;ctx.strokeRect(bx,by,bw,bh);
+  const bob=e.moving?Math.sin(e.frameT*8)*2:0;
+  const fl=e.hitFlash>0;
+  const sc=d.size/12; // scale: 1.0 at size 12
+
+  // shadow
+  ctx.fillStyle='rgba(0,0,0,0.3)';
+  ctx.beginPath();ctx.ellipse(sx,sy+d.size,d.size*0.7,d.size*0.28,0,0,Math.PI*2);ctx.fill();
+
+  if(e.kind==='Slime'){
+    const wob=Math.sin(e.frameT*5)*0.14;
+    ctx.fillStyle=fl?'#ffffff':d.color;
+    ctx.shadowColor=d.color; ctx.shadowBlur=10;
+    ctx.beginPath();ctx.ellipse(sx,sy-d.size*0.5+bob,d.size*(1+wob),d.size*(0.8-wob),0,0,Math.PI*2);ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.fillStyle='rgba(255,255,255,0.35)';
+    ctx.beginPath();ctx.ellipse(sx-d.size*0.25,sy-d.size*0.75+bob,d.size*0.28,d.size*0.18,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=fl?'#fff':'#111';
+    ctx.beginPath();ctx.arc(sx-d.size*0.3,sy-d.size*0.52+bob,1.8,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(sx+d.size*0.3,sy-d.size*0.52+bob,1.8,0,Math.PI*2);ctx.fill();
+  } else {
+    // humanoid
+    const bw=Math.round(10*sc), bh=Math.round(14*sc), hs=Math.round(9*sc);
+    const wside=e.dir===2?-1:1;
+    const wx=sx+wside*(bw/2+2)|0, wy=sy-Math.round(12*sc)+bob|0;
+
+    const bodyCol=fl?'#ffffff':d.color;
+    const skinCol=fl?'#ffffff':{
+      Orc:'#7ab830',Skeleton:'#d8d4c0',Archer:'#c47f2e',
+      Mage:'#c080f0',Troll:'#8a9960'
+    }[e.kind]||'#c89060';
+
+    // ── WEAPON ──
+    if(e.kind==='Archer'){
+      ctx.strokeStyle=fl?'#fff':'#7a4e1e'; ctx.lineWidth=Math.max(1.5,2*sc);
+      ctx.beginPath();ctx.arc(wx,wy,Math.round(9*sc),-0.85,0.85,wside<0);ctx.stroke();
+      ctx.strokeStyle='rgba(210,200,160,0.8)'; ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(wx+wside*Math.round(9*sc)*-0.9,wy-Math.round(7*sc));
+      ctx.lineTo(wx+wside*Math.round(9*sc)*-0.9,wy+Math.round(7*sc));ctx.stroke();
+    } else if(e.kind==='Mage'){
+      const slen=Math.round(22*sc);
+      ctx.strokeStyle=fl?'#fff':'#6622aa'; ctx.lineWidth=Math.max(1.5,2*sc);
+      ctx.shadowColor='#aa44ee'; ctx.shadowBlur=8;
+      ctx.beginPath();ctx.moveTo(wx,wy+Math.round(8*sc));ctx.lineTo(wx,wy-slen);ctx.stroke();
+      ctx.shadowBlur=0;
+      ctx.fillStyle=fl?'#fff':'#dd88ff'; ctx.shadowColor='#ee88ff'; ctx.shadowBlur=10;
+      ctx.beginPath();ctx.arc(wx,wy-slen,Math.round(4*sc),0,Math.PI*2);ctx.fill();
+      ctx.shadowBlur=0;
+    } else if(e.kind==='Troll'){
+      const cw=Math.round(7*sc), ch=Math.round(20*sc);
+      ctx.fillStyle=fl?'#fff':'#6a4010';
+      ctx.fillRect(wx-Math.round(3*sc),wy-ch/2,cw,ch);
+      ctx.fillRect(wx-Math.round(5*sc),wy-ch/2,cw+4,Math.round(7*sc));
+    } else {
+      // SWORD (Orc, Skeleton, generic)
+      const slen=Math.round(18*sc);
+      const swcol=e.kind==='Skeleton'?'#d8d4c0':'#aaaacc';
+      ctx.fillStyle=fl?'#fff':'#442200';
+      ctx.fillRect(wx-Math.round(sc),wy+Math.round(3*sc),Math.round(3*sc),Math.round(7*sc));
+      ctx.fillStyle=fl?'#fff':'#7a5010';
+      ctx.fillRect(wx-Math.round(4*sc),wy+Math.round(1*sc),Math.round(9*sc),Math.round(3*sc));
+      ctx.fillStyle=fl?'#fff':swcol;
+      ctx.shadowColor=swcol; ctx.shadowBlur=fl?0:5;
+      ctx.fillRect(wx-Math.round(sc),wy-slen+Math.round(1*sc),Math.round(3*sc),slen);
+      ctx.beginPath();ctx.moveTo(wx-Math.round(sc),wy-slen);ctx.lineTo(wx+Math.round(2*sc),wy-slen);
+      ctx.lineTo(wx+Math.round(0.5*sc),wy-slen-Math.round(7*sc));ctx.closePath();ctx.fill();
+      ctx.shadowBlur=0;
+    }
+
+    // ── BODY ──
+    ctx.fillStyle=bodyCol;
+    ctx.fillRect(sx-bw/2|0,sy-Math.round(16*sc)+bob|0,bw,bh);
+    ctx.strokeStyle='rgba(0,0,0,0.35)'; ctx.lineWidth=1;
+    ctx.strokeRect(sx-bw/2|0,sy-Math.round(16*sc)+bob|0,bw,bh);
+    if(e.kind==='Skeleton'){
+      ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=0.5;
+      for(let i=1;i<=3;i++){
+        const ry=(sy-Math.round(16*sc)+bob+i*Math.round(3.5*sc))|0;
+        ctx.beginPath();ctx.moveTo(sx-bw/2|0,ry);ctx.lineTo(sx+bw/2|0,ry);ctx.stroke();
+      }
+    }
+
+    // ── HEAD ──
+    ctx.fillStyle=skinCol;
+    ctx.fillRect(sx-hs/2|0,(sy-Math.round((16+hs)*sc)+bob)|0,hs,hs);
+    ctx.strokeStyle='rgba(0,0,0,0.35)'; ctx.lineWidth=1;
+    ctx.strokeRect(sx-hs/2|0,(sy-Math.round((16+hs)*sc)+bob)|0,hs,hs);
+
+    // glowing red eyes
+    const eo=e.dir===2?-2:(e.dir===3?2:0);
+    const ey2=(sy-Math.round((16+hs-3)*sc)+bob)|0;
+    ctx.fillStyle=fl?'#fff':'#ee2200';
+    ctx.shadowColor='#ff4400'; ctx.shadowBlur=fl?0:6;
+    ctx.fillRect((sx-3+eo)|0,ey2,Math.round(2*sc),Math.round(2*sc));
+    ctx.fillRect((sx+1+eo)|0,ey2,Math.round(2*sc),Math.round(2*sc));
+    ctx.shadowBlur=0;
+  }
+
+  // HP bar
+  const bw2=d.size*3, bh2=4, bx2=sx-bw2/2, by2=sy-d.size*2-10;
+  ctx.fillStyle='#330000';ctx.fillRect(bx2,by2,bw2,bh2);
+  const hpFrac=e.hp/e.maxHp;
+  ctx.fillStyle=hpFrac>0.5?'#ee2222':'#ff6600';
+  ctx.fillRect(bx2,by2,bw2*hpFrac,bh2);
+  ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=0.5;ctx.strokeRect(bx2,by2,bw2,bh2);
+  ctx.font='9px monospace'; ctx.fillStyle='rgba(255,160,160,0.9)'; ctx.textAlign='center';
+  ctx.fillText(e.kind,sx,by2-2); ctx.textAlign='left';
 }
 
 function drawNPC(n){
