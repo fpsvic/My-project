@@ -785,6 +785,88 @@ def _quick_response(query: str, q: str) -> str:
         return "Hey! How can I help?"
     return f"I'm not sure about \"{query}\". Try turning off Quick mode for a full answer."
 
+# --- CONVERSATION CONTEXT RESOLUTION ---
+
+_FOLLOWUP_EXACT = {
+    "tell me more", "more", "more about that", "more about it", "more info",
+    "elaborate", "expand", "expand on that", "go deeper", "keep going",
+    "continue", "go on", "and?", "what else", "anything else",
+    "explain that", "explain more", "explain further", "explain it",
+    "interesting", "cool", "wow", "nice", "really?", "what about it",
+    "how so", "why so", "ok and", "okay and", "got it and",
+    "ok so", "okay so", "go ahead", "tell me", "say more",
+}
+
+_FOLLOWUP_STARTS = (
+    "tell me more about", "more about", "what else about",
+    "can you explain", "explain more about", "expand on",
+    "what about its", "what about their", "what about the",
+    "how about", "what about",
+)
+
+_PRONOUN_RE = re.compile(
+    r"\b(it|its|it's|they|them|their|that|this|those|these)\b"
+)
+
+
+def _extract_prev_topic(history: list) -> str | None:
+    """Get the last user query from history (excluding the current one at the end)."""
+    if len(history) < 2:
+        return None
+    for msg in reversed(history[:-1]):
+        role = msg.get("role", "")
+        text = (msg.get("text") or msg.get("content") or "").strip()
+        if role == "user" and len(text) > 3:
+            return text
+    return None
+
+
+def _resolve_context(query: str, q: str, history: list) -> tuple[str, str]:
+    """Rewrite a follow-up query by injecting the previous topic."""
+    if not history:
+        return query, q
+    prev = _extract_prev_topic(history)
+    if not prev:
+        return query, q
+
+    # Pure follow-up with no new content
+    if q in _FOLLOWUP_EXACT:
+        combined = f"tell me more about {prev}"
+        return combined, _normalize(combined)
+
+    # Starts with a follow-up prefix
+    if any(q.startswith(p) for p in _FOLLOWUP_STARTS):
+        # already has partial subject ("what about its diet") — inject the entity from prev
+        entity = _extract_entity(prev)
+        if entity and entity not in q:
+            combined = f"{query.strip()} {entity}"
+            return combined, _normalize(combined)
+        return query, q
+
+    # Query contains only pronoun references with no real subject
+    words = [w for w in q.split() if w not in _STOP_WORDS]
+    if len(words) <= 4 and _PRONOUN_RE.search(q):
+        entity = _extract_entity(prev)
+        if entity:
+            resolved = _PRONOUN_RE.sub(entity, query)
+            return resolved, _normalize(resolved)
+
+    return query, q
+
+
+def _extract_entity(text: str) -> str | None:
+    """Pull the most likely subject noun from a query string."""
+    norm = _normalize(text)
+    # Remove question starters
+    norm = _QUESTION_STARTERS.sub("", norm).strip()
+    # Remove stop words from start
+    words = [w for w in norm.split() if w not in _STOP_WORDS]
+    if not words:
+        return None
+    # Return up to 3 content words as the entity phrase
+    return " ".join(words[:3])
+
+
 # --- MAIN ENTRY POINT ---
 
 def _kb_fact_lookup(q: str) -> str | None:
@@ -830,6 +912,8 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     q = _normalize(query)
     if quick_mode:
         return _quick_response(query, q)
+    # Resolve follow-up references ("tell me more", "what about it", pronouns, etc.)
+    query, q = _resolve_context(query, q, history)
     if is_update_request(q, history):
         return _dispatch_update(query, history, mode)
     if _score_animals(q) >= 60:
