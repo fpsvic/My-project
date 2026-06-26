@@ -70,7 +70,7 @@ class JungleRunner {
 
             // ── Tier 1: Native JS/TS (no network) ─────────────────────────────
             if (lang === 'Javascript' || lang === 'TypeScript') {
-                terminalViewBody.textContent = "⚡ Running locally (native JS)...";
+                terminalViewBody.textContent = "";
                 const res = await this.runNativeJS(code);
                 this.showRunResult(res.stdout, res.stderr, lang, { errName: res.errName, errStack: res.errStack });
                 return;
@@ -98,11 +98,11 @@ class JungleRunner {
                 }
             }
             // ── Tier 4: Judge0 CE (60+ languages, no auth) ────────────────────
-            terminalViewBody.textContent = "🌐 Connecting to Judge0 API...";
+            terminalViewBody.textContent = "";
             const j0 = await this.runJudge0(lang, code);
             if (j0) { this.showRunResult(j0.stdout, j0.stderr, lang); return; }
             // ── Tier 5: Piston + CORS proxy fallback chain ────────────────────
-            terminalViewBody.textContent += "\n⚠️ Judge0 unreachable, trying Piston cluster...";
+            terminalViewBody.textContent = "";
             await this.runPiston(lang, code, p);
 
         } catch (globalErr: any) { this.handleGlobalFailure(globalErr); }
@@ -364,7 +364,7 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
             terminalStatus.textContent = "FAILED TO RUN";
             terminalStatus.className = "text-rose-500 font-bold";
         } else {
-            terminalViewBody.textContent = stdout || "Program executed successfully with no output.";
+            terminalViewBody.textContent = "✓ Ran successfully — no errors.";
             terminalStatus.textContent = "SUCCESS";
             terminalStatus.className = "text-emerald-400 font-bold";
         }
