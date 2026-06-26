@@ -116,7 +116,10 @@
                 <div id="editor-container">
                     <pre id="highlight-overlay"></pre>
                     <textarea id="code-editor" spellcheck="false"></textarea>
-                    <span id="header-copy-code-btn" title="Copy Current File Contents to Clipboard" style="position:absolute;top:12px;right:14px;z-index:10;color:#74a896;font-size:0.78rem;cursor:pointer;opacity:0.6;transition:opacity 0.2s;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.6'">📋 Copy Code</span>
+                    <div style="position:absolute;top:12px;right:30px;z-index:10;display:flex;gap:16px;align-items:center;">
+                        <span id="header-copy-code-btn" title="Copy Current File Contents to Clipboard" style="color:#74a896;font-size:0.78rem;cursor:pointer;opacity:0.6;transition:opacity 0.2s;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.6'">📋 Copy Code</span>
+                        <span id="download-code-btn" title="Download Current File" style="color:#74a896;font-size:0.78rem;cursor:pointer;opacity:0.6;transition:opacity 0.2s;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.6'">⬇️ Download</span>
+                    </div>
                 </div>
             </div>
             <iframe id="preview-frame" style="display: none; flex: 1; width: 100%; height: 100%; border: none; background: #ffffff;"></iframe>

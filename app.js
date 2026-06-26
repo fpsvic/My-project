@@ -392,6 +392,17 @@ headerCopyCodeBtn.onclick = () => {
     document.body.removeChild(textareaBackup);
     JungleUI.showToast(`Copied ${p.currentFile} content to clipboard!`);
 };
+document.getElementById('download-code-btn').onclick = () => {
+    const p = JungleUI.getCurrentProject();
+    if (!p || !p.currentFile) return;
+    const blob = new Blob([p.files[p.currentFile]], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = p.currentFile;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    JungleUI.showToast(`Downloaded ${p.currentFile}`);
+};
 editor.oninput = () => {
     const p = JungleUI.getCurrentProject();
     if (!p || !p.currentFile) return;
