@@ -82,13 +82,13 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 #code-editor::-webkit-scrollbar-thumb { background: #1c2522; border: 2px solid #080a0d; border-radius: 5px; }
 #code-editor::-webkit-scrollbar-thumb:hover { background: #528b74; }
 .token-keyword { color: #f08040; font-weight: bold; }
-.token-string { color: #8cb695; }
+.token-string { color: #c792ea; }
 .token-comment { color: #4e6559; font-style: italic; }
-.token-number { color: #e5b367; }
+.token-number { color: #4caf7d; }
 .token-type { color: #5fb8a6; }
 .token-fn { color: #7ec8c8; }
 .token-builtin { color: #b39ddb; }
-.token-op { color: #74a896; }
+.token-op { color: #f44747; }
 .token-punct { color: #6a8878; }
 .token-attr { color: #f0c070; }
 .token-tag { color: #d3738b; font-weight: bold; }
