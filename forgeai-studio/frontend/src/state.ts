@@ -1,4 +1,4 @@
-import type { Session, Mode, ModeConfig } from './types';
+import type { Session, Mode, ModeConfig, Workspace } from './types';
 
 export const MODE_CONFIGS: Record<Mode, ModeConfig> = {
   forge_code: {
@@ -27,4 +27,5 @@ export const state = {
   activeMode: 'forge_code' as Mode,
   activeLanguage: 'javascript',
   quickMode: false,
+  activeWorkspace: 'chat' as Workspace,
 };

@@ -1,3 +1,5 @@
+export type Workspace = 'chat' | 'code';
+
 export interface Message {
   role: 'user' | 'assistant';
   text: string;
@@ -8,6 +10,7 @@ export interface Session {
   id: string;
   title: string;
   language: string;
+  workspace: Workspace;
   messages: Message[];
 }
 

@@ -1,15 +1,73 @@
 import { state } from '../state';
-import { saveSessions, loadSessions } from '../utils/storage';
+import { saveSessions, saveActiveWorkspace } from '../utils/storage';
 import { generateId, getLanguageIconHTML } from '../utils/helpers';
 import { showToast } from './toast';
 import { renderCurrentSessionChat } from './chat';
+import type { Workspace } from '../types';
+
+// ── Workspace helpers ─────────────────────────────────────────────────────────
+
+function workspaceSessions() {
+  return state.sessions.filter(s => s.workspace === state.activeWorkspace);
+}
+
+function updateWorkspaceUI(): void {
+  const chatBtn = document.getElementById('wsTabChat');
+  const codeBtn = document.getElementById('wsTabCode');
+  const label   = document.getElementById('sessionListLabel');
+  const newBtn  = document.getElementById('btnNewSession');
+
+  const isChat = state.activeWorkspace === 'chat';
+
+  const activeClass   = 'flex-1 flex items-center justify-center space-x-1.5 py-1.5 rounded-lg text-[11px] font-semibold transition bg-white border border-slate-200 shadow-sm text-slate-800';
+  const inactiveClass = 'flex-1 flex items-center justify-center space-x-1.5 py-1.5 rounded-lg text-[11px] font-medium transition text-slate-400 hover:text-slate-600';
+
+  if (chatBtn) chatBtn.className = isChat ? activeClass : inactiveClass;
+  if (codeBtn) codeBtn.className = isChat ? inactiveClass : activeClass;
+
+  if (label) label.textContent = isChat ? 'Conversations' : 'Projects';
+  if (newBtn) newBtn.title = isChat ? 'New Conversation' : 'New Project';
+
+  // Update header badge
+  const badge = document.getElementById('workspaceBadge');
+  if (badge) {
+    badge.textContent = isChat ? 'Chat' : 'Code';
+    badge.className = isChat
+      ? 'text-[10px] font-semibold font-mono px-2 py-0.5 rounded border bg-violet-50 text-violet-500 border-violet-200/40'
+      : 'text-[10px] font-semibold font-mono px-2 py-0.5 rounded border bg-indigo-50 text-indigo-500 border-indigo-200/40';
+  }
+}
+
+export function switchWorkspace(ws: Workspace): void {
+  if (state.activeWorkspace === ws) return;
+  state.activeWorkspace = ws;
+  saveActiveWorkspace(ws);
+  updateWorkspaceUI();
+
+  // Switch to the most recent session in this workspace, or create one
+  const sessions = workspaceSessions();
+  if (sessions.length > 0) {
+    state.currentSessionId = sessions[0].id;
+    state.activeLanguage = sessions[0].language;
+  } else {
+    createNewSession();
+    return;
+  }
+
+  renderSessionList();
+  renderCurrentSessionChat();
+}
+
+// ── Session list ──────────────────────────────────────────────────────────────
 
 export function renderSessionList(): void {
   const container = document.getElementById('sessionListContainer');
   if (!container) return;
   container.innerHTML = '';
 
-  state.sessions.forEach((session) => {
+  const visible = workspaceSessions();
+
+  visible.forEach((session) => {
     const isActive = session.id === state.currentSessionId;
     const card = document.createElement('div');
     card.className = [
@@ -21,7 +79,11 @@ export function renderSessionList(): void {
 
     const textContainer = document.createElement('div');
     textContainer.className = 'flex items-center space-x-2.5 truncate w-full pr-12';
-    textContainer.innerHTML = `${getLanguageIconHTML(session.language)}<span class="truncate text-slate-800 font-medium">${session.title}</span>`;
+
+    const icon = session.workspace === 'code'
+      ? '<i class="fa-solid fa-code text-[10px] text-indigo-400 shrink-0"></i>'
+      : '<i class="fa-solid fa-message text-[10px] text-violet-400 shrink-0"></i>';
+    textContainer.innerHTML = `${icon}<span class="truncate text-slate-800 font-medium">${session.title}</span>`;
     card.appendChild(textContainer);
 
     const actions = document.createElement('div');
@@ -83,28 +145,40 @@ export function renderSessionList(): void {
   });
 }
 
+// ── CRUD ──────────────────────────────────────────────────────────────────────
+
 export function createNewSession(): void {
   const id = generateId();
-  state.sessions.unshift({ id, title: 'New Code Session', language: 'javascript', messages: [] });
+  const isCode = state.activeWorkspace === 'code';
+  state.sessions.unshift({
+    id,
+    title: isCode ? 'New Project' : 'New Conversation',
+    language: 'javascript',
+    workspace: state.activeWorkspace,
+    messages: [],
+  });
   state.currentSessionId = id;
   state.activeLanguage = 'javascript';
   saveSessions(state.sessions);
   renderSessionList();
   renderCurrentSessionChat();
-  showToast('Created a new code session!');
+  showToast(isCode ? 'Created a new project!' : 'Started a new conversation!');
 }
 
 export function deleteSession(id: string): void {
   state.sessions = state.sessions.filter((s) => s.id !== id);
+
   if (state.currentSessionId === id) {
-    if (state.sessions.length > 0) {
-      state.currentSessionId = state.sessions[0].id;
-      state.activeLanguage = state.sessions[0].language;
+    const remaining = workspaceSessions();
+    if (remaining.length > 0) {
+      state.currentSessionId = remaining[0].id;
+      state.activeLanguage = remaining[0].language;
     } else {
       createNewSession();
       return;
     }
   }
+
   saveSessions(state.sessions);
   renderSessionList();
   renderCurrentSessionChat();
@@ -125,7 +199,12 @@ export function selectSession(id: string): void {
   backdrop?.classList.add('hidden');
 }
 
+// ── Init ──────────────────────────────────────────────────────────────────────
+
 export function initSidebar(): void {
+  document.getElementById('wsTabChat')?.addEventListener('click', () => switchWorkspace('chat'));
+  document.getElementById('wsTabCode')?.addEventListener('click', () => switchWorkspace('code'));
+
   document.getElementById('btnNewSession')?.addEventListener('click', createNewSession);
 
   document.getElementById('btnMobileSidebarToggle')?.addEventListener('click', () => {
@@ -140,4 +219,7 @@ export function initSidebar(): void {
 
   document.getElementById('btnMobileSidebarClose')?.addEventListener('click', closeDrawer);
   document.getElementById('sidebarBackdrop')?.addEventListener('click', closeDrawer);
+
+  // Apply initial workspace styles
+  updateWorkspaceUI();
 }

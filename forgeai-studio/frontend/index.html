@@ -65,9 +65,20 @@
                 <i class="fa-solid fa-xmark text-sm"></i>
             </button>
         </div>
-        <div class="p-4 flex items-center justify-between shrink-0">
-            <span class="font-semibold text-[11px] tracking-wider uppercase text-slate-400">Chats</span>
-            <button id="btnNewSession" class="h-7 w-7 flex items-center justify-center bg-white hover:bg-slate-100 border border-slate-200 hover:border-slate-300 text-slate-700 rounded-lg transition shadow-sm" title="New Session">
+        <!-- Workspace tabs -->
+        <div class="px-3 pt-3 pb-2 shrink-0">
+            <div class="flex items-center bg-slate-100 rounded-xl p-1 space-x-1">
+                <button id="wsTabChat" class="flex-1 flex items-center justify-center space-x-1.5 py-1.5 rounded-lg text-[11px] font-semibold transition bg-white border border-slate-200 shadow-sm text-slate-800">
+                    <i class="fa-solid fa-message text-[9px] text-violet-400"></i><span>Chat</span>
+                </button>
+                <button id="wsTabCode" class="flex-1 flex items-center justify-center space-x-1.5 py-1.5 rounded-lg text-[11px] font-medium transition text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-code text-[9px] text-indigo-400"></i><span>Code</span>
+                </button>
+            </div>
+        </div>
+        <div class="px-4 pb-2 flex items-center justify-between shrink-0">
+            <span id="sessionListLabel" class="font-semibold text-[11px] tracking-wider uppercase text-slate-400">Conversations</span>
+            <button id="btnNewSession" class="h-7 w-7 flex items-center justify-center bg-white hover:bg-slate-100 border border-slate-200 hover:border-slate-300 text-slate-700 rounded-lg transition shadow-sm" title="New Conversation">
                 <i class="fa-solid fa-plus text-xs"></i>
             </button>
         </div>
@@ -85,7 +96,7 @@
                 </button>
                 <div class="flex items-center space-x-2">
                     <span class="font-bold text-slate-900 text-base tracking-tight">ForgeAI</span>
-                    <span class="text-[10px] text-indigo-500 font-mono bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200/40">Offline Cognitive Engine v3.1</span>
+                    <span id="workspaceBadge" class="text-[10px] font-semibold font-mono px-2 py-0.5 rounded border bg-violet-50 text-violet-500 border-violet-200/40">Chat</span>
                 </div>
             </div>
             <div class="flex items-center space-x-2">
@@ -121,7 +132,7 @@
                                 </button>
                                 <div id="modeMenu" class="absolute bottom-full right-0 mb-2 w-56 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 hidden z-50 text-left">
                                     <button type="button" data-mode="forge_code" title="Full responses with code examples and detailed explanations" class="w-full px-3 py-2 text-xs text-indigo-600 bg-indigo-50/40 flex items-center space-x-2.5 transition font-semibold">
-                                        <i class="fa-solid fa-code text-indigo-500 w-4 text-center"></i><div class="flex flex-col items-start"><span>Cosmos 2.8</span><p class="text-[9px] text-slate-400 font-normal mt-0.5">Full responses with code examples and detailed explanations</p></div>
+                                        <i class="fa-solid fa-code text-indigo-500 w-4 text-center"></i><div class="flex flex-col items-start"><span>Cosmos 2.8</span><p class="text-[9px] text-slate-400 font-normal mt-0.5">Great for anything — chat, questions, and code</p></div>
                                     </button>
                                     <button type="button" data-mode="forge_thinking" title="Deep analytical mode — thorough step-by-step reasoning" class="w-full px-3 py-2 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 flex items-center space-x-2.5 transition font-medium">
                                         <i class="fa-solid fa-brain text-amber-500 w-4 text-center"></i><div class="flex flex-col items-start"><span>Solar 2.6</span><p class="text-[9px] text-slate-400 font-normal mt-0.5">Deep analytical mode — thorough step-by-step reasoning</p></div>

@@ -1,5 +1,5 @@
 import { state, MODE_CONFIGS } from './state';
-import { loadSessions, saveSessions, loadActiveMode, saveActiveMode } from './utils/storage';
+import { loadSessions, saveSessions, loadActiveMode, saveActiveMode, loadActiveWorkspace } from './utils/storage';
 import { generateId } from './utils/helpers';
 import { initSplash } from './ui/splash';
 import { initSidebar, renderSessionList, createNewSession } from './ui/sidebar';
@@ -50,6 +50,7 @@ window.prefillPrompt = (text: string): void => {
 function bootstrap(): void {
   const stored = loadSessions();
   state.sessions = stored;
+  state.activeWorkspace = loadActiveWorkspace();
 
   // Sync quick mode from persisted settings
   const saved = loadSettings();
@@ -61,11 +62,12 @@ function bootstrap(): void {
     updateModeSelectorUI(savedMode as Mode);
   }
 
-  if (state.sessions.length === 0) {
+  const workspaceSessions = state.sessions.filter(s => s.workspace === state.activeWorkspace);
+  if (workspaceSessions.length === 0) {
     createNewSession();
   } else {
-    state.currentSessionId = state.sessions[0].id;
-    state.activeLanguage = state.sessions[0].language;
+    state.currentSessionId = workspaceSessions[0].id;
+    state.activeLanguage = workspaceSessions[0].language;
     renderSessionList();
     renderCurrentSessionChat();
   }
