@@ -205,6 +205,7 @@ runBtn.onclick = () => {
             }
             terminalStatus.textContent = "READY";
             terminalStatus.className = "text-[#74a896]";
+            terminalViewBody.textContent = "";
             switchView('preview');
             const iframeWin = previewFrame.contentWindow, doc = iframeWin.document;
             let frameCompileError = false;
