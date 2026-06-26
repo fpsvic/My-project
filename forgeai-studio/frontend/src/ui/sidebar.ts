@@ -36,6 +36,14 @@ function updateWorkspaceUI(): void {
       ? 'text-[10px] font-semibold font-mono px-2 py-0.5 rounded border bg-violet-50 text-violet-500 border-violet-200/40'
       : 'text-[10px] font-semibold font-mono px-2 py-0.5 rounded border bg-indigo-50 text-indigo-500 border-indigo-200/40';
   }
+
+  // Update chat input placeholder
+  const textarea = document.getElementById('userInput') as HTMLTextAreaElement | null;
+  if (textarea) {
+    textarea.placeholder = isChat
+      ? 'Ask me anything — science, math, history, or just chat...'
+      : 'Describe what to build — a game, app, tool, or anything...';
+  }
 }
 
 export function switchWorkspace(ws: Workspace): void {

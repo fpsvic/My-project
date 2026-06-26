@@ -1,13 +1,13 @@
 import re
-from services.dynamic_builder import generate_crud_app, _detect_entity, _detect_features, _make_title
 
 _UPDATE_SIGNALS = [
-    r"\badd\b.{0,40}\bto it\b",
+    r"\badd\b.{0,50}\bto it\b",
+    r"\badd\b.{0,50}\bto (the\s+)?(game|app|project|it)\b",
     r"\bnow also\b",
     r"\balso add\b",
     r"\bmake it also\b",
     r"\bchange the\b",
-    r"\bupdate (it|the app|the tracker|the tool|the game)\b",
+    r"\bupdate (it|the app|the tracker|the tool|the game|the project)\b",
     r"\bcan you add\b",
     r"\binclude\b.{0,30}\bas well\b",
     r"\bmodify\b",
@@ -19,16 +19,16 @@ _UPDATE_SIGNALS = [
     r"\bswitch the\b",
     r"\bfix the\b",
     r"\bimprove the\b",
-    r"\bmake it (dark|light|bigger|smaller|responsive|mobile|faster|slower|harder|easier)\b",
-    r"\badd (more|extra|a)\b",
-    r"\bcan you (make|change|add|fix|improve)\b",
-    r"\bnow (make|add|change|fix)\b",
+    r"\bmake it (dark|light|bigger|smaller|responsive|mobile|faster|slower|harder|easier|colorful|animated)\b",
+    r"\badd (more|extra|a|an)\b",
+    r"\bcan you (make|change|add|fix|improve|update)\b",
+    r"\bnow (make|add|change|fix|update)\b",
     r"\bcan u add\b",
     r"\bpls add\b",
     r"\badd more\b",
-    r"\bmake the\b.{0,30}\b(faster|slower|bigger|smaller|harder|easier|better)\b",
+    r"\bmake the\b.{0,30}\b(faster|slower|bigger|smaller|harder|easier|better|smoother|nicer)\b",
     r"\bturn it (dark|light)\b",
-    r"\bswitch to (dark|light)\b",
+    r"\bswitch to (dark|light) mode\b",
     r"\bi want (more|less)\b",
     r"\bgive it\b",
     r"\bgive me more\b",
@@ -38,6 +38,13 @@ _UPDATE_SIGNALS = [
     r"\bput in\b",
     r"\binclude a\b",
     r"\balso make\b",
+    r"\badd (a\s+)?(leaderboard|scoreboard|score|timer|countdown|lives|health|levels?|sound|music|animation|button|menu|dark mode|settings?|pause|restart|highscore|high score|power.?up|powerup|enemy|enemies|boss|checkpoint|save|load)\b",
+    r"\b(make|turn|add)\b.{0,20}\b(dark mode|night mode|light mode)\b",
+    r"\b(increase|decrease|boost|reduce)\b.{0,20}\b(speed|size|difficulty|score|damage)\b",
+    r"\badd\s+\w+(\s+\w+)?\s+(feature|functionality|support|mode|system|mechanic)\b",
+    r"\b(style|redesign|restyle|reskin|theme)\b.{0,20}\b(it|the game|the app)\b",
+    r"\bmore (levels?|enemies|obstacles|power.?ups|features?|options?)\b",
+    r"\bmake (it|the game|the app) (look|feel|play|run)\b",
 ]
 
 
@@ -46,10 +53,42 @@ def is_update_request(query: str, history: list[dict]) -> bool:
     has_signal = any(re.search(p, q) for p in _UPDATE_SIGNALS)
     if not has_signal:
         return False
-    return extract_last_code(history) is not None
+    return extract_last_code(history) is not None or extract_last_project(history) is not None
+
+
+def extract_last_project(history: list[dict]) -> dict | None:
+    """Return the most recent assistant message that has project_files."""
+    for msg in reversed(history):
+        if msg.get("role") != "assistant":
+            continue
+        files = msg.get("project_files")
+        if files and len(files) > 0:
+            return {"files": files, "text": msg.get("text", msg.get("content", ""))}
+    return None
+
+
+def _find_original_build_query(history: list[dict]) -> str | None:
+    """Find the user message that triggered the most recent code project."""
+    # Scan backwards: find the last assistant msg with project_files, then the user msg before it
+    found_project = False
+    for msg in reversed(history):
+        if not found_project:
+            if msg.get("role") == "assistant" and msg.get("project_files"):
+                found_project = True
+        else:
+            if msg.get("role") == "user":
+                return msg.get("text") or msg.get("content") or None
+    return None
 
 
 def extract_last_code(history: list[dict]) -> str | None:
+    # First: check project_files in history
+    project = extract_last_project(history)
+    if project:
+        for f in project["files"]:
+            if f.get("language") == "html" or f.get("name", "").endswith(".html"):
+                return f.get("content", "")
+    # Fallback: look for ```html blocks in text
     for msg in reversed(history):
         if msg.get("role") != "assistant":
             continue
@@ -60,126 +99,30 @@ def extract_last_code(history: list[dict]) -> str | None:
     return None
 
 
-def _extract_title_from_code(code: str) -> str:
-    m = re.search(r"<title>([^<]+)</title>", code, re.IGNORECASE)
-    if m:
-        return m.group(1).strip()
-    m = re.search(r"<h1[^>]*>([^<]+)</h1>", code, re.IGNORECASE)
-    if m:
-        return m.group(1).strip()
-    return "App"
-
-
-def _is_game_code(code: str) -> bool:
-    return "<canvas" in code.lower()
-
-
-_SPEED_PATCHES = [
-    (
-        ("faster", "speed up", "make it faster", "increase speed"),
-        [
-            (r"(setInterval\([^,]+,\s*)(\d+)(\s*\))",
-             lambda m: m.group(1) + str(max(8, int(m.group(2)) - 30)) + m.group(3),
-             {"count": 1}),
-            (r"((?:speed|velocity|vel|spd)\s*=\s*)(\d+(?:\.\d+)?)",
-             lambda m: m.group(1) + str(round(float(m.group(2)) * 1.4, 1)),
-             {}),
-        ],
-    ),
-    (
-        ("slower", "slow down", "make it slower", "decrease speed"),
-        [
-            (r"(setInterval\([^,]+,\s*)(\d+)(\s*\))",
-             lambda m: m.group(1) + str(min(200, int(m.group(2)) + 30)) + m.group(3),
-             {"count": 1}),
-            (r"((?:speed|velocity|vel|spd)\s*=\s*)(\d+(?:\.\d+)?)",
-             lambda m: m.group(1) + str(round(float(m.group(2)) * 0.65, 1)),
-             {}),
-        ],
-    ),
-    (
-        ("harder", "more difficult", "increase difficulty"),
-        [
-            (r"((?:spawnRate|spawnInterval|maxEnemies|enemyCount)\s*=\s*)(\d+)",
-             lambda m: m.group(1) + str(max(1, int(m.group(2)) - int(m.group(2)) // 3)),
-             {}),
-        ],
-    ),
-    (
-        ("easier", "less difficult", "decrease difficulty"),
-        [
-            (r"((?:spawnRate|spawnInterval|maxEnemies|enemyCount)\s*=\s*)(\d+)",
-             lambda m: m.group(1) + str(int(m.group(2)) + int(m.group(2)) // 2),
-             {}),
-        ],
-    ),
-]
-
-
-def _patch_game(old_code: str, query: str) -> str | None:
-    q = query.lower()
-    code = old_code
-    changed = False
-
-    for keywords, subs in _SPEED_PATCHES:
-        if any(w in q for w in keywords):
-            for pattern, repl, kwargs in subs:
-                code = re.sub(pattern, repl, code, **kwargs)
-            changed = True
-
-    if "dark" in q and ("mode" in q or "theme" in q or "background" in q or "make it dark" in q):
-        code = re.sub(r"(background(?:Color)?\s*[=:]\s*['\"])#(?:fff|ffffff|f0f0f0|eeeeee|e0e0e0|white)['\"]",
-                      r"\g<1>#1a1a2e'", code)
-        code = re.sub(r"(body\s*\{[^}]*background(?:-color)?\s*:\s*)#(?:fff|ffffff|f0f0f0|eeeeee|e0e0e0|white)",
-                      r"\g<1>#1a1a2e", code)
-        code = re.sub(r"(fillStyle\s*=\s*['\"])#(?:fff|ffffff|f0f0f0|eeeeee)['\"]",
-                      r"\g<1>#0f3460'", code)
-        changed = True
-
-    if "light" in q and ("mode" in q or "theme" in q or "background" in q or "make it light" in q):
-        code = re.sub(r"(background(?:Color)?\s*[=:]\s*['\"])#(?:1a1a2e|0f0f0f|111111|000|000000|222|333)['\"]",
-                      r"\g<1>#f8f9fa'", code)
-        changed = True
-
-    if re.search(r"add\s+(?:more\s+)?lives|(?:3|4|5)\s+lives|increase\s+lives", q):
-        code = re.sub(
-            r"((?:lives|health|hp|maxLives)\s*=\s*)(\d+)",
-            lambda m: m.group(1) + str(int(m.group(2)) + 2),
-            code,
-        )
-        changed = True
-
-    if "double" in q and "score" in q:
-        code = re.sub(
-            r"(score\s*\+=\s*)(\d+)",
-            lambda m: m.group(1) + str(int(m.group(2)) * 2),
-            code,
-        )
-        changed = True
-
-    return code if changed else None
-
-
 def apply_update(query: str, history: list[dict]) -> dict:
-    old_code = extract_last_code(history)
-    if old_code is None:
-        from services.dynamic_builder import build_dynamic_app
-        return build_dynamic_app(query)
+    """Rebuild the project with the modification applied."""
+    from services.code_generator import generate_project
 
-    old_title = _extract_title_from_code(old_code)
+    original_query = _find_original_build_query(history) or ""
+    project = extract_last_project(history)
 
-    if _is_game_code(old_code):
-        patched = _patch_game(old_code, query)
-        if patched and patched != old_code:
-            return {"title": f"Updated: {old_title}", "type": "game_patch", "code": patched}
-        from services.game_compiler import compile_game
-        combined = f"{old_title} — {query}"
-        result = compile_game(combined)
-        return {"title": f"Updated: {result['title']}", "type": "game_update", "code": result["code"]}
+    if project or original_query:
+        # Rebuild entire project combining original intent + modification
+        if original_query:
+            combined = f"{original_query}. Additionally: {query}"
+        else:
+            combined = query
+        result = generate_project(combined)
+        return {
+            "title": result.title,
+            "kind": result.kind,
+            "files": [{"name": f.name, "content": f.content, "language": f.language} for f in result.files],
+        }
 
-    combined_query = f"{old_title}. {query}"
-    entity_key, emoji, _ = _detect_entity(combined_query.lower())
-    title = _make_title(entity_key, combined_query.lower())
-    new_code = generate_crud_app(combined_query)
-
-    return {"title": f"Updated: {title}", "type": "dynamic_crud_update", "code": new_code}
+    # Legacy fallback: try to patch inline HTML
+    from services.dynamic_builder import generate_crud_app, _detect_entity, _detect_features, _make_title
+    entity, emoji, fields = _detect_entity(query)
+    features = _detect_features(query)
+    title = _make_title(entity, emoji)
+    new_code = generate_crud_app(entity, emoji, fields, features, title)
+    return {"title": title, "kind": "app", "files": [{"name": "index.html", "content": new_code, "language": "html"}]}

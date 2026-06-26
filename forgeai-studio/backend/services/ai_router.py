@@ -91,6 +91,17 @@ _BUILD_VERBS = [
     "create for me", "can u build", "pls make", "pls build",
     "could you make", "could you build", "id like", "i'd like a",
     "make something", "generate me", "i need a", "build something",
+    "help me build", "help me create", "help me make",
+    "i want to build", "i want to create", "i want to make",
+    "i'm building", "i am building",
+    "write me", "write me a", "write me an",
+    "build me", "build me a", "build me an",
+    "create me", "create me a",
+    "code me", "code me a", "code me an",
+    "i need you to build", "i need you to make", "i need you to create",
+    "i'd like you to build", "i'd like you to make",
+    "lets build", "let's build", "let's make", "lets make",
+    "make something like", "something like",
 ]
 
 _GAME_NOUNS = {
@@ -146,7 +157,17 @@ _APP_NOUNS = {
 _GAME_CONTEXT = {"play", "playable", "arcade", "game", "gaming"}
 
 def _has_build_verb(q: str) -> bool:
-    return any(q.startswith(v + " ") or f" {v} " in q or q == v for v in _BUILD_VERBS)
+    for v in _BUILD_VERBS:
+        v = v.strip()
+        if q == v:
+            return True
+        if q.startswith(v + " "):
+            return True
+        if f" {v} " in q:
+            return True
+        if q.endswith(" " + v):
+            return True
+    return False
 
 def _score_build_game(q: str) -> int:
     score = 0
@@ -716,13 +737,34 @@ def _dispatch_app(query: str, mode: str) -> dict:
 def _dispatch_dynamic(query: str, mode: str) -> dict:
     return _dispatch_project(query, "app")
 
-def _dispatch_update(query: str, history: list, mode: str) -> str:
-    app = apply_update(query, history)
+def _dispatch_update(query: str, history: list, mode: str) -> str | dict:
+    from services.update_handler import extract_last_project
+    result = apply_update(query, history)
+
+    if isinstance(result, dict) and "files" in result:
+        kind = result.get("kind", "app")
+        title = result.get("title", "Project")
+        files = result["files"]
+        verb = "updated" if kind == "game" else "rebuilt"
+        action = "Play Game" if kind == "game" else "Run Project"
+        n = len(files)
+        intro = (
+            f"I {verb} **{title}** — {n} file{'s' if n != 1 else ''} updated. "
+            f"Browse the changes below, then hit **\"{action}\"** to launch."
+        )
+        return {
+            "text": intro,
+            "project_files": files,
+        }
+
+    # Legacy: inline HTML response
+    code = result.get("code", "")
+    title = result.get("title", "App")
     intro = (
-        f"I updated the app — here is **{app['title']}**. "
+        f"I updated the app — here is **{title}**. "
         "Click **\"Launch App\"** to see the changes live."
     )
-    return intro + f"\n\n```html\n{app['code']}\n```"
+    return intro + f"\n\n```html\n{code}\n```"
 
 def _dispatch_programming(query: str, mode: str) -> str:
     q = query.lower()
@@ -1048,7 +1090,7 @@ def _kb_fact_lookup(q: str) -> str | None:
             best_score, best_ratio, best_answer = hits, ratio, answer
     return best_answer  # let forge/vary_structure handle extraction
 
-def generate_response(query: str, mode: str, history: list, quick_mode: bool = False) -> str:
+def generate_response(query: str, mode: str, history: list, quick_mode: bool = False, workspace: str = "chat") -> str | dict:
     q = _normalize(query)
     if quick_mode:
         return _quick_response(query, q)
@@ -1073,12 +1115,14 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     kb_hit = _kb_fact_lookup(q)
     if kb_hit:
         return forge(kb_hit, q, "knowledge")
+    code_mode = workspace == "code"
+    BUILD_BOOST = 25 if code_mode else 0
     build_verb_score = 65 if _has_build_verb(q) and not _match(q, *(_GAME_NOUNS | _APP_NOUNS)) else 0
     scores: dict[str, int] = {
         "greeting":    _score_greeting(q),
-        "build_game":  _score_build_game(q),
-        "build_app":   _score_build_app(q),
-        "build_any":   build_verb_score,
+        "build_game":  min(100, _score_build_game(q) + BUILD_BOOST),
+        "build_app":   min(100, _score_build_app(q) + BUILD_BOOST),
+        "build_any":   min(100, build_verb_score + BUILD_BOOST),
         "math":        _score_math(q),
         "space":       _score_space(q),
         "earth":       _score_earth(q),
@@ -1090,7 +1134,7 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     }
     best_intent = max(scores, key=lambda k: scores[k])
     best_score = scores[best_intent]
-    if best_score < 30:
+    if best_score < (20 if code_mode else 30):
         from services.web_search import web_lookup
         return web_lookup(query)
     if best_intent == "greeting":
@@ -1136,5 +1180,7 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
                 fact = _try_extract_fact(answer, q)
                 raw = fact if fact else answer
                 return forge(raw, q, "knowledge")
+    if code_mode and _has_build_verb(q):
+        return _dispatch_project(query)
     from services.web_search import web_lookup
     return web_lookup(query)

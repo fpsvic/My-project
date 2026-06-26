@@ -150,7 +150,46 @@ export function renderCurrentSessionChat(): void {
   if (!session) return;
 
   if (session.messages.length === 0) {
-    feed.innerHTML = `
+    if (session.workspace === 'code') {
+      feed.innerHTML = `
+  <div class="flex flex-col items-center justify-center text-center py-12 px-4 max-w-2xl mx-auto space-y-8 select-none">
+    <div class="space-y-1.5">
+      <p class="text-[10px] text-indigo-500 font-mono uppercase tracking-widest font-semibold">Code Mode Active</p>
+      <p class="text-slate-500 text-xs">Describe what to build — games, apps, tools, or anything you can imagine.</p>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg text-left">
+      <button onclick="window.prefillPrompt('build me a snake game with neon theme')"
+        class="p-4 bg-white border border-slate-200 hover:border-indigo-400 hover:shadow-md rounded-xl transition text-xs space-y-1">
+        <div class="font-semibold text-slate-800 flex items-center space-x-1.5">
+          <i class="fa-solid fa-gamepad text-indigo-500"></i><span>Arcade Games</span>
+        </div>
+        <p class="text-[10px] text-slate-400">Snake, Pong, Space Shooter, Platformer — fully playable.</p>
+      </button>
+      <button onclick="window.prefillPrompt('create a todo app with priorities and due dates')"
+        class="p-4 bg-white border border-slate-200 hover:border-indigo-400 hover:shadow-md rounded-xl transition text-xs space-y-1">
+        <div class="font-semibold text-slate-800 flex items-center space-x-1.5">
+          <i class="fa-solid fa-list-check text-indigo-500"></i><span>Productivity Apps</span>
+        </div>
+        <p class="text-[10px] text-slate-400">Todo lists, habit trackers, kanban boards, planners.</p>
+      </button>
+      <button onclick="window.prefillPrompt('build a budget tracker with charts and category filters')"
+        class="p-4 bg-white border border-slate-200 hover:border-indigo-400 hover:shadow-md rounded-xl transition text-xs space-y-1">
+        <div class="font-semibold text-slate-800 flex items-center space-x-1.5">
+          <i class="fa-solid fa-chart-line text-indigo-500"></i><span>Finance Tools</span>
+        </div>
+        <p class="text-[10px] text-slate-400">Budget trackers, expense logs, investment dashboards.</p>
+      </button>
+      <button onclick="window.prefillPrompt('make a password generator with strength meter')"
+        class="p-4 bg-white border border-slate-200 hover:border-indigo-400 hover:shadow-md rounded-xl transition text-xs space-y-1">
+        <div class="font-semibold text-slate-800 flex items-center space-x-1.5">
+          <i class="fa-solid fa-screwdriver-wrench text-indigo-500"></i><span>Utility Tools</span>
+        </div>
+        <p class="text-[10px] text-slate-400">Calculators, converters, generators, timers.</p>
+      </button>
+    </div>
+  </div>`;
+    } else {
+      feed.innerHTML = `
       <div class="flex flex-col items-center justify-center text-center py-12 px-4 max-w-2xl mx-auto space-y-8 select-none">
         <div class="space-y-1.5">
           <p class="text-[10px] text-indigo-500 font-mono uppercase tracking-widest font-semibold">Local Cognitive Core Initialized</p>
@@ -187,6 +226,7 @@ export function renderCurrentSessionChat(): void {
           </button>
         </div>
       </div>`;
+    }
   } else {
     session.messages.forEach((msg) => {
       if (msg.role === 'user') {
@@ -261,8 +301,9 @@ export function initChatForm(): void {
       const res = await sendChat({
         query: text,
         mode: state.activeMode,
-        history: session.messages.map((m) => ({ role: m.role, content: m.text, text: m.text })),
+        history: session.messages.map((m) => ({ role: m.role, content: m.text, text: m.text, project_files: m.project_files })),
         quick_mode: state.quickMode,
+        workspace: state.activeWorkspace,
       });
 
       resolveThinkingIndicator(thinkingRow, res.web_searched ?? false);

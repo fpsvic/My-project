@@ -11,6 +11,7 @@ class ChatRequest(BaseModel):
     mode: str = "forge_code"
     history: list[dict] = []
     quick_mode: bool = False
+    workspace: str = "chat"
 
 
 class ProjectFile(BaseModel):
@@ -34,7 +35,7 @@ def chat(req: ChatRequest):
     from services import web_search as _ws
     _ws._last_searched = False
 
-    result = generate_response(processed, req.mode, req.history, quick_mode=req.quick_mode)
+    result = generate_response(processed, req.mode, req.history, quick_mode=req.quick_mode, workspace=req.workspace)
 
     # generate_response now returns either a str or a dict with text + project_files
     if isinstance(result, dict):

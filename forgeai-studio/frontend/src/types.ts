@@ -26,8 +26,9 @@ export interface ModeConfig {
 export interface ChatRequest {
   query: string;
   mode: Mode;
-  history: Array<{ role: string; text: string }>;
+  history: Array<{ role: string; text: string; content?: string; project_files?: ProjectFile[] }>;
   quick_mode?: boolean;
+  workspace?: string;
 }
 
 export interface ProjectFile {
