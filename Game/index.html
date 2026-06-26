@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Top-Down World</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: monospace; color: #eee; overflow: hidden; }
+  h1 { font-size: 1.2rem; margin-bottom: 8px; color: #a0d8ef; letter-spacing: 2px; }
+  #canvas { border: 2px solid #4a9eff; image-rendering: pixelated; }
+  #hud { display: flex; gap: 20px; margin-top: 8px; font-size: 0.75rem; color: #aaa; }
+  #hud span { color: #fff; }
+</style>
+</head>
+<body>
+<h1>TOP-DOWN WORLD</h1>
+<canvas id="canvas" width="800" height="600"></canvas>
+<div id="hud">
+  WASD / Arrow Keys to move &nbsp;|&nbsp; Position: <span id="pos">0, 0</span> &nbsp;|&nbsp; Zone: <span id="zone">Grassland</span>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const posEl = document.getElementById('pos');
+const zoneEl = document.getElementById('zone');
+
+// ── Tile definitions ──────────────────────────────────────────────────────────
+const TILE = 32;
+const WORLD_W = 80;
+const WORLD_H = 60;
+
+const TileType = {
+  DEEP_WATER: 0,
+  SHALLOW_WATER: 1,
+  SAND: 2,
+  GRASS: 3,
+  DARK_GRASS: 4,
+  FOREST: 5,
+  MOUNTAIN: 6,
+  SNOW: 7,
+  PATH: 8,
+  VILLAGE: 9,
+};
+
+const TILE_COLORS = {
+  [TileType.DEEP_WATER]:    '#1a4a7a',
+  [TileType.SHALLOW_WATER]: '#2a6fba',
+  [TileType.SAND]:          '#d4b483',
+  [TileType.GRASS]:         '#4a8f3f',
+  [TileType.DARK_GRASS]:    '#2d6b2a',
+  [TileType.FOREST]:        '#1a4d1a',
+  [TileType.MOUNTAIN]:      '#7a6a5a',
+  [TileType.SNOW]:          '#e8e8f0',
+  [TileType.PATH]:          '#b8a878',
+  [TileType.VILLAGE]:       '#c8a040',
+};
+
+const TILE_ZONE = {
+  [TileType.DEEP_WATER]:    'Deep Ocean',
+  [TileType.SHALLOW_WATER]: 'Coastal Waters',
+  [TileType.SAND]:          'Beach',
+  [TileType.GRASS]:         'Grassland',
+  [TileType.DARK_GRASS]:    'Plains',
+  [TileType.FOREST]:        'Forest',
+  [TileType.MOUNTAIN]:      'Mountains',
+  [TileType.SNOW]:          'Snowy Peaks',
+  [TileType.PATH]:          'Road',
+  [TileType.VILLAGE]:       'Village',
+};
+
+// ── World generation (simple noise-based) ────────────────────────────────────
+function noise(x, y, seed) {
+  let n = Math.sin(x * 127.1 + y * 311.7 + seed * 74.3) * 43758.5453;
+  return n - Math.floor(n);
+}
+
+function smoothNoise(x, y, seed) {
+  let v = 0, amp = 1, freq = 1, max = 0;
+  for (let o = 0; o < 6; o++) {
+    v += noise(x * freq / 20, y * freq / 20, seed + o) * amp;
+    max += amp; amp *= 0.5; freq *= 2;
+  }
+  return v / max;
+}
+
+const world = [];
+const SEED = 42;
+
+for (let y = 0; y < WORLD_H; y++) {
+  world[y] = [];
+  for (let x = 0; x < WORLD_W; x++) {
+    // Distance from center creates island effect
+    const cx = (x / WORLD_W - 0.5) * 2;
+    const cy = (y / WORLD_H - 0.5) * 2;
+    const dist = Math.sqrt(cx * cx + cy * cy);
+    const h = smoothNoise(x, y, SEED) - dist * 0.55;
+
+    let tile;
+    if (h < 0.05)       tile = TileType.DEEP_WATER;
+    else if (h < 0.15)  tile = TileType.SHALLOW_WATER;
+    else if (h < 0.22)  tile = TileType.SAND;
+    else if (h < 0.45)  tile = TileType.GRASS;
+    else if (h < 0.55)  tile = TileType.DARK_GRASS;
+    else if (h < 0.68)  tile = TileType.FOREST;
+    else if (h < 0.78)  tile = TileType.MOUNTAIN;
+    else                tile = TileType.SNOW;
+
+    world[y][x] = tile;
+  }
+}
+
+// Carve a few paths and villages
+function carvePath(x1, y1, x2, y2) {
+  let x = x1, y = y1;
+  while (x !== x2 || y !== y2) {
+    if (world[y][x] !== TileType.DEEP_WATER && world[y][x] !== TileType.SHALLOW_WATER)
+      world[y][x] = TileType.PATH;
+    if (x < x2) x++; else if (x > x2) x--;
+    if (y < y2) y++; else if (y > y2) y--;
+  }
+}
+
+const villages = [
+  [20, 20], [55, 18], [30, 40], [50, 45], [38, 30],
+];
+villages.forEach(([vx, vy]) => {
+  for (let dy = -1; dy <= 1; dy++)
+    for (let dx = -1; dx <= 1; dx++) {
+      const nx = vx + dx, ny = vy + dy;
+      if (nx >= 0 && nx < WORLD_W && ny >= 0 && ny < WORLD_H)
+        if (world[ny][nx] !== TileType.DEEP_WATER && world[ny][nx] !== TileType.SHALLOW_WATER)
+          world[ny][nx] = (dx === 0 && dy === 0) ? TileType.VILLAGE : TileType.PATH;
+    }
+});
+
+for (let i = 0; i < villages.length - 1; i++)
+  carvePath(villages[i][0], villages[i][1], villages[i+1][0], villages[i+1][1]);
+
+// ── Player ────────────────────────────────────────────────────────────────────
+const player = {
+  x: 38 * TILE + TILE / 2,
+  y: 30 * TILE + TILE / 2,
+  speed: 120,
+  dir: 'down',
+  frame: 0,
+  frameTimer: 0,
+  moving: false,
+};
+
+// ── Camera ────────────────────────────────────────────────────────────────────
+const cam = { x: 0, y: 0 };
+
+function updateCamera() {
+  cam.x = player.x - canvas.width / 2;
+  cam.y = player.y - canvas.height / 2;
+  cam.x = Math.max(0, Math.min(cam.x, WORLD_W * TILE - canvas.width));
+  cam.y = Math.max(0, Math.min(cam.y, WORLD_H * TILE - canvas.height));
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+const keys = {};
+window.addEventListener('keydown', e => { keys[e.key] = true; e.preventDefault(); });
+window.addEventListener('keyup',   e => { keys[e.key] = false; });
+
+function isWalkable(px, py) {
+  const tx = Math.floor(px / TILE);
+  const ty = Math.floor(py / TILE);
+  if (tx < 0 || tx >= WORLD_W || ty < 0 || ty >= WORLD_H) return false;
+  const t = world[ty][tx];
+  return t !== TileType.DEEP_WATER && t !== TileType.SHALLOW_WATER && t !== TileType.MOUNTAIN && t !== TileType.SNOW;
+}
+
+// ── Decorations ───────────────────────────────────────────────────────────────
+const DECO_SEED = 99;
+function getTileVariant(tx, ty) {
+  return noise(tx, ty, DECO_SEED);
+}
+
+// ── Drawing helpers ───────────────────────────────────────────────────────────
+function drawTile(tx, ty, sx, sy) {
+  const type = world[ty][tx];
+  const color = TILE_COLORS[type];
+  ctx.fillStyle = color;
+  ctx.fillRect(sx, sy, TILE, TILE);
+
+  // Tile variation
+  const v = getTileVariant(tx, ty);
+
+  if (type === TileType.GRASS || type === TileType.DARK_GRASS) {
+    // Subtle grass tufts
+    ctx.fillStyle = type === TileType.GRASS ? '#3d7a35' : '#256022';
+    if (v > 0.7) {
+      ctx.fillRect(sx + 4, sy + 6, 3, 5);
+      ctx.fillRect(sx + 10, sy + 14, 3, 5);
+      ctx.fillRect(sx + 20, sy + 5, 3, 5);
+      ctx.fillRect(sx + 25, sy + 18, 3, 4);
+    }
+  } else if (type === TileType.FOREST) {
+    // Tree circles
+    const trees = Math.floor(v * 3) + 1;
+    for (let i = 0; i < trees; i++) {
+      const tx2 = noise(tx + i, ty, 1) * (TILE - 12) + 6;
+      const ty2 = noise(tx + i, ty, 2) * (TILE - 12) + 6;
+      ctx.fillStyle = '#0f3d0f';
+      ctx.beginPath();
+      ctx.arc(sx + tx2, sy + ty2, 5 + noise(tx, ty + i, 3) * 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#1a5c1a';
+      ctx.beginPath();
+      ctx.arc(sx + tx2 - 1, sy + ty2 - 1, 4 + noise(tx, ty + i, 3) * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (type === TileType.SAND) {
+    // Pebbles
+    if (v > 0.6) {
+      ctx.fillStyle = '#bfa070';
+      ctx.fillRect(sx + 7,  sy + 10, 3, 3);
+      ctx.fillRect(sx + 18, sy + 20, 2, 2);
+      ctx.fillRect(sx + 24, sy + 8,  2, 2);
+    }
+  } else if (type === TileType.MOUNTAIN) {
+    // Mountain peak
+    ctx.fillStyle = '#6a5a4a';
+    ctx.beginPath();
+    ctx.moveTo(sx + TILE/2, sy + 4);
+    ctx.lineTo(sx + TILE - 4, sy + TILE - 4);
+    ctx.lineTo(sx + 4, sy + TILE - 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#9a8a7a';
+    ctx.beginPath();
+    ctx.moveTo(sx + TILE/2, sy + 4);
+    ctx.lineTo(sx + TILE/2 + 8, sy + TILE/2);
+    ctx.lineTo(sx + TILE/2 - 8, sy + TILE/2);
+    ctx.closePath();
+    ctx.fill();
+  } else if (type === TileType.SNOW) {
+    ctx.fillStyle = '#c8c8d8';
+    ctx.beginPath();
+    ctx.moveTo(sx + TILE/2, sy + 2);
+    ctx.lineTo(sx + TILE - 2, sy + TILE - 2);
+    ctx.lineTo(sx + 2, sy + TILE - 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#f0f0ff';
+    ctx.beginPath();
+    ctx.moveTo(sx + TILE/2, sy + 2);
+    ctx.lineTo(sx + TILE/2 + 6, sy + TILE/2 - 2);
+    ctx.lineTo(sx + TILE/2 - 6, sy + TILE/2 - 2);
+    ctx.closePath();
+    ctx.fill();
+  } else if (type === TileType.VILLAGE) {
+    // House
+    ctx.fillStyle = '#a0784a';
+    ctx.fillRect(sx + 6, sy + 12, 20, 14);
+    ctx.fillStyle = '#8b3030';
+    ctx.beginPath();
+    ctx.moveTo(sx + 4, sy + 12);
+    ctx.lineTo(sx + 16, sy + 4);
+    ctx.lineTo(sx + 28, sy + 12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#5a3a20';
+    ctx.fillRect(sx + 13, sy + 18, 6, 8);
+  } else if (type === TileType.PATH) {
+    // Path markings
+    ctx.fillStyle = '#a89858';
+    ctx.fillRect(sx + 13, sy, 6, TILE);
+  } else if (type === TileType.SHALLOW_WATER || type === TileType.DEEP_WATER) {
+    // Ripples
+    ctx.strokeStyle = type === TileType.DEEP_WATER ? '#1e5a9a' : '#3a7fd0';
+    ctx.lineWidth = 1;
+    const oy = (Date.now() / 1000 * 20 + tx * 7 + ty * 13) % TILE;
+    ctx.beginPath();
+    ctx.moveTo(sx + 4, sy + (oy % TILE));
+    ctx.bezierCurveTo(sx + 10, sy + (oy % TILE) - 3, sx + 22, sy + (oy % TILE) + 3, sx + 28, sy + (oy % TILE));
+    ctx.stroke();
+  }
+
+  // Tile border (subtle grid)
+  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+  ctx.lineWidth = 0.5;
+  ctx.strokeRect(sx, sy, TILE, TILE);
+}
+
+function drawPlayer(dt) {
+  const sx = Math.round(player.x - cam.x);
+  const sy = Math.round(player.y - cam.y);
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(sx, sy + 10, 10, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body bob
+  const bob = player.moving ? Math.sin(player.frame * Math.PI) * 2 : 0;
+
+  // Cloak/body
+  ctx.fillStyle = '#3a5fcd';
+  ctx.fillRect(sx - 8, sy - 12 + bob, 16, 20);
+
+  // Head
+  ctx.fillStyle = '#f4c87a';
+  ctx.beginPath();
+  ctx.arc(sx, sy - 18 + bob, 9, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Eyes direction
+  ctx.fillStyle = '#2a1a0a';
+  const eyeDir = { up: [0,-3], down: [0,1], left: [-3,-1], right: [3,-1] }[player.dir] || [0,0];
+  ctx.beginPath();
+  ctx.arc(sx + eyeDir[0] - 3, sy - 18 + bob + eyeDir[1], 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(sx + eyeDir[0] + 3, sy - 18 + bob + eyeDir[1], 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Sword / arms
+  if (player.dir === 'right') {
+    ctx.fillStyle = '#aaa';
+    ctx.fillRect(sx + 8, sy - 8 + bob, 12, 3);
+    ctx.fillStyle = '#c8a020';
+    ctx.fillRect(sx + 6, sy - 10 + bob, 4, 7);
+  } else if (player.dir === 'left') {
+    ctx.fillStyle = '#aaa';
+    ctx.fillRect(sx - 20, sy - 8 + bob, 12, 3);
+    ctx.fillStyle = '#c8a020';
+    ctx.fillRect(sx - 10, sy - 10 + bob, 4, 7);
+  } else if (player.dir === 'up') {
+    ctx.fillStyle = '#aaa';
+    ctx.fillRect(sx + 6, sy - 24 + bob, 3, 12);
+    ctx.fillStyle = '#c8a020';
+    ctx.fillRect(sx + 4, sy - 14 + bob, 7, 4);
+  } else {
+    ctx.fillStyle = '#aaa';
+    ctx.fillRect(sx + 6, sy - 8 + bob, 3, 12);
+    ctx.fillStyle = '#c8a020';
+    ctx.fillRect(sx + 4, sy - 10 + bob, 7, 4);
+  }
+
+  // Legs (walking animation)
+  ctx.fillStyle = '#2a3a8a';
+  if (player.moving) {
+    const lx = Math.sin(player.frame * Math.PI) * 4;
+    ctx.fillRect(sx - 6 + lx,  sy + 8 + bob, 5, 8);
+    ctx.fillRect(sx + 1  - lx, sy + 8 + bob, 5, 8);
+  } else {
+    ctx.fillRect(sx - 6, sy + 8, 5, 8);
+    ctx.fillRect(sx + 1,  sy + 8, 5, 8);
+  }
+}
+
+// ── Mini-map ──────────────────────────────────────────────────────────────────
+function drawMinimap() {
+  const mw = 120, mh = 90, mx = canvas.width - mw - 10, my = 10;
+  const scale = mw / WORLD_W;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(mx - 2, my - 2, mw + 4, mh + 4);
+
+  for (let y = 0; y < WORLD_H; y++) {
+    for (let x = 0; x < WORLD_W; x++) {
+      ctx.fillStyle = TILE_COLORS[world[y][x]];
+      ctx.fillRect(mx + x * scale, my + y * scale, Math.ceil(scale), Math.ceil(scale));
+    }
+  }
+
+  // Camera viewport rect
+  const vx = (cam.x / TILE) * scale;
+  const vy = (cam.y / TILE) * scale;
+  const vw = (canvas.width / TILE) * scale;
+  const vh = (canvas.height / TILE) * scale;
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(mx + vx, my + vy, vw, vh);
+
+  // Player dot
+  const px = (player.x / TILE) * scale;
+  const py = (player.y / TILE) * scale;
+  ctx.fillStyle = '#ff4444';
+  ctx.beginPath();
+  ctx.arc(mx + px, my + py, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.strokeRect(mx - 2, my - 2, mw + 4, mh + 4);
+
+  ctx.fillStyle = '#aaa';
+  ctx.font = '9px monospace';
+  ctx.fillText('MAP', mx + 2, my + mh + 1);
+}
+
+// ── Game loop ─────────────────────────────────────────────────────────────────
+let lastTime = 0;
+
+function update(dt) {
+  let dx = 0, dy = 0;
+
+  if (keys['ArrowUp']    || keys['w'] || keys['W']) dy -= 1;
+  if (keys['ArrowDown']  || keys['s'] || keys['S']) dy += 1;
+  if (keys['ArrowLeft']  || keys['a'] || keys['A']) dx -= 1;
+  if (keys['ArrowRight'] || keys['d'] || keys['D']) dx += 1;
+
+  if (dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707; }
+
+  player.moving = dx !== 0 || dy !== 0;
+
+  if (dx > 0) player.dir = 'right';
+  else if (dx < 0) player.dir = 'left';
+  else if (dy < 0) player.dir = 'up';
+  else if (dy > 0) player.dir = 'down';
+
+  if (player.moving) {
+    player.frameTimer += dt;
+    if (player.frameTimer > 0.15) { player.frameTimer = 0; player.frame = (player.frame + 1) % 2; }
+  } else {
+    player.frame = 0; player.frameTimer = 0;
+  }
+
+  const nx = player.x + dx * player.speed * dt;
+  const ny = player.y + dy * player.speed * dt;
+  const r = 10;
+
+  // Separate X/Y collision
+  if (isWalkable(nx - r, player.y) && isWalkable(nx + r, player.y) &&
+      isWalkable(nx, player.y - r) && isWalkable(nx, player.y + r)) {
+    player.x = nx;
+  }
+  if (isWalkable(player.x - r, ny) && isWalkable(player.x + r, ny) &&
+      isWalkable(player.x, ny - r) && isWalkable(player.x, ny + r)) {
+    player.y = ny;
+  }
+
+  updateCamera();
+
+  // HUD
+  const tx = Math.floor(player.x / TILE);
+  const ty = Math.floor(player.y / TILE);
+  posEl.textContent = `${tx}, ${ty}`;
+  if (tx >= 0 && tx < WORLD_W && ty >= 0 && ty < WORLD_H)
+    zoneEl.textContent = TILE_ZONE[world[ty][tx]];
+}
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Background
+  ctx.fillStyle = '#1a3a5a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Visible tile range
+  const startX = Math.max(0, Math.floor(cam.x / TILE));
+  const startY = Math.max(0, Math.floor(cam.y / TILE));
+  const endX   = Math.min(WORLD_W, Math.ceil((cam.x + canvas.width)  / TILE));
+  const endY   = Math.min(WORLD_H, Math.ceil((cam.y + canvas.height) / TILE));
+
+  for (let y = startY; y < endY; y++) {
+    for (let x = startX; x < endX; x++) {
+      const sx = Math.round(x * TILE - cam.x);
+      const sy = Math.round(y * TILE - cam.y);
+      drawTile(x, y, sx, sy);
+    }
+  }
+
+  drawPlayer();
+  drawMinimap();
+
+  // Vignette overlay
+  const grad = ctx.createRadialGradient(
+    canvas.width / 2, canvas.height / 2, canvas.height * 0.3,
+    canvas.width / 2, canvas.height / 2, canvas.height * 0.8
+  );
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.35)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function loop(ts) {
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+</script>
+</body>
+</html>
