@@ -227,15 +227,23 @@ function buildMinimap(){
 }
 
 // ── NPC defs ───────────────────────────────────────────────────────────────
-const NPC_JOBS=['Villager','Merchant','Guard','Elder','Wanderer','Fisherman'];
-const NPC_NAMES=['Alice','Bob','Cara','Dorn','Elsa','Finn','Gara','Holt','Ivy','Jak','Kira','Lorn','Mira','Nox','Ora','Pip','Qin','Ryn','Sara','Tav'];
+const NPC_JOBS=['Villager','Merchant','Guard','Elder','Wanderer','Fisherman','Farmer','Baker','Healer','Bard','Knight','Ranger','Scholar','Innkeeper'];
+const NPC_NAMES=['Alice','Bob','Cara','Dorn','Elsa','Finn','Gara','Holt','Ivy','Jak','Kira','Lorn','Mira','Nox','Ora','Pip','Qin','Ryn','Sara','Tav','Ulric','Vera','Wren','Xan','Yola','Zeb'];
 const NPC_DIALOGUE={
   Villager:["Fine weather today, isn't it?","Watch out for slimes near the pond.","Have you visited the inn yet?","My crops are doing well this season.","Strange noises from the forest at night..."],
   Merchant:["Best prices in the region!","Looking to trade? I have fine wares.","Stock up before heading into the wilds.","Gold is scarce these days.","Come back when you have coin!"],
   Guard:["Halt! ...oh, you're friendly.","Keep the peace, traveller.","Report any monsters to the garrison.","Stay on the lit paths after dark.","I've seen three trolls this week alone."],
   Elder:["The old forest holds many secrets.","In my youth, this land was safer.","Legends speak of treasure beneath the mountains.","Respect the land and it will respect you.","The village has stood a hundred years."],
   Wanderer:["I come from far beyond the eastern sea.","Every road leads somewhere interesting.","I've seen stranger things than you can imagine.","The wind calls me ever onward.","Rest when you can — the road is long."],
-  Fisherman:["Shh, you'll scare the fish!","Caught three bass this morning!","The water's calm today — good sign.","They say a giant fish lurks in the deep.","Best fishing spot in the whole region.","Nothing like a quiet morning on the dock.","The big ones always get away..."]
+  Fisherman:["Shh, you'll scare the fish!","Caught three bass this morning!","The water's calm today — good sign.","They say a giant fish lurks in the deep.","Best fishing spot in the whole region.","Nothing like a quiet morning on the dock.","The big ones always get away..."],
+  Farmer:["These fields don't tend themselves!","Harvest season is coming early this year.","Seen any wolves near my barn?","Good soil grows good people.","Rain would do us a lot of good right now.","I planted wheat here thirty years ago."],
+  Baker:["Fresh bread, straight from the oven!","Nothing beats the smell of baking in the morning.","My rolls are famous across three villages.","Try my honey cakes — best in the land.","The secret is to let the dough rest overnight."],
+  Healer:["You look pale. Are you hurt?","I can brew a remedy for most ailments.","Stay away from the deep forest — bad air.","Rest is the best medicine, adventurer.","These herbs I gathered at dawn — very potent.","I've seen worse wounds. You'll be fine."],
+  Bard:["♪ La la la, through the dale we go~","Let me compose a ballad of your deeds!","I heard a tale of a dragon far to the east.","Music soothes even the fiercest troll.","Every hero needs a bard to tell their story.","I can play twelve instruments — badly."],
+  Knight:["For honour and the realm!","I've slain monsters you can't imagine.","Always sharpen your blade before battle.","A good shield is worth more than a sword.","I once held a bridge against forty orcs.","Stand firm. Fear is just a feeling."],
+  Ranger:["The tracks here are fresh — be careful.","I can read the forest like a book.","Three days I hunted that elk. Escaped again.","The shadows beyond the tree line move.","Stay downwind of anything dangerous.","Nature respects those who respect it."],
+  Scholar:["Fascinating! A runic inscription on that rock!","I've mapped nearly a third of this world.","Knowledge is the greatest weapon.","Did you know slimes reproduce by splitting?","These ruins predate the current kingdom by centuries.","I should write a monograph on local flora."],
+  Innkeeper:["Warm beds and cold ale — best deal around.","Travellers pass through here every day.","The road east is dangerous this time of year.","I hear the mountain pass has opened.","Had a wizard stay last week. Strange fellow.","Free soup if you bring me firewood!"]
 };
 
 // ── Enemy defs ─────────────────────────────────────────────────────────────
@@ -377,7 +385,7 @@ function spawnNPCs(seed){
       if(!TWALK[t]||t===T.SHALLOW_WATER)continue;
       npcs.push({x:tx*TILE+TILE/2,y:ty*TILE+TILE/2,
         tx:tx*TILE+TILE/2,ty:ty*TILE+TILE/2,
-        job:NPC_JOBS[rnd(5)],name:NPC_NAMES[rnd(NPC_NAMES.length)],
+        job:NPC_JOBS[rnd(NPC_JOBS.length-1)],name:NPC_NAMES[rnd(NPC_NAMES.length)],
         speech:'',speechTimer:0,idleTimer:2+rnd(3),
         moving:false,dir:0,frame:0,frameT:0,speed:40+rnd(20),
         seed:rnd(10000),fisherman:false});
@@ -769,7 +777,7 @@ function drawGenerating(){
   ctx.beginPath(); ctx.roundRect(barX,barY,prog,barH,6); ctx.fill();
 
   ctx.font='13px monospace'; ctx.fillStyle='rgba(160,200,255,0.7)';
-  ctx.fillText(`Seed: ${worldSeed}`,HALF_CW,HALF_CH+40);
+  ctx.fillText('Loading terrain…',HALF_CW,HALF_CH+40);
   ctx.textAlign='left';
 }
 
@@ -911,7 +919,7 @@ function drawNPC(n){
   const sx=n.x-camX|0, sy=n.y-camY|0;
   const bob=n.moving?Math.sin(n.frameT*8)*2:0;
   ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.beginPath();ctx.ellipse(sx,sy+10,9,4,0,0,Math.PI*2);ctx.fill();
-  const colors={Villager:'#4488cc',Merchant:'#cc8822',Guard:'#445566',Elder:'#886644',Wanderer:'#668844',Fisherman:'#557799'};
+  const colors={Villager:'#4488cc',Merchant:'#cc8822',Guard:'#445566',Elder:'#886644',Wanderer:'#668844',Fisherman:'#557799',Farmer:'#88aa33',Baker:'#ddaa55',Healer:'#55aa88',Bard:'#aa44aa',Knight:'#778899',Ranger:'#557744',Scholar:'#6655aa',Innkeeper:'#aa6633'};
   ctx.fillStyle=colors[n.job]||'#4488cc'; ctx.fillRect(sx-7,sy-16+bob,14,18);
   ctx.fillStyle='#f5d5a0'; ctx.beginPath();ctx.arc(sx,sy-20+bob,8,0,Math.PI*2);ctx.fill();
   ctx.strokeStyle='rgba(0,0,0,0.3)'; ctx.lineWidth=1; ctx.stroke();
@@ -959,12 +967,22 @@ function drawPlayer(){
   if(player.wading){ctx.fillStyle='rgba(46,143,192,0.5)'; ctx.fillRect(sx-11,sy+2,22,10);}
   ctx.fillStyle='#3366cc'; ctx.fillRect(sx-8,sy-16+bob,16,18);
   ctx.strokeStyle='#1133aa'; ctx.lineWidth=1.5; ctx.strokeRect(sx-8,sy-16+bob,16,18);
-  ctx.fillStyle='#f5d5a0'; ctx.beginPath();ctx.arc(sx,sy-20+bob,9,0,Math.PI*2);ctx.fill();
-  ctx.strokeStyle='#cc9966'; ctx.lineWidth=1; ctx.stroke();
+  // blocky head
+  ctx.fillStyle='#f5d5a0';
+  ctx.fillRect(sx-9,sy-30+bob,18,18);
+  ctx.strokeStyle='#cc9966'; ctx.lineWidth=1.5; ctx.strokeRect(sx-9,sy-30+bob,18,18);
+  // blocky eyes — shift based on direction
+  const ex=player.dir===2?-3:(player.dir===3?3:0);
+  const ey=player.dir===1?-1:(player.dir===0?1:0);
   ctx.fillStyle='#222';
-  const ex=player.dir===2?-4:(player.dir===3?4:0);
-  ctx.beginPath();ctx.arc(sx-3+ex,sy-21+bob,1.8,0,Math.PI*2);ctx.fill();
-  ctx.beginPath();ctx.arc(sx+3+ex,sy-21+bob,1.8,0,Math.PI*2);ctx.fill();
+  ctx.fillRect(sx-6+ex,sy-25+bob+ey,4,4);
+  ctx.fillRect(sx+2+ex,sy-25+bob+ey,4,4);
+  // blocky mouth
+  ctx.fillStyle='#994433';
+  ctx.fillRect(sx-4+ex,sy-19+bob+ey,8,2);
+  // nose dot
+  ctx.fillStyle='#cc8855';
+  ctx.fillRect(sx-1+ex,sy-22+bob+ey,2,2);
   if(player.atkCd>0){
     ctx.strokeStyle='#ffdd44'; ctx.lineWidth=3;
     const dirs=[[0,1],[0,-1],[-1,0],[1,0]];
@@ -1032,7 +1050,7 @@ function drawHUD(){
   const tx=player.x/TILE|0, ty=player.y/TILE|0;
   const zones={0:'Deep Sea',1:'Shallow Water',2:'Beach',3:'Grassland',4:'Meadow',5:'Forest',6:'Mountains',7:'Snowfields',8:'Road',9:'Building',10:'Building',11:'Building',12:'Bridge',13:'Dock'};
   ctx.font='10px monospace'; ctx.fillStyle=player.wading?'#88ddff':'#ccc';
-  ctx.fillText(`${zones[worldTerrain(tx,ty)]||'?'} (${tx},${ty})  Seed:${worldSeed}`,10,60);
+  ctx.fillText(`${zones[worldTerrain(tx,ty)]||'?'} (${tx},${ty})`,10,60);
   ctx.fillStyle='rgba(0,0,0,0.4)'; ctx.fillRect(10,CH-30,220,20);
   ctx.font='9px monospace'; ctx.fillStyle='#888';
   ctx.fillText('WASD:Move  F:Attack  E:Talk  1-8:Equip',14,CH-16);
@@ -1079,7 +1097,7 @@ function drawGameOver(){
   ctx.font='bold 52px monospace'; ctx.fillStyle='#ee2222'; ctx.fillText('GAME OVER',HALF_CW,HALF_CH-30);
   ctx.font='18px monospace'; ctx.fillStyle='#aaa';
   ctx.fillText(`Level ${player.level}  —  Total XP: ${player.xp+player.level*100}`,HALF_CW,HALF_CH+14);
-  ctx.font='16px monospace'; ctx.fillStyle='#aaccff'; ctx.fillText(`World Seed: ${worldSeed}`,HALF_CW,HALF_CH+44);
+  ctx.font='16px monospace'; ctx.fillStyle='#aaccff'; ctx.fillText('Better luck next time, traveller!',HALF_CW,HALF_CH+44);
   // Play again button area
   ctx.fillStyle='rgba(255,255,255,0.08)';
   ctx.beginPath(); ctx.roundRect(HALF_CW-100,HALF_CH+80,200,40,8); ctx.fill();
