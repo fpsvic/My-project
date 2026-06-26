@@ -82,7 +82,7 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 #code-editor::-webkit-scrollbar-thumb { background: #1c2522; border: 2px solid #080a0d; border-radius: 5px; }
 #code-editor::-webkit-scrollbar-thumb:hover { background: #528b74; }
 .token-keyword { color: #FFB86C; }
-.token-string { color: #50FA7B; }
+.token-string { color: #06CF7A; }
 .token-comment { color: #6272A4; font-style: italic; }
 .token-number { color: #FF79C6; }
 .token-type { color: #8BE9FD; }
