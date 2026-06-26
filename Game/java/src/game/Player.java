@@ -5,8 +5,8 @@ import java.util.Set;
 
 public class Player {
 
-    public double x, y;          // pixel position (centre)
-    public final double speed = 120; // pixels per second
+    public double x, y;
+    public final double speed = 130;
     public String dir = "down";
     public int    frame = 0;
     public double frameTimer = 0;
@@ -17,21 +17,19 @@ public class Player {
 
     public Player(WorldGen world) {
         this.world = world;
-        x = 38 * TILE + TILE / 2.0;
-        y = 30 * TILE + TILE / 2.0;
+        // Start on a walkable tile near the origin
+        x = 5 * TILE + TILE / 2.0;
+        y = 5 * TILE + TILE / 2.0;
     }
 
     public void update(double dt, Set<Integer> keys) {
         double dx = 0, dy = 0;
-
-        // WASD + arrows
         if (keys.contains(java.awt.event.KeyEvent.VK_UP)    || keys.contains(java.awt.event.KeyEvent.VK_W)) dy -= 1;
         if (keys.contains(java.awt.event.KeyEvent.VK_DOWN)  || keys.contains(java.awt.event.KeyEvent.VK_S)) dy += 1;
         if (keys.contains(java.awt.event.KeyEvent.VK_LEFT)  || keys.contains(java.awt.event.KeyEvent.VK_A)) dx -= 1;
         if (keys.contains(java.awt.event.KeyEvent.VK_RIGHT) || keys.contains(java.awt.event.KeyEvent.VK_D)) dx += 1;
 
         if (dx != 0 && dy != 0) { dx *= 0.707; dy *= 0.707; }
-
         moving = (dx != 0 || dy != 0);
 
         if      (dx > 0) dir = "right";
@@ -41,7 +39,7 @@ public class Player {
 
         if (moving) {
             frameTimer += dt;
-            if (frameTimer > 0.15) { frameTimer = 0; frame = 1 - frame; }
+            if (frameTimer > 0.12) { frameTimer = 0; frame = 1 - frame; }
         } else {
             frame = 0; frameTimer = 0;
         }
@@ -49,22 +47,19 @@ public class Player {
         double nx = x + dx * speed * dt;
         double ny = y + dy * speed * dt;
         final int R = 10;
-
-        if (walkable(nx - R, y) && walkable(nx + R, y) && walkable(nx, y - R) && walkable(nx, y + R))
-            x = nx;
-        if (walkable(x - R, ny) && walkable(x + R, ny) && walkable(x, ny - R) && walkable(x, ny + R))
-            y = ny;
+        if (walkable(nx-R,y) && walkable(nx+R,y) && walkable(nx,y-R) && walkable(nx,y+R)) x = nx;
+        if (walkable(x-R,ny) && walkable(x+R,ny) && walkable(x,ny-R) && walkable(x,ny+R)) y = ny;
     }
 
     private boolean walkable(double px, double py) {
-        int tx = (int)(px / TILE), ty = (int)(py / TILE);
-        return world.get(tx, ty).walkable;
+        return world.get((int)(px/TILE), (int)(py/TILE)).walkable;
     }
 
     public void draw(Graphics2D g, double camX, double camY) {
         int sx = (int)(x - camX);
         int sy = (int)(y - camY);
         int bob = moving ? (int)(Math.sin(frame * Math.PI) * 2) : 0;
+        int legSwing = moving ? (int)(Math.sin(frame * Math.PI) * 4) : 0;
 
         // Shadow
         g.setColor(new Color(0, 0, 0, 60));
@@ -72,15 +67,14 @@ public class Player {
 
         // Legs
         g.setColor(new Color(0x2a3a8a));
-        int legSwing = moving ? (int)(Math.sin(frame * Math.PI) * 4) : 0;
         g.fillRect(sx - 6 + legSwing, sy + 8 + bob, 5, 8);
         g.fillRect(sx + 1 - legSwing, sy + 8 + bob, 5, 8);
 
-        // Body (cloak)
+        // Body
         g.setColor(new Color(0x3a5fcd));
         g.fillRect(sx - 8, sy - 12 + bob, 16, 20);
 
-        // Sword / arm
+        // Sword
         g.setColor(Color.LIGHT_GRAY);
         switch (dir) {
             case "right" -> g.fillRect(sx + 8,  sy - 8 + bob, 14, 3);
@@ -110,5 +104,10 @@ public class Player {
         };
         g.fillOval(sx + ed[0] - 5, sy - 22 + bob + ed[1], 4, 4);
         g.fillOval(sx + ed[0] + 1, sy - 22 + bob + ed[1], 4, 4);
+
+        // "YOU" label
+        g.setFont(new Font(Font.MONOSPACED, Font.BOLD, 9));
+        g.setColor(new Color(0xffd700));
+        g.drawString("YOU", sx - 9, sy - 32 + bob);
     }
 }

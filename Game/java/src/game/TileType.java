@@ -12,7 +12,9 @@ public enum TileType {
     MOUNTAIN     (new Color(0x7a6a5a), "Mountains",       false),
     SNOW         (new Color(0xe8e8f0), "Snowy Peaks",     false),
     PATH         (new Color(0xb8a878), "Road",            true),
-    VILLAGE      (new Color(0xc8a040), "Village",         true);
+    WALL         (new Color(0x8a7060), "Building",        false),
+    FLOOR        (new Color(0xc8b090), "Inside",          true),
+    DOOR         (new Color(0x7a5020), "Doorway",         true);
 
     public final Color color;
     public final String zoneName;
