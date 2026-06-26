@@ -75,7 +75,7 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .editor-wrapper { display: flex; flex: 1; position: relative; overflow: hidden; background-color: #0b0d10; }
 #line-gutter { padding: 20px 10px 20px 15px; background-color: #080a0d; color: #35453e; font-family: 'Fira Code', 'Consolas', monospace; font-size: 14px; line-height: 22px; text-align: right; user-select: none; border-right: 1px solid #1c2321; min-width: 45px; white-space: pre; overflow: hidden; box-sizing: border-box; }
 #editor-container { position: relative; flex: 1; height: 100%; overflow: hidden; }
-#highlight-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; margin: 0; padding: 20px; box-sizing: border-box; font-family: 'Fira Code', 'Consolas', monospace; font-size: 14px; line-height: 22px; white-space: pre; overflow: hidden; pointer-events: none; color: #ccd2db; background: transparent; z-index: 1; tab-size: 4; word-wrap: normal; }
+#highlight-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; margin: 0; padding: 20px; box-sizing: border-box; font-family: 'Fira Code', 'Consolas', monospace; font-size: 14px; line-height: 22px; white-space: pre; overflow: hidden; pointer-events: none; color: #9cdcfe; background: transparent; z-index: 1; tab-size: 4; word-wrap: normal; }
 #code-editor { position: absolute; top: 0; left: 0; width: 100%; height: 100%; margin: 0; padding: 20px; box-sizing: border-box; background: transparent; color: transparent !important; -webkit-text-fill-color: transparent !important; caret-color: #74a896; font-family: 'Fira Code', 'Consolas', monospace; font-size: 14px; line-height: 22px; border: none; resize: none; outline: none; tab-size: 4; overflow-y: auto; overflow-x: auto; white-space: pre; z-index: 2; word-wrap: normal; }
 #code-editor::-webkit-scrollbar { width: 10px; height: 10px; }
 #code-editor::-webkit-scrollbar-track { background: #080a0d; }
@@ -92,7 +92,7 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .token-punct { color: #7f848e; }
 .token-attr { color: #FFB86C; }
 .token-tag { color: #FF79C6; }
-.token-property { color: #9cdcfe; }
+.token-property { color: #FFB86C; }
 .token-value { color: #FFB86C; }
 .token-decorator { color: #bd93f9; font-style: italic; }
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.85); display: none; justify-content: center; align-items: center; z-index: 10000; backdrop-filter: blur(6px); }
