@@ -333,7 +333,7 @@ const player={
   dead:false,dir:0,frame:0,frameT:0,moving:false,
   atkCd:0,iFrames:0,
   inv:new Array(8).fill(null),invCount:0,equip:-1,
-  wading:false,splashTimer:0
+  wading:false,splashTimer:0,atkMaxCd:0.35
 };
 let enemies=[], npcs=[], items=[], projs=[], floats=[], particles=[];
 let camX=0, camY=0;
@@ -410,7 +410,7 @@ function doGenerate(){
   }
   player.hp=100; player.maxHp=100; player.atk=10; player.def=0;
   player.xp=0; player.level=1; player.dead=false;
-  player.atkCd=0; player.iFrames=0; player.equip=-1; player.wading=false;
+  player.atkCd=0; player.atkMaxCd=0.35; player.iFrames=0; player.equip=-1; player.wading=false;
   player.inv.fill(null); player.invCount=0;
   waterTime=0; spawnTimer=5; gameOver=false;
   updateCamera();
@@ -541,16 +541,25 @@ function talkNearby(){
 }
 function playerAttack(){
   if(player.atkCd>0||player.dead)return;
-  player.atkCd=0.4;
   const item=player.equip>=0?player.inv[player.equip]:null;
-  const isRanged=item&&ITEM_DEF[item.kind].cat==='RANGED';
+  const idef=item?ITEM_DEF[item.kind]:null;
+  const cat=idef?idef.cat:'MELEE';
+  const isRanged=cat==='RANGED';
   const atkDmg=player.atk+(item?item.atk||0:0);
+
+  // per-weapon cooldown
+  const cd=item&&item.kind==='Crossbow'?1.6:
+            isRanged?0.45:
+            idef&&idef.range?0.5:0.32;
+  player.atkCd=cd; player.atkMaxCd=cd;
+
   if(isRanged){
     const dirs=[[0,-1],[0,1],[-1,0],[1,0]];
     const [vx,vy]=dirs[player.dir];
-    projs.push({x:player.x,y:player.y,vx:vx*320,vy:vy*320,fromPlayer:true,damage:atkDmg,life:1.5,dead:false});
+    const spd=item.kind==='Crossbow'?420:300;
+    projs.push({x:player.x,y:player.y,vx:vx*spd,vy:vy*spd,fromPlayer:true,damage:atkDmg,life:1.8,dead:false});
   } else {
-    const range=2.2*TILE;
+    const range=(idef&&idef.range?idef.range:2.2)*TILE;
     for(const e of enemies){
       if(e.dead)continue;
       const dx=e.x-player.x, dy=e.y-player.y;
@@ -1264,33 +1273,133 @@ function drawPlayer(){
   const sx=player.x-camX|0, sy=player.y-camY|0;
   const bob=player.moving?Math.sin(player.frameT*8)*2:0;
   if(player.iFrames>0&&Math.sin(player.iFrames*40)>0)return;
+
+  const item=player.equip>=0?player.inv[player.equip]:null;
+  const idef=item?ITEM_DEF[item.kind]:null;
+  const cat=idef?idef.cat:'MELEE';
+  const isRanged=cat==='RANGED';
+  const atkProg=player.atkMaxCd>0?(1-player.atkCd/player.atkMaxCd):1;
+
+  // direction unit vector [down,up,left,right]
+  const DVEC=[[0,1],[0,-1],[-1,0],[1,0]];
+  const [dvx,dvy]=DVEC[player.dir];
+  const facingAng=Math.atan2(dvy,dvx);
+
+  // hand position: right-side of body + slightly forward
+  // perpendicular-right of facing = (dvy, -dvx)
+  const hx=sx+dvy*9+dvx*6;
+  const hy=sy-10+bob-dvx*0 + (-dvx)*0; // flatten: just use simple per-dir
+  // simpler explicit offsets [down,up,left,right]
+  const HOFF=[[10,-8],[10,-20],[-13,-12],[13,-12]];
+  const [hox,hoy]=HOFF[player.dir];
+  const whx=sx+hox, why=sy+hoy+bob;
+
+  // ── weapon draw helper ────────────────────────────────────────────────────
+  const drawWeapon=()=>{
+    if(!item)return;
+    if(!isRanged){
+      // MELEE: rotated blade
+      const bladeLen=idef.range?idef.range*7:20;
+      const sweepAng=player.atkCd>0?(atkProg*1.6-0.8):0;
+      const rot=facingAng+Math.PI/2+sweepAng;
+      ctx.save(); ctx.translate(whx,why); ctx.rotate(rot);
+      // guard
+      ctx.fillStyle='#885522';
+      ctx.fillRect(-4,0,8,5);
+      // handle
+      ctx.fillStyle='#553311';
+      ctx.fillRect(-2,5,4,8);
+      // blade
+      const bladeCol=item.rarColor||idef.color||'#aaaacc';
+      ctx.shadowColor=bladeCol; ctx.shadowBlur=6;
+      ctx.fillStyle=bladeCol;
+      ctx.fillRect(-2,-bladeLen,4,bladeLen);
+      // blade tip triangle
+      ctx.beginPath();ctx.moveTo(-2,-bladeLen);ctx.lineTo(2,-bladeLen);ctx.lineTo(0,-bladeLen-7);ctx.closePath();ctx.fill();
+      ctx.shadowBlur=0;
+      ctx.restore();
+      // swing arc glow
+      if(player.atkCd>0&&atkProg<0.85){
+        const alpha=0.55*(1-atkProg);
+        ctx.strokeStyle=`rgba(255,220,60,${alpha})`;
+        ctx.lineWidth=10*(1-atkProg)+2;
+        ctx.beginPath();
+        ctx.arc(sx,sy-8+bob,bladeLen+6,facingAng-0.9,facingAng+0.9);
+        ctx.stroke();
+      }
+    } else {
+      // RANGED: draw weapon icon + barrel line
+      const isCrossbow=item.kind==='Crossbow';
+      ctx.save(); ctx.translate(whx,why); ctx.rotate(facingAng+Math.PI/2);
+      // stock
+      ctx.fillStyle='#775533';
+      ctx.fillRect(-3,0,6,isCrossbow?12:9);
+      // barrel
+      ctx.fillStyle=isCrossbow?'#445566':'#887744';
+      ctx.fillRect(-2,-18,4,18);
+      if(isCrossbow){
+        // crossbow arms
+        ctx.fillStyle='#664422';
+        ctx.fillRect(-10,-12,20,3);
+        // string
+        ctx.strokeStyle='rgba(220,220,180,0.8)'; ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(-10,-10);ctx.lineTo(0,-14);ctx.lineTo(10,-10);ctx.stroke();
+      } else {
+        // bow curve
+        ctx.strokeStyle='#886633'; ctx.lineWidth=2.5;
+        ctx.beginPath();ctx.arc(0,-8,10,-0.9,0.9);ctx.stroke();
+        // string
+        ctx.strokeStyle='rgba(220,220,180,0.7)'; ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(-9,-1);ctx.lineTo(0,-5);ctx.lineTo(9,-1);ctx.stroke();
+      }
+      ctx.restore();
+      // muzzle flash on fire
+      if(player.atkCd>0&&atkProg<0.12){
+        const fx=whx+dvx*20, fy=why+dvy*20;
+        ctx.save();
+        ctx.shadowColor='#ffff44'; ctx.shadowBlur=14;
+        ctx.fillStyle='rgba(255,230,80,0.9)';
+        ctx.beginPath();ctx.arc(fx,fy,6,0,Math.PI*2);ctx.fill();
+        ctx.shadowBlur=0;
+        ctx.restore();
+      }
+    }
+  };
+
+  // shadow + wading ripple
   ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.beginPath();ctx.ellipse(sx,sy+10,11,4,0,0,Math.PI*2);ctx.fill();
   if(player.wading){ctx.fillStyle='rgba(46,143,192,0.5)'; ctx.fillRect(sx-11,sy+2,22,10);}
+
+  // weapon behind player when facing up
+  if(player.dir===1) drawWeapon();
+
+  // body
   ctx.fillStyle='#3366cc'; ctx.fillRect(sx-8,sy-16+bob,16,18);
   ctx.strokeStyle='#1133aa'; ctx.lineWidth=1.5; ctx.strokeRect(sx-8,sy-16+bob,16,18);
   // blocky head
-  ctx.fillStyle='#f5d5a0';
-  ctx.fillRect(sx-9,sy-30+bob,18,18);
+  ctx.fillStyle='#f5d5a0'; ctx.fillRect(sx-9,sy-30+bob,18,18);
   ctx.strokeStyle='#cc9966'; ctx.lineWidth=1.5; ctx.strokeRect(sx-9,sy-30+bob,18,18);
-  // blocky eyes — shift based on direction
   const ex=player.dir===2?-3:(player.dir===3?3:0);
   const ey=player.dir===1?-1:(player.dir===0?1:0);
   ctx.fillStyle='#222';
-  ctx.fillRect(sx-6+ex,sy-25+bob+ey,4,4);
-  ctx.fillRect(sx+2+ex,sy-25+bob+ey,4,4);
-  // blocky mouth
-  ctx.fillStyle='#994433';
-  ctx.fillRect(sx-4+ex,sy-19+bob+ey,8,2);
-  // nose dot
-  ctx.fillStyle='#cc8855';
-  ctx.fillRect(sx-1+ex,sy-22+bob+ey,2,2);
-  if(player.atkCd>0){
-    ctx.strokeStyle='#ffdd44'; ctx.lineWidth=3;
-    const dirs=[[0,1],[0,-1],[-1,0],[1,0]];
-    const [vx,vy]=dirs[player.dir];
-    ctx.beginPath();ctx.moveTo(sx,sy-8+bob);ctx.lineTo(sx+vx*20,sy-8+bob+vy*20);ctx.stroke();
+  ctx.fillRect(sx-6+ex,sy-25+bob+ey,4,4); ctx.fillRect(sx+2+ex,sy-25+bob+ey,4,4);
+  ctx.fillStyle='#994433'; ctx.fillRect(sx-4+ex,sy-19+bob+ey,8,2);
+  ctx.fillStyle='#cc8855'; ctx.fillRect(sx-1+ex,sy-22+bob+ey,2,2);
+
+  // weapon in front when facing down/left/right
+  if(player.dir!==1) drawWeapon();
+
+  // crossbow reload bar (above head)
+  if(item&&item.kind==='Crossbow'&&player.atkCd>0){
+    const prog=1-player.atkCd/player.atkMaxCd;
+    ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(sx-18,sy-44+bob,36,6);
+    ctx.fillStyle='#ffaa22'; ctx.fillRect(sx-18,sy-44+bob,36*prog,6);
+    ctx.strokeStyle='#cc7700'; ctx.lineWidth=1; ctx.strokeRect(sx-18,sy-44+bob,36,6);
+    ctx.font='8px monospace'; ctx.fillStyle='#ffdd88'; ctx.textAlign='center';
+    ctx.fillText('RELOAD',sx,sy-46+bob); ctx.textAlign='left';
   }
-  if(player.wading){ctx.font='9px monospace';ctx.fillStyle='#88ddff';ctx.textAlign='center';ctx.fillText('wading',sx,sy-36);ctx.textAlign='left';}
+
+  if(player.wading){ctx.font='9px monospace';ctx.fillStyle='#88ddff';ctx.textAlign='center';ctx.fillText('wading',sx,sy-46+bob);ctx.textAlign='left';}
 }
 
 function drawParticles(){
