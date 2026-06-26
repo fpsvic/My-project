@@ -88,9 +88,11 @@
                     </div>
                 </div>
                 <div class="header-right flex items-center gap-2">
-                    <button class="exit-hub-btn" id="tab-terminal-btn" title="Open Workspace Console Terminal">🖥️ Terminal Console</button>
-                    <button class="exit-hub-btn" id="header-copy-code-btn" title="Copy Current File Contents to Clipboard">📋 Copy Code</button>
                     <button class="exit-hub-btn" id="template-panel-toggle" title="Show starter templates">⚡ Templates <span id="template-toggle-arrow">▼</span></button>
+                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+                        <button class="exit-hub-btn" id="tab-terminal-btn" title="Open Workspace Console Terminal">🖥️ Terminal Console</button>
+                        <span id="header-copy-code-btn" title="Copy Current File Contents to Clipboard" style="font-size:0.75rem;color:#74a896;cursor:pointer;user-select:none;padding:0 2px;">📋 Copy Code</span>
+                    </div>
                 </div>
             </div>
             <div id="template-panel">
