@@ -94,7 +94,7 @@ class JungleRunner {
                     clearTimeout(timer);
                     window.removeEventListener('message', handler);
                     iframe.remove();
-                    resolve({ stdout: output.join('\n'), stderr: e.data.err || '' });
+                    resolve({ stdout: output.join('\n'), stderr: e.data.err || '', errName: e.data.errName || '', errStack: e.data.errStack || '' });
                 }
             };
             window.addEventListener('message', handler);
@@ -102,14 +102,17 @@ class JungleRunner {
             iframe.style.display = 'none';
             document.body.appendChild(iframe);
             const wrap = fn => `(...a)=>{try{parent.postMessage({__jOut:true,t:[...a].map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' ')},'*')}catch(e){}}`;
+            // Catch both try/catch errors and uncaught errors (e.g. from async code)
             iframe.srcdoc = `<!DOCTYPE html><html><body><script>
 const console={log:${wrap}('log'),info:${wrap}('info'),warn:(...a)=>parent.postMessage({__jOut:true,t:'WARN: '+[...a].join(' ')},'*'),error:(...a)=>parent.postMessage({__jOut:true,t:'ERROR: '+[...a].join(' ')},'*'),dir:${wrap}('dir'),table:${wrap}('table')};
-try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:true,err:''},'*');}catch(e){parent.postMessage({__jDone:true,err:e.toString()},'*');}
+window.onerror=function(msg,src,line,col,err){parent.postMessage({__jDone:true,err:err?err.toString():msg,errName:err?err.name:'Error',errStack:err?err.stack:'',errLine:line,errCol:col},'*');return true;};
+window.onunhandledrejection=function(ev){var err=ev.reason||{};parent.postMessage({__jDone:true,err:err.toString?err.toString():String(err),errName:err.name||'UnhandledPromiseRejection',errStack:err.stack||''},'*');};
+try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:true,err:'',errName:'',errStack:''},'*');}catch(e){parent.postMessage({__jDone:true,err:e.toString(),errName:e.name||'Error',errStack:e.stack||''},'*');}
 <\/script></body></html>`;
             const timer = setTimeout(() => {
                 window.removeEventListener('message', handler);
                 iframe.remove();
-                resolve({ stdout: output.join('\n'), stderr: 'Execution timed out after 10s' });
+                resolve({ stdout: output.join('\n'), stderr: 'Execution timed out after 10s\nHint: Check for infinite loops (e.g. while(true) or a loop with no exit condition).', errName: 'TimeoutError', errStack: '' });
             }, 10000);
         });
     }

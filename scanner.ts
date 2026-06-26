@@ -23,6 +23,7 @@ class JungleScanner {
         ];
         if (lang === 'HTML') issues.push(...this.scanHtmlTags(lines));
         if (lang === 'Python') issues.push(...this.scanPythonIndentation(lines));
+        if (lang === 'CSS') issues.push(...this.scanCssPatterns(lines));
         const order: Record<string, number> = { error: 0, warning: 1, info: 2 };
         issues.sort((a, b) => (order[a.severity] ?? 1) - (order[b.severity] ?? 1) || a.line - b.line);
         return issues;
@@ -52,6 +53,59 @@ class JungleScanner {
     }
     static makeIssue(line: number, msg: string, hint: string = "", kind: string = "Static analysis", column: number | null = null, severity: 'error' | 'warning' | 'info' = "error"): ScanIssue {
         return { line, msg, hint, kind, column, severity };
+    }
+    static scanCssPatterns(lines: string[]): ScanIssue[] {
+        const issues: ScanIssue[] = [];
+        let braceDepth = 0;
+        let openBraceLine = -1;
+        let inBlockComment = false;
+        let inString: string | null = null;
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const lineNum = i + 1;
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            for (let j = 0; j < line.length; j++) {
+                const char = line[j];
+                const next = line[j + 1];
+                if (inBlockComment) {
+                    if (char === '*' && next === '/') { inBlockComment = false; j++; }
+                    continue;
+                }
+                if (inString) {
+                    if (char === inString) inString = null;
+                    continue;
+                }
+                if (char === '/' && next === '*') { inBlockComment = true; j++; continue; }
+                if (char === '"' || char === "'") { inString = char; continue; }
+                if (char === '{') { if (braceDepth === 0) openBraceLine = lineNum; braceDepth++; }
+                else if (char === '}') {
+                    if (braceDepth === 0) {
+                        issues.push(this.makeIssue(lineNum, `Unexpected '}' with no matching '{' in CSS.`, "Remove this '}' or add a matching '{' for the rule above.", "CSS syntax", j + 1));
+                    } else {
+                        braceDepth--;
+                    }
+                }
+            }
+            // Property declarations inside a rule must end with ';'
+            if (braceDepth > 0 && trimmed && !trimmed.startsWith('/*') && !trimmed.startsWith('//') && !trimmed.endsWith('{') && !trimmed.endsWith('}') && !trimmed.endsWith(';') && !trimmed.endsWith(',') && trimmed.includes(':')) {
+                issues.push(this.makeIssue(lineNum, `CSS property declaration may be missing a semicolon.`, "Add ';' at the end of this property declaration.", "CSS syntax", null, "warning"));
+            }
+            // Detect a selector line followed by nothing (likely forgot brace)
+            if (braceDepth === 0 && /^[.#]?[a-zA-Z][\w\s,:.#\[\]>+~*()-]*$/.test(trimmed) && trimmed.length > 1 && i + 1 < lines.length) {
+                const nextTrimmed = lines[i + 1]?.trim();
+                if (nextTrimmed && !nextTrimmed.startsWith('{') && !nextTrimmed.startsWith('/*') && !nextTrimmed.startsWith('@') && nextTrimmed.includes(':') && !nextTrimmed.startsWith('.') && !nextTrimmed.startsWith('#')) {
+                    issues.push(this.makeIssue(lineNum, `CSS selector '${trimmed.slice(0, 40)}' may be missing an opening '{'.`, "Add '{' after the selector and '}' after the declarations.", "CSS syntax", null, "warning"));
+                }
+            }
+        }
+        if (inBlockComment) {
+            issues.push(this.makeIssue(openBraceLine > 0 ? openBraceLine : 1, "Unclosed block comment in CSS.", "Add */ to close this comment.", "CSS syntax"));
+        }
+        if (braceDepth > 0) {
+            issues.push(this.makeIssue(openBraceLine, `Unclosed '{' on line ${openBraceLine} — CSS rule block is never closed.`, "Add '}' to close this rule block.", "CSS syntax"));
+        }
+        return issues;
     }
     static scanDelimiters(lines: string[]): ScanIssue[] {
         const errors: ScanIssue[] = [];
