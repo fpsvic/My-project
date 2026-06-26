@@ -7,6 +7,7 @@ import { initChatForm, initQuickToggle, renderCurrentSessionChat } from './ui/ch
 import { initModeSelector, updateModeSelectorUI } from './ui/modeSelector';
 import { openSandboxFromCode, closeSandbox } from './ui/sandbox';
 import { initSettings, loadSettings } from './ui/settings';
+import { initCodePanel } from './ui/codePanel';
 import type { Mode } from './types';
 
 // Expose globals required by inline HTML onclick attributes
@@ -78,6 +79,7 @@ function bootstrap(): void {
   initQuickToggle();
   initModeSelector();
   initSettings();
+  initCodePanel();
 }
 
 window.addEventListener('load', bootstrap);

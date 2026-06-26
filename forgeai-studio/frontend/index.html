@@ -32,6 +32,9 @@
             .sidebar-drawer { transform: translateX(-100%); transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
             .sidebar-drawer.open { transform: translateX(0); }
         }
+        #codePanel { display: none; }
+        #codePanel.panel-open { display: flex; }
+        @media (max-width: 900px) { #codePanel { display: none !important; } }
     </style>
 </head>
 <body class="bg-white text-slate-800 font-sans min-h-screen flex overflow-hidden antialiased grid-bg">
@@ -151,6 +154,47 @@
             </div>
         </footer>
     </main>
+
+    <!-- Right Code Panel -->
+    <div id="codePanel" class="flex-col w-[460px] h-screen bg-[#0d1117] border-l border-slate-700/50 shrink-0 font-mono overflow-hidden">
+      <!-- Panel header -->
+      <div class="flex items-center justify-between px-4 py-2.5 border-b border-slate-700/50 bg-[#161b22] shrink-0">
+        <div class="flex items-center space-x-2 min-w-0">
+          <i class="fa-solid fa-code-branch text-indigo-400 text-[10px] shrink-0"></i>
+          <span id="panelProjectTitle" class="text-xs text-slate-200 font-semibold truncate">Project</span>
+          <span id="panelProjectKind" class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shrink-0">App</span>
+        </div>
+        <div class="flex items-center space-x-1 shrink-0 ml-2">
+          <button id="btnPanelRun" class="flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-semibold transition">
+            <i class="fa-solid fa-play text-[8px]"></i><span>Run</span>
+          </button>
+          <button id="btnPanelCopy" class="flex items-center space-x-1.5 px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-[10px] transition">
+            <i class="fa-solid fa-copy text-[9px]"></i><span>Copy</span>
+          </button>
+          <button id="btnClosePanel" class="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 rounded transition ml-1">
+            <i class="fa-solid fa-xmark text-xs"></i>
+          </button>
+        </div>
+      </div>
+      <!-- File tabs -->
+      <div id="codePanelTabs" class="flex items-end overflow-x-auto border-b border-slate-700/50 bg-[#0d1117] shrink-0" style="min-height:34px"></div>
+      <!-- Body: file tree + code content -->
+      <div class="flex flex-1 min-h-0">
+        <!-- File tree -->
+        <div class="w-36 border-r border-slate-700/30 bg-[#0d1117] flex flex-col pt-2 px-1.5 pb-2 shrink-0 overflow-y-auto">
+          <p class="text-[9px] text-slate-600 uppercase tracking-widest font-semibold px-1 mb-2">Explorer</p>
+          <div id="codePanelFileTree" class="space-y-0.5"></div>
+        </div>
+        <!-- Code content -->
+        <div id="codePanelCode" class="flex-1 overflow-auto bg-[#0d1117] relative">
+          <div id="codePanelContent" class="p-4 min-h-full"></div>
+        </div>
+      </div>
+      <!-- Status bar -->
+      <div class="px-4 py-1.5 border-t border-slate-700/50 bg-[#161b22] shrink-0 flex items-center space-x-3">
+        <span id="codePanelStats" class="text-[9px] text-slate-600 font-mono"></span>
+      </div>
+    </div>
 
     <!-- Sandbox Modal -->
     <div id="sandboxModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4 hidden">

@@ -7,6 +7,7 @@ import { formatMarkdown } from './markdown';
 import { showToast } from './toast';
 import { renderSessionList } from './sidebar';
 import { buildFileViewer } from './fileViewer';
+import { showProjectInPanel } from './codePanel';
 import type { ProjectFile } from '../types';
 
 function getChatFeed(): HTMLElement {
@@ -233,7 +234,14 @@ export function renderCurrentSessionChat(): void {
         addUserMessageUI(msg.text);
       } else if (msg.project_files && msg.project_files.length > 0) {
         const kind = msg.project_files.some(f => f.name === 'game.js') ? 'game' : 'app';
-        addAIProjectUI(msg.text, msg.project_files, kind);
+        if (session.workspace === 'code') {
+          const titleMatch = msg.text.match(/\*\*(.+?)\*\*/);
+          const projTitle = titleMatch ? titleMatch[1] : (kind === 'game' ? 'Game' : 'Project');
+          showProjectInPanel(msg.project_files, projTitle, kind);
+          addAIStreamUI(msg.text, false);
+        } else {
+          addAIProjectUI(msg.text, msg.project_files, kind);
+        }
       } else {
         addAIStreamUI(msg.text, false);
       }
@@ -318,7 +326,16 @@ export function initChatForm(): void {
 
       if (res.project_files && res.project_files.length > 0) {
         const kind = res.project_files.some(f => f.name === 'game.js') ? 'game' : 'app';
-        addAIProjectUI(res.text, res.project_files, kind);
+        // Extract project title from response text
+        const titleMatch = res.text.match(/\*\*(.+?)\*\*/);
+        const projTitle = titleMatch ? titleMatch[1] : (kind === 'game' ? 'Game' : 'Project');
+        // Show in right panel if in code workspace, else inline
+        if (state.activeWorkspace === 'code') {
+          showProjectInPanel(res.project_files, projTitle, kind);
+          await addAIStreamUI(res.text, false);
+        } else {
+          addAIProjectUI(res.text, res.project_files, kind);
+        }
       } else {
         await addAIStreamUI(res.text, true);
       }

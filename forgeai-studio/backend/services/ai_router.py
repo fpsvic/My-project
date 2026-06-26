@@ -795,14 +795,203 @@ def _dispatch_programming(query: str, mode: str) -> str:
     for key, answer in CODING_HELP.items():
         if key in q:
             return answer
-    return (
-        "### Programming Help\n\n"
-        "I can explain concepts, show language histories, and give code examples.\n\n"
-        "Try asking:\n"
-        "- `history of Python` · `Rust hello world` · `what is recursion`\n"
-        "- `explain async/await` · `what is Big O notation` · `how does git work`\n"
-        "- `show me a class in Rust` · `loops in Kotlin` · `async in Go`"
-    )
+    # Synthesize a response for unrecognized programming questions
+    return _synthesize_programming_response(query, q)
+
+# --- SYNTHESIZED PROGRAMMING RESPONSES ---
+
+_CONCEPT_RESPONSES: dict[str, str] = {
+    "game loop": (
+        "### Game Loop Pattern\n\n"
+        "A game loop runs continuously, updating state and rendering every frame.\n\n"
+        "```javascript\nlet lastTime = 0;\n\nfunction gameLoop(timestamp) {\n"
+        "  const dt = (timestamp - lastTime) / 1000; // delta in seconds\n"
+        "  lastTime = timestamp;\n\n"
+        "  update(dt);  // move entities, check physics\n"
+        "  render();    // draw to canvas\n\n"
+        "  requestAnimationFrame(gameLoop);\n}\n\nrequestAnimationFrame(gameLoop);\n```\n\n"
+        "**`requestAnimationFrame`** syncs to the display refresh rate (~60fps) and pauses when the tab is hidden, saving CPU."
+    ),
+    "collision detection": (
+        "### Collision Detection\n\n"
+        "**AABB (Axis-Aligned Bounding Box)** — fastest, works for rectangles:\n\n"
+        "```javascript\nfunction collides(a, b) {\n"
+        "  return a.x < b.x + b.w &&\n"
+        "         a.x + a.w > b.x &&\n"
+        "         a.y < b.y + b.h &&\n"
+        "         a.y + a.h > b.y;\n}\n```\n\n"
+        "**Circle collision** — for round objects:\n\n"
+        "```javascript\nfunction circlesCollide(a, b) {\n"
+        "  const dx = a.x - b.x, dy = a.y - b.y;\n"
+        "  return Math.hypot(dx, dy) < a.r + b.r;\n}\n```"
+    ),
+    "canvas": (
+        "### HTML5 Canvas Basics\n\n"
+        "```javascript\nconst canvas = document.getElementById('c');\n"
+        "const ctx = canvas.getContext('2d');\n\n"
+        "// Clear\nctx.clearRect(0, 0, canvas.width, canvas.height);\n\n"
+        "// Rectangle\nctx.fillStyle = '#6366f1';\nctx.fillRect(x, y, width, height);\n\n"
+        "// Circle\nctx.beginPath();\nctx.arc(cx, cy, radius, 0, Math.PI * 2);\nctx.fill();\n\n"
+        "// Text\nctx.font = '16px monospace';\nctx.fillText('Score: 0', 10, 20);\n```"
+    ),
+    "localStorage": (
+        "### localStorage Persistence\n\n"
+        "Stores key-value strings in the browser — survives page refresh.\n\n"
+        "```javascript\n// Save\nlocalStorage.setItem('score', JSON.stringify(data));\n\n"
+        "// Load\nconst raw = localStorage.getItem('score');\nconst data = raw ? JSON.parse(raw) : defaultValue;\n\n"
+        "// Delete\nlocalStorage.removeItem('score');\n```\n\n"
+        "**Tip:** Always wrap in `try/catch` — storage can throw if the browser is in private mode with a full quota."
+    ),
+    "event listener": (
+        "### Event Listeners in JS\n\n"
+        "```javascript\n// Keyboard\ndocument.addEventListener('keydown', (e) => {\n"
+        "  if (e.key === 'ArrowLeft') moveLeft();\n"
+        "  if (e.key === ' ') jump();\n  e.preventDefault();\n});\n\n"
+        "// Mouse\ncanvas.addEventListener('click', (e) => {\n"
+        "  const rect = canvas.getBoundingClientRect();\n"
+        "  const x = e.clientX - rect.left;\n  const y = e.clientY - rect.top;\n"
+        "  handleClick(x, y);\n});\n\n"
+        "// Remove when done\nconst handler = (e) => { ... };\nwindow.addEventListener('resize', handler);\n// later:\nwindow.removeEventListener('resize', handler);\n```"
+    ),
+    "promise": (
+        "### Promises & Async/Await\n\n"
+        "```javascript\n// Promise\nfetch('/api/data')\n  .then(res => res.json())\n"
+        "  .then(data => console.log(data))\n  .catch(err => console.error(err));\n\n"
+        "// Async/await — same thing, cleaner syntax\nasync function getData() {\n"
+        "  try {\n    const res = await fetch('/api/data');\n"
+        "    const data = await res.json();\n    return data;\n"
+        "  } catch (err) {\n    console.error(err);\n  }\n}\n```\n\n"
+        "**Rule:** `await` only works inside `async` functions. At the top level of a module, it works directly."
+    ),
+    "closure": (
+        "### Closures in JavaScript\n\n"
+        "A closure is a function that remembers variables from its outer scope even after that scope exits.\n\n"
+        "```javascript\nfunction makeCounter(start = 0) {\n  let count = start; // captured by closure\n"
+        "  return {\n    increment: () => ++count,\n    decrement: () => --count,\n"
+        "    value: () => count,\n  };\n}\n\nconst counter = makeCounter(10);\ncounter.increment(); // 11\ncounter.value();     // 11\n```\n\n"
+        "This is how React hooks, module patterns, and factory functions work internally."
+    ),
+    "recursion": (
+        "### Recursion\n\n"
+        "A function calling itself until a base case is reached.\n\n"
+        "```javascript\n// Factorial\nfunction factorial(n) {\n"
+        "  if (n <= 1) return 1;       // base case\n"
+        "  return n * factorial(n - 1); // recursive step\n}\n\n"
+        "// Fibonacci (with memoization)\nconst memo = {};\nfunction fib(n) {\n"
+        "  if (n <= 1) return n;\n  if (memo[n]) return memo[n];\n"
+        "  return memo[n] = fib(n - 1) + fib(n - 2);\n}\n```\n\n"
+        "**Stack depth**: browsers typically allow ~10,000 recursive calls before a stack overflow. Use iteration for deep recursion."
+    ),
+    "sort": (
+        "### Sorting in JavaScript\n\n"
+        "```javascript\n// Numbers (default sort is lexicographic — always pass comparator!)\n"
+        "const nums = [10, 2, 8, 1];\nnums.sort((a, b) => a - b);  // ascending: [1, 2, 8, 10]\nnums.sort((a, b) => b - a);  // descending\n\n"
+        "// Objects by field\nconst users = [{name: 'Bob', age: 30}, {name: 'Ana', age: 25}];\nusers.sort((a, b) => a.age - b.age);\n"
+        "users.sort((a, b) => a.name.localeCompare(b.name));\n\n"
+        "// Stable sort (guaranteed since ES2019)\n```"
+    ),
+    "debounce": (
+        "### Debounce & Throttle\n\n"
+        "**Debounce** — wait until the user stops typing:\n\n"
+        "```javascript\nfunction debounce(fn, delay) {\n  let timer;\n"
+        "  return (...args) => {\n    clearTimeout(timer);\n"
+        "    timer = setTimeout(() => fn(...args), delay);\n  };\n}\n\n"
+        "const onSearch = debounce((q) => fetchResults(q), 300);\ninput.addEventListener('input', (e) => onSearch(e.target.value));\n```\n\n"
+        "**Throttle** — limit to once per interval:\n\n"
+        "```javascript\nfunction throttle(fn, limit) {\n  let last = 0;\n"
+        "  return (...args) => {\n    const now = Date.now();\n"
+        "    if (now - last >= limit) { last = now; fn(...args); }\n  };\n}\n```"
+    ),
+    "regex": (
+        "### Regular Expressions\n\n"
+        "```javascript\n// Test a pattern\n/^\\d{3}-\\d{4}$/.test('555-1234'); // true\n\n"
+        "// Extract matches\nconst email = 'Send to bob@example.com please';\nconst m = email.match(/[\\w.+-]+@[\\w-]+\\.[a-z]{2,}/i);\nconsole.log(m?.[0]); // 'bob@example.com'\n\n"
+        "// Replace all\nconst slug = 'Hello World!'.toLowerCase().replace(/[^a-z0-9]+/g, '-'); // 'hello-world-'\n\n"
+        "// Named groups\nconst { year, month } = '2024-07'.match(/(?<year>\\d{4})-(?<month>\\d{2})/).groups;\n```"
+    ),
+    "api": (
+        "### REST API Calls\n\n"
+        "```javascript\n// GET\nconst data = await fetch('https://api.example.com/items').then(r => r.json());\n\n"
+        "// POST with JSON body\nconst res = await fetch('/api/items', {\n  method: 'POST',\n"
+        "  headers: { 'Content-Type': 'application/json' },\n"
+        "  body: JSON.stringify({ name: 'Widget', price: 9.99 }),\n});\nconst created = await res.json();\n\n"
+        "// Error handling\nif (!res.ok) throw new Error(`HTTP ${res.status}`);\n```"
+    ),
+    "class": (
+        "### Classes in JavaScript\n\n"
+        "```javascript\nclass Entity {\n  #health; // private field\n\n"
+        "  constructor(x, y, health = 100) {\n    this.x = x;\n    this.y = y;\n    this.#health = health;\n  }\n\n"
+        "  move(dx, dy) {\n    this.x += dx;\n    this.y += dy;\n  }\n\n"
+        "  takeDamage(amount) {\n    this.#health = Math.max(0, this.#health - amount);\n  }\n\n"
+        "  get isAlive() { return this.#health > 0; }\n}\n\n"
+        "class Player extends Entity {\n  shoot() { return new Bullet(this.x, this.y); }\n}\n```"
+    ),
+    "array": (
+        "### Array Methods — The Essential Ones\n\n"
+        "```javascript\nconst nums = [1, 2, 3, 4, 5];\n\n"
+        "nums.map(n => n * 2)       // [2, 4, 6, 8, 10] — transform each\n"
+        "nums.filter(n => n > 2)    // [3, 4, 5] — keep matching\n"
+        "nums.reduce((s, n) => s+n) // 15 — collapse to one value\n"
+        "nums.find(n => n > 3)      // 4 — first match\n"
+        "nums.some(n => n > 4)      // true — any match?\n"
+        "nums.every(n => n > 0)     // true — all match?\n"
+        "nums.flat(Infinity)        // flatten nested arrays\n"
+        "nums.flatMap(n => [n, n*2])// map + flatten one level\n\n"
+        "// Chaining\nconst result = items\n  .filter(i => i.active)\n"
+        "  .map(i => i.name)\n  .sort();\n```"
+    ),
+    "state management": (
+        "### State Management Pattern\n\n"
+        "Simple reactive state without a framework:\n\n"
+        "```javascript\nconst state = {\n  items: [],\n  filter: 'all',\n  _listeners: new Set(),\n\n"
+        "  on(fn) { this._listeners.add(fn); },\n"
+        "  emit() { this._listeners.forEach(fn => fn(this)); },\n\n"
+        "  addItem(item) {\n    this.items.push(item);\n    this.emit();\n  },\n"
+        "  setFilter(f) {\n    this.filter = f;\n    this.emit();\n  },\n};\n\n"
+        "// Subscribe to changes\nstate.on((s) => renderList(s.items.filter(filterFn(s.filter))));\n```"
+    ),
+    "dark mode": (
+        "### Dark Mode Toggle\n\n"
+        "```javascript\n// Toggle and persist\nfunction toggleDarkMode() {\n"
+        "  const isDark = document.documentElement.classList.toggle('dark');\n"
+        "  localStorage.setItem('theme', isDark ? 'dark' : 'light');\n}\n\n"
+        "// Restore on load\nconst saved = localStorage.getItem('theme') ??\n"
+        "  (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');\n"
+        "if (saved === 'dark') document.documentElement.classList.add('dark');\n```\n\n"
+        "```css\n:root { --bg: #fff; --text: #0f172a; }\n.dark { --bg: #0f172a; --text: #f1f5f9; }\nbody { background: var(--bg); color: var(--text); }\n```"
+    ),
+}
+
+_CONCEPT_KEYWORDS: list[tuple[list[str], str]] = [
+    (["game loop", "game loop", "requestanimationframe", "animation frame", "update render", "game tick"], "game loop"),
+    (["collision", "collide", "hit detection", "overlap", "aabb", "bounding box"], "collision detection"),
+    (["canvas", "ctx", "context", "drawimage", "fillrect", "arc", "html5 canvas"], "canvas"),
+    (["localstorage", "local storage", "persist", "save data", "browser storage"], "localStorage"),
+    (["event listener", "addeventlistener", "keydown", "keyup", "mousemove", "onclick"], "event listener"),
+    (["promise", "async", "await", "then", "fetch", "asynchronous"], "promise"),
+    (["closure", "closures", "lexical scope", "captured variable"], "closure"),
+    (["recursion", "recursive", "base case", "call itself"], "recursion"),
+    (["sort", "sorting", "order", "compare", "localecompare"], "sort"),
+    (["debounce", "throttle", "rate limit", "delay input"], "debounce"),
+    (["regex", "regular expression", "regexp", "pattern match"], "regex"),
+    (["api", "fetch", "rest", "endpoint", "http request", "post request", "get request"], "api"),
+    (["class", "oop", "object oriented", "inheritance", "extends", "constructor"], "class"),
+    (["array", "map filter reduce", "flatmap", "array method", "iterate array"], "array"),
+    (["state", "state management", "reactive", "subscribe", "observer"], "state management"),
+    (["dark mode", "night mode", "theme toggle", "color scheme", "prefers-color-scheme"], "dark mode"),
+]
+
+
+def _synthesize_programming_response(query: str, q: str) -> str:
+    """Give a real answer for programming questions that don't match the KB."""
+    # Check synthesized concept map
+    for keywords, concept_key in _CONCEPT_KEYWORDS:
+        if any(kw in q for kw in keywords):
+            return _CONCEPT_RESPONSES[concept_key]
+
+    # Fall back to web search for truly unknown programming questions
+    from services.web_search import web_lookup
+    return web_lookup(query)
 
 # --- QUICK MODE ---
 

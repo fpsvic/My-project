@@ -136,14 +136,23 @@ _GENRE_NAMES = {
 
 
 def generate_game_project(query: str) -> ProjectResult:
-    compiled = compile_game(query)
-    title = compiled.get("title", "Game")
-    code = compiled.get("code", "")
+    from services.synthesis_engine import synthesize_game, should_synthesize, _extract_game_features, _build_game_title
 
-    genre = _detect_genre(query.lower())
+    q = query.lower()
+    genre = _detect_genre(q)
+
+    # For complex/custom descriptions, use the synthesis engine
+    if genre == "universal" or should_synthesize(query):
+        code = synthesize_game(query)
+        feat = _extract_game_features(q)
+        title = _build_game_title(q, feat)
+    else:
+        compiled = compile_game(query)
+        title = compiled.get("title", "Game")
+        code = compiled.get("code", "")
+
     js_name = "game.js"
     files = split_html_to_files(code, js_name)
-
     return ProjectResult(title=title, kind="game", files=files)
 
 

@@ -109,10 +109,14 @@ function applyQuickMode(on: boolean): void {
   const icon = document.getElementById('quickModeIcon');
   if (!btn || !icon) return;
   if (on) {
-    btn.style.cssText = 'background:#10b981;border-color:#10b981;color:#fff;';
+    btn.style.background = '#10b981';
+    btn.style.borderColor = '#10b981';
+    btn.style.color = '#fff';
     icon.style.color = '#fff';
   } else {
-    btn.style.cssText = '';
+    btn.style.background = '';
+    btn.style.borderColor = '';
+    btn.style.color = '';
     icon.style.color = '';
   }
 }
@@ -131,23 +135,17 @@ export function applySettings(s: AppSettings): void {
 // ── Toggle visual ─────────────────────────────────────────────────────────────
 
 function styleToggle(btn: HTMLElement, on: boolean): void {
-  if (on) {
-    btn.style.cssText = 'background:#6366f1;';
-    const knob = btn.querySelector('span') as HTMLElement;
-    if (knob) knob.style.transform = 'translateX(16px)';
-  } else {
-    btn.style.cssText = 'background:#cbd5e1;';
-    const knob = btn.querySelector('span') as HTMLElement;
-    if (knob) knob.style.transform = 'translateX(0)';
-  }
+  btn.style.background = on ? '#6366f1' : '#cbd5e1';
+  const knob = btn.querySelector('span') as HTMLElement;
+  if (knob) knob.style.transform = on ? 'translateX(16px)' : 'translateX(0)';
 }
 
 function styleSizeButtons(panel: HTMLElement, active: string): void {
   panel.querySelectorAll<HTMLElement>('.size-btn').forEach((b) => {
     const isActive = b.dataset.size === active;
-    b.style.cssText = isActive
-      ? 'background:#6366f1;border-color:#6366f1;color:#fff;'
-      : 'background:#fff;border-color:#e2e8f0;color:#475569;';
+    b.style.background = isActive ? '#6366f1' : '#fff';
+    b.style.borderColor = isActive ? '#6366f1' : '#e2e8f0';
+    b.style.color = isActive ? '#fff' : '#475569';
   });
 }
 
