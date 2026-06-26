@@ -1,6 +1,7 @@
 export interface Message {
   role: 'user' | 'assistant';
   text: string;
+  project_files?: ProjectFile[];
 }
 
 export interface Session {
@@ -26,8 +27,15 @@ export interface ChatRequest {
   quick_mode?: boolean;
 }
 
+export interface ProjectFile {
+  name: string;
+  content: string;
+  language: string;
+}
+
 export interface ChatResponse {
   text: string;
   corrections: Array<{ original: string; corrected: string }>;
   web_searched?: boolean;
+  project_files?: ProjectFile[];
 }

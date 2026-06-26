@@ -6,6 +6,8 @@ import { escapeHTML } from '../utils/helpers';
 import { formatMarkdown } from './markdown';
 import { showToast } from './toast';
 import { renderSessionList } from './sidebar';
+import { buildFileViewer } from './fileViewer';
+import type { ProjectFile } from '../types';
 
 function getChatFeed(): HTMLElement {
   return document.getElementById('chatFeed') as HTMLElement;
@@ -60,6 +62,32 @@ export function resolveThinkingIndicator(row: HTMLElement, webSearched: boolean)
     if (icon) { icon.className = 'fa-solid fa-globe text-indigo-400'; }
     if (text) { text.textContent = 'Searching the web...'; }
   }
+}
+
+export function addAIProjectUI(text: string, files: ProjectFile[], kind: string): HTMLElement {
+  const feed = getChatFeed();
+  const row = document.createElement('div');
+  row.className = 'flex items-start space-x-4 max-w-[95%] text-left';
+  row.innerHTML = `
+    <div class="h-8 w-8 bg-slate-900 rounded-lg flex items-center justify-center shrink-0 shadow-sm">
+      <i class="fa-solid fa-wand-magic-sparkles text-white text-xs"></i>
+    </div>
+    <div class="bg-slate-50 border border-slate-200/40 p-5 rounded-2xl rounded-tl-none text-slate-700 leading-relaxed text-sm w-full shadow-sm">
+      <div class="response-body font-normal text-slate-800 mb-3"></div>
+      <div class="file-viewer-slot"></div>
+    </div>`;
+  feed.appendChild(row);
+
+  const body = row.querySelector('.response-body') as HTMLElement;
+  body.innerHTML = formatMarkdown(text);
+
+  const slot = row.querySelector('.file-viewer-slot') as HTMLElement;
+  slot.appendChild(buildFileViewer(files, kind));
+
+  const distFromBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+  if (distFromBottom < 400) feed.scrollTop = feed.scrollHeight;
+
+  return row;
 }
 
 export async function addAIStreamUI(fullText: string, stream = true): Promise<HTMLElement> {
@@ -161,8 +189,14 @@ export function renderCurrentSessionChat(): void {
       </div>`;
   } else {
     session.messages.forEach((msg) => {
-      if (msg.role === 'user') addUserMessageUI(msg.text);
-      else addAIStreamUI(msg.text, false);
+      if (msg.role === 'user') {
+        addUserMessageUI(msg.text);
+      } else if (msg.project_files && msg.project_files.length > 0) {
+        const kind = msg.project_files.some(f => f.name === 'game.js') ? 'game' : 'app';
+        addAIProjectUI(msg.text, msg.project_files, kind);
+      } else {
+        addAIStreamUI(msg.text, false);
+      }
     });
   }
 
@@ -233,10 +267,20 @@ export function initChatForm(): void {
 
       resolveThinkingIndicator(thinkingRow, res.web_searched ?? false);
       thinkingRow.remove();
-      session.messages.push({ role: 'assistant', text: res.text });
+      session.messages.push({
+        role: 'assistant',
+        text: res.text,
+        project_files: res.project_files?.length ? res.project_files : undefined,
+      });
       saveSessions(state.sessions);
       renderSessionList();
-      await addAIStreamUI(res.text, true);
+
+      if (res.project_files && res.project_files.length > 0) {
+        const kind = res.project_files.some(f => f.name === 'game.js') ? 'game' : 'app';
+        addAIProjectUI(res.text, res.project_files, kind);
+      } else {
+        await addAIStreamUI(res.text, true);
+      }
     } catch {
       thinkingRow.remove();
       showToast('Failed to reach the ForgeAI backend.', true);

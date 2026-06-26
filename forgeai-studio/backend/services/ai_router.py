@@ -21,6 +21,7 @@ from services.history_engine import generate_history_response
 from services.game_compiler import compile_game
 from services.app_builder import build_app, detect_app_type
 from services.dynamic_builder import build_dynamic_app
+from services.code_generator import generate_project
 from services.update_handler import is_update_request, apply_update
 from services.brain import forge, forge_greeting
 
@@ -685,36 +686,30 @@ def _dispatch_animals(query: str, q: str) -> str:
         f"> `tell me about {mentioned}s` · `what do {mentioned}s eat` · `where do {mentioned}s live` · `what eats {mentioned}s`"
     )
 
-def _dispatch_game(query: str, q: str, mode: str) -> str:
-    game = compile_game(query)
+def _dispatch_project(query: str, kind: str = "auto") -> dict:
+    """Generate a multi-file project and return a response dict."""
+    project = generate_project(query)
+    verb = "compiled" if project.kind == "game" else "built"
+    action = "Play Game" if project.kind == "game" else "Run Project"
+    n = len(project.files)
     intro = (
-        f"I compiled **{game['title']}** for you. "
-        "Hit **\"Play Game\"** inside the code box to launch it instantly!"
+        f"I {verb} **{project.title}** — {n} file{'s' if n != 1 else ''} generated. "
+        f"Browse the files below, then hit **\"{action}\"** to launch."
     )
-    block = f"\n\n```html\n{game['code']}\n```"
-    return intro + block
+    return {
+        "text": intro,
+        "project_files": [{"name": f.name, "content": f.content, "language": f.language} for f in project.files],
+    }
 
-def _dispatch_app(query: str, mode: str) -> str:
-    static_type = detect_app_type(query.lower())
-    if static_type and static_type != "calculator" or any(n in query.lower() for n in _APP_NOUNS):
-        app = build_app(query)
-    else:
-        app = build_dynamic_app(query)
-    intro = (
-        f"I built a **{app['title']}** for you! "
-        "Click **\"Launch App\"** in the code box to open it live."
-    )
-    block = f"\n\n```html\n{app['code']}\n```"
-    return intro + block
+# Keep these for backward compat — now all go through _dispatch_project
+def _dispatch_game(query: str, q: str, mode: str) -> dict:
+    return _dispatch_project(query, "game")
 
-def _dispatch_dynamic(query: str, mode: str) -> str:
-    app = build_dynamic_app(query)
-    intro = (
-        f"I built a **{app['title']}** for you! "
-        "Click **\"Launch App\"** in the code box to open it live."
-    )
-    block = f"\n\n```html\n{app['code']}\n```"
-    return intro + block
+def _dispatch_app(query: str, mode: str) -> dict:
+    return _dispatch_project(query, "app")
+
+def _dispatch_dynamic(query: str, mode: str) -> dict:
+    return _dispatch_project(query, "app")
 
 def _dispatch_update(query: str, history: list, mode: str) -> str:
     app = apply_update(query, history)
