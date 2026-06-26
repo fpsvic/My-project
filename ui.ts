@@ -6,10 +6,31 @@ interface ModalOptions {
 }
 
 class JungleUI {
-    static showToast(message: string, onClickHandler: (() => void) | null = null): void {
+    static showToast(message: string, onClickHandlerOrType: (() => void) | string | null = null, type: 'info' | 'error' | 'success' = 'info'): void {
+        // Backwards-compatible: if second arg is a function, treat as onClickHandler (old signature)
+        let onClickHandler: (() => void) | null = null;
+        let toastType: string = 'info';
+        if (typeof onClickHandlerOrType === 'function') {
+            onClickHandler = onClickHandlerOrType;
+            toastType = type;
+        } else if (typeof onClickHandlerOrType === 'string') {
+            toastType = onClickHandlerOrType;
+        }
         const toast = document.createElement('div');
         toast.className = 'jungle-toast flex items-center justify-between gap-4 ' + (onClickHandler ? 'cursor-pointer hover:bg-[#1a2320]' : '');
+        if (toastType === 'error') {
+            toast.style.borderColor = '#FF5555';
+            toast.style.color = '#FF5555';
+        } else if (toastType === 'success') {
+            toast.style.borderColor = '#50fa7b';
+            toast.style.color = '#50fa7b';
+        }
+        const icon = document.createElement('span');
+        icon.className = 'shrink-0';
+        icon.textContent = toastType === 'error' ? '⚠' : toastType === 'success' ? '✓' : 'ℹ';
+        toast.appendChild(icon);
         const textSpan = document.createElement('span');
+        textSpan.style.flex = '1';
         textSpan.textContent = message;
         toast.appendChild(textSpan);
         if (onClickHandler) {
@@ -17,11 +38,89 @@ class JungleUI {
             actionNotice.className = 'text-[10px] uppercase font-bold text-[#74a896] border-l border-[#2e3c37] pl-3 shrink-0';
             actionNotice.textContent = 'Inspect';
             toast.appendChild(actionNotice);
-            toast.onclick = () => { onClickHandler(); toast.remove(); };
+            toast.onclick = () => { onClickHandler!(); toast.remove(); };
         }
         toastContainer.appendChild(toast);
         setTimeout(() => toast.classList.add('show'), 100);
         setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 5000);
+    }
+    static showErrorInGutter(lineNumber: number, message: string): void {
+        const gutter = document.getElementById('line-gutter');
+        if (!gutter) return;
+        // Remove any existing marker for this line
+        const existingMarker = gutter.querySelector(`.gutter-error-marker[data-line="${lineNumber}"]`);
+        if (existingMarker) existingMarker.remove();
+        const marker = document.createElement('span');
+        marker.className = 'gutter-error-marker';
+        marker.dataset.line = String(lineNumber);
+        marker.title = message;
+        marker.textContent = '!';
+        marker.style.cssText = 'position:absolute;left:0;color:#FF5555;font-weight:bold;font-size:11px;line-height:1.5;cursor:default;user-select:none;';
+        // Position marker at the correct line (assumes monospace line-height matches gutter)
+        const lineHeight = parseFloat(getComputedStyle(gutter).lineHeight) || 21;
+        marker.style.top = ((lineNumber - 1) * lineHeight) + 'px';
+        gutter.style.position = 'relative';
+        gutter.appendChild(marker);
+    }
+    static clearErrorMarkers(): void {
+        const gutter = document.getElementById('line-gutter');
+        if (!gutter) return;
+        gutter.querySelectorAll('.gutter-error-marker').forEach(el => el.remove());
+        const overlay = document.getElementById('highlight-overlay');
+        if (overlay) overlay.querySelectorAll('.error-line-highlight').forEach(el => el.remove());
+    }
+    static highlightErrorLine(lineNumber: number): void {
+        const overlay = document.getElementById('highlight-overlay');
+        if (!overlay) return;
+        // Remove existing highlight for this line
+        const existing = overlay.querySelector(`.error-line-highlight[data-line="${lineNumber}"]`);
+        if (existing) existing.remove();
+        const highlight = document.createElement('div');
+        highlight.className = 'error-line-highlight';
+        highlight.dataset.line = String(lineNumber);
+        const lineHeight = parseFloat(getComputedStyle(overlay).lineHeight) || 21;
+        highlight.style.cssText = `position:absolute;left:0;right:0;height:${lineHeight}px;top:${(lineNumber - 1) * lineHeight}px;background:rgba(255,85,85,0.12);pointer-events:none;border-left:2px solid #FF5555;`;
+        overlay.style.position = 'relative';
+        overlay.appendChild(highlight);
+    }
+    static colorizeTerminalErrors(container: HTMLElement): void {
+        if (!container) return;
+        const errorPrefixes = /^(Error|SyntaxError|TypeError|ReferenceError|RangeError|URIError|EvalError|ValueError|RuntimeError|Exception|Traceback|FAILED|FATAL|Uncaught)/;
+        container.childNodes.forEach(node => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                const lines = (node.textContent || '').split('\n');
+                const hasError = lines.some(l => errorPrefixes.test(l.trim()));
+                if (hasError) {
+                    const frag = document.createDocumentFragment();
+                    lines.forEach((line, i) => {
+                        if (errorPrefixes.test(line.trim())) {
+                            const span = document.createElement('span');
+                            span.style.color = '#FF5555';
+                            span.textContent = line;
+                            frag.appendChild(span);
+                        } else {
+                            frag.appendChild(document.createTextNode(line));
+                        }
+                        if (i < lines.length - 1) frag.appendChild(document.createTextNode('\n'));
+                    });
+                    node.parentNode!.replaceChild(frag, node);
+                }
+            }
+        });
+    }
+    static appendTerminalLine(container: HTMLElement, text: string): void {
+        if (!container) return;
+        const errorPrefixes = /^(Error|SyntaxError|TypeError|ReferenceError|RangeError|URIError|EvalError|ValueError|RuntimeError|Exception|Traceback|FAILED|FATAL|Uncaught)/;
+        const line = text.trimStart();
+        if (errorPrefixes.test(line)) {
+            const span = document.createElement('span');
+            span.style.color = '#FF5555';
+            span.textContent = text;
+            container.appendChild(span);
+            container.appendChild(document.createTextNode('\n'));
+        } else {
+            container.appendChild(document.createTextNode(text + '\n'));
+        }
     }
     static getCurrentProject(): Project | undefined { return projects.find(p => p.id === currentProjectId); }
     static loadProject(id: string): void {
