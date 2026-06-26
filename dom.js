@@ -74,7 +74,6 @@
             <div class="editor-header">
                 <div class="header-left">
                     <button class="exit-hub-btn" id="exit-to-hub-header-btn" title="Return to Projects Hub">← Exit to Hub</button>
-                    <button class="exit-hub-btn" id="run-btn" style="background-color: #172420; border-color: #528b74; color: #74a896;" title="Compile and Run Code">▶ Run</button>
                     <h2 class="ml-2" id="current-file-label">index.html</h2>
                     <span id="loc-display">LOC: 0</span>
                     <div class="language-selector-wrapper">
@@ -89,6 +88,7 @@
                 </div>
                 <div class="header-right flex items-center gap-2">
                     <button class="exit-hub-btn" id="template-panel-toggle" title="Show starter templates">⚡ Templates <span id="template-toggle-arrow">▼</span></button>
+                    <button class="exit-hub-btn" id="run-btn" style="background-color: #172420; border-color: #528b74; color: #74a896;" title="Compile and Run Code">▶ Run</button>
                     <button class="exit-hub-btn" id="tab-terminal-btn" title="Open Workspace Console Terminal">🖥️ Terminal Console</button>
                 </div>
             </div>
