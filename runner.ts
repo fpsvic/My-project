@@ -98,11 +98,11 @@ class JungleRunner {
                 }
             }
             // ── Tier 4: Judge0 CE (60+ languages, no auth) ────────────────────
-            terminalViewBody.textContent = "";
+            terminalViewBody.textContent = "🌐 Connecting to Judge0 API...";
             const j0 = await this.runJudge0(lang, code);
             if (j0) { this.showRunResult(j0.stdout, j0.stderr, lang); return; }
             // ── Tier 5: Piston + CORS proxy fallback chain ────────────────────
-            terminalViewBody.textContent = "";
+            terminalViewBody.textContent = "⚠️ Judge0 unreachable, trying Piston cluster...";
             await this.runPiston(lang, code, p);
 
         } catch (globalErr: any) { this.handleGlobalFailure(globalErr); }
