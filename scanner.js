@@ -7,6 +7,7 @@ class JungleScanner {
         ];
         if (lang === 'HTML') issues.push(...this.scanHtmlTags(lines));
         if (lang === 'Python') issues.push(...this.scanPythonIndentation(lines));
+        if (lang === 'CSS') issues.push(...this.scanCssPatterns(lines));
         const order = { error: 0, warning: 1, info: 2 };
         issues.sort((a, b) => (order[a.severity] ?? 1) - (order[b.severity] ?? 1) || a.line - b.line);
         return issues;
@@ -36,6 +37,59 @@ class JungleScanner {
     }
     static makeIssue(line, msg, hint = "", kind = "Static analysis", column = null, severity = "error") {
         return { line, msg, hint, kind, column, severity };
+    }
+    static scanCssPatterns(lines) {
+        const issues = [];
+        let braceDepth = 0;
+        let openBraceLine = -1;
+        let inBlockComment = false;
+        let inString = null;
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const lineNum = i + 1;
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            for (let j = 0; j < line.length; j++) {
+                const char = line[j];
+                const next = line[j + 1];
+                if (inBlockComment) {
+                    if (char === '*' && next === '/') { inBlockComment = false; j++; }
+                    continue;
+                }
+                if (inString) {
+                    if (char === inString) inString = null;
+                    continue;
+                }
+                if (char === '/' && next === '*') { inBlockComment = true; j++; continue; }
+                if (char === '"' || char === "'") { inString = char; continue; }
+                if (char === '{') { if (braceDepth === 0) openBraceLine = lineNum; braceDepth++; }
+                else if (char === '}') {
+                    if (braceDepth === 0) {
+                        issues.push(this.makeIssue(lineNum, `Unexpected '}' with no matching '{' in CSS.`, "Remove this '}' or add a matching '{' for the rule above.", "CSS syntax", j + 1));
+                    } else {
+                        braceDepth--;
+                    }
+                }
+            }
+            // Property declarations inside a rule must end with ';'
+            if (braceDepth > 0 && trimmed && !trimmed.startsWith('/*') && !trimmed.startsWith('//') && !trimmed.endsWith('{') && !trimmed.endsWith('}') && !trimmed.endsWith(';') && !trimmed.endsWith(',') && trimmed.includes(':')) {
+                issues.push(this.makeIssue(lineNum, `CSS property declaration may be missing a semicolon.`, "Add ';' at the end of this property declaration.", "CSS syntax", null, "warning"));
+            }
+            // Detect a selector line followed by nothing (likely forgot brace)
+            if (braceDepth === 0 && /^[.#]?[a-zA-Z][\w\s,:.#\[\]>+~*()-]*$/.test(trimmed) && trimmed.length > 1 && i + 1 < lines.length) {
+                const nextTrimmed = lines[i + 1]?.trim();
+                if (nextTrimmed && !nextTrimmed.startsWith('{') && !nextTrimmed.startsWith('/*') && !nextTrimmed.startsWith('@') && nextTrimmed.includes(':') && !nextTrimmed.startsWith('.') && !nextTrimmed.startsWith('#')) {
+                    issues.push(this.makeIssue(lineNum, `CSS selector '${trimmed.slice(0, 40)}' may be missing an opening '{'.`, "Add '{' after the selector and '}' after the declarations.", "CSS syntax", null, "warning"));
+                }
+            }
+        }
+        if (inBlockComment) {
+            issues.push(this.makeIssue(openBraceLine > 0 ? openBraceLine : 1, "Unclosed block comment in CSS.", "Add */ to close this comment.", "CSS syntax"));
+        }
+        if (braceDepth > 0) {
+            issues.push(this.makeIssue(openBraceLine, `Unclosed '{' on line ${openBraceLine} — CSS rule block is never closed.`, "Add '}' to close this rule block.", "CSS syntax"));
+        }
+        return issues;
     }
     static scanDelimiters(lines) {
         const errors = [];
@@ -92,7 +146,7 @@ class JungleScanner {
         }
         while (stack.length > 0) {
             const unclosed = stack.pop();
-            errors.push(this.makeIssue(unclosed.line, `Unclosed bracket or delimiter '${unclosed.char}' detected.`, `Add '${bracketPairs[unclosed.char]}' to close the block opened here.`, "Delimiter check", unclosed.column));
+            errors.push(this.makeIssue(unclosed.line, `Unclosed '${unclosed.char}' on line ${unclosed.line}, column ${unclosed.column} — never closed.`, `Add '${bracketPairs[unclosed.char]}' to close the '${unclosed.char}' opened here.`, "Delimiter check", unclosed.column));
         }
         return errors;
     }
@@ -211,6 +265,33 @@ class JungleScanner {
                 }
                 if (lang === 'TypeScript' && /\bas\s+any\b/.test(trimmed)) {
                     e(lineNum, "'as any' type assertion bypasses TypeScript safety.", "Use a more specific type assertion or narrow the type properly.", "TypeScript style", "warning");
+                }
+                // Invalid variable declarations: var/let/const with no identifier
+                if (/^\s*(var|let|const)\s*[;=,]/.test(line) || /^\s*(var|let|const)\s*$/.test(trimmed)) {
+                    e(lineNum, `'${trimmed.split(/\s/)[0]}' declaration is missing a variable name.`, `Add a variable name after '${trimmed.split(/\s/)[0]}'.`, "JavaScript syntax");
+                }
+                // Missing semicolons: lines that look like complete statements but lack one
+                if (
+                    !/[;{},\\]$/.test(trimmed) &&
+                    !trimmed.endsWith('*/') &&
+                    !/^\s*\/\//.test(line) &&
+                    !/^\s*\/\*/.test(line) &&
+                    (
+                        /^(return|throw|break|continue)\b/.test(trimmed) ||
+                        /^(const|let|var)\s+\w[\w$]*\s*([:,=]|$)/.test(trimmed) && !/[{([]$/.test(trimmed) ||
+                        /^\w[\w$.]*\s*(\+\+|--)$/.test(trimmed) ||
+                        /^\w[\w$.[\]'"]*\s*[+\-*/%|&^]=/.test(trimmed) && !/[{(]$/.test(trimmed)
+                    )
+                ) {
+                    e(lineNum, `Statement appears to be missing a semicolon.`, "Add ';' at the end of this statement.", "JavaScript syntax", "warning");
+                }
+                // Invalid function declarations: 'function' keyword with no name and no assignment context
+                if (/^\s*function\s*\(/.test(line) && !/[=:(,]/.test(line.slice(0, line.indexOf('function')))) {
+                    e(lineNum, "Function declaration is missing a name.", "Add a function name after 'function', or assign this expression to a variable.", "JavaScript syntax");
+                }
+                // Invalid function declarations: function keyword followed immediately by non-identifier
+                if (/\bfunction\s+[^a-zA-Z_$(\s]/.test(trimmed)) {
+                    e(lineNum, "Invalid function name — function names must start with a letter, '$', or '_'.", "Fix the function name.", "JavaScript syntax");
                 }
             } else if (lang === 'Java') {
                 if (/public\s+class\s+[A-Za-z_]\w*/.test(trimmed) && !/[{;]/.test(trimmed)) {

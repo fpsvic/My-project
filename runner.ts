@@ -1,6 +1,8 @@
 interface RunResult {
     stdout: string;
     stderr: string;
+    errName?: string;
+    errStack?: string;
 }
 
 interface ErrorDetails {
@@ -13,6 +15,12 @@ interface ErrorDetails {
     severity?: string;
     additionalErrors?: ScanIssue[];
     rawOutput?: string;
+    errorType?: string;
+}
+
+interface RunMeta {
+    errName?: string;
+    errStack?: string;
 }
 
 class JungleRunner {

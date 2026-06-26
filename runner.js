@@ -47,7 +47,7 @@ class JungleRunner {
             if (lang === 'Javascript' || lang === 'TypeScript') {
                 terminalViewBody.textContent = "⚡ Running locally (native JS)...";
                 const res = await this.runNativeJS(code);
-                this.showRunResult(res.stdout, res.stderr, lang);
+                this.showRunResult(res.stdout, res.stderr, lang, { errName: res.errName, errStack: res.errStack });
                 return;
             }
             // ── Tier 2: SQL — sql.js WASM (no network) ────────────────────────
@@ -328,11 +328,11 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
     }
 
     // ── Shared result display ─────────────────────────────────────────────────
-    static showRunResult(stdout, stderr, lang) {
+    static showRunResult(stdout, stderr, lang, meta) {
         const hasFail = stderr && stderr.trim();
         terminalViewBody.textContent = '';
         if (hasFail) {
-            const details = this.parseError(stderr, stdout, lang);
+            const details = this.parseError(stderr, stdout, lang, meta);
             this.printCrashAnalysis(details, stdout, stderr);
             JungleUI.showToast("❌ Runtime error — tap to inspect.", () => switchView('terminal', false));
             terminalStatus.textContent = "FAILED TO RUN";
@@ -354,32 +354,72 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         });
         JungleUI.showToast("❌ Failed to run! Tap here to inspect terminal diagnostics.", () => { switchView('terminal', false); });
     }
-    static parseError(stderr, stdout, lang) {
+    static parseError(stderr, stdout, lang, meta) {
         let errorMsg = "Execution anomaly detected.", lineNo = "Unknown line", file = "main";
-        let column = null, likelyCause = "", suggestion = "";
+        let column = null, likelyCause = "", suggestion = "", errorType = "";
         const combined = (stderr || "") + "\n" + (stdout || "");
         const lines = combined.trim().split('\n').filter(Boolean);
+
+        // ── Timeout detection (applies to any lang) ────────────────────────────
+        if (/execution timed out/i.test(combined)) {
+            errorMsg = "Execution timed out after 10 seconds.";
+            errorType = "Timeout";
+            const insight = this.explainError("timeout", lang, combined);
+            return { errorMsg, lineNo: "—", file, column, likelyCause: insight.likelyCause, suggestion: "Check for infinite loops (while(true), for(;;), or a recursive call with no base case). Add a break condition.", rawOutput: combined.trim(), errorType };
+        }
+
         if (lang === 'Python') {
-            const match = combined.match(/File\s+"([^"]+)",\s+line\s+(\d+)/i);
-            if (match) { file = match[1]; lineNo = match[2]; }
+            // Find the deepest traceback frame (last "File ..., line N")
+            const frameMatches = [...combined.matchAll(/File\s+"([^"]+)",\s+line\s+(\d+)/gi)];
+            if (frameMatches.length > 0) {
+                const last = frameMatches[frameMatches.length - 1];
+                file = last[1]; lineNo = last[2];
+            }
+            // Extract the final error type+message (last line matching ErrorType: message)
             for (let i = lines.length - 1; i >= 0; i--) {
                 const l = lines[i].trim();
-                if (l && (l.includes('Error:') || l.includes('Exception:') || l.match(/^[a-zA-Z0-9_]+Error:/))) { errorMsg = l; break; }
+                const errMatch = l.match(/^([A-Za-z][A-Za-z0-9_]*(?:Error|Exception|Warning|Interrupt|Stop))\s*:\s*(.*)/);
+                if (errMatch) { errorType = errMatch[1]; errorMsg = l; break; }
+                if (l.includes('Error:') || l.includes('Exception:')) { errorMsg = l; break; }
             }
             if (errorMsg === "Execution anomaly detected." && lines.length > 0) { errorMsg = lines[lines.length - 1]; }
+            // Derive errorType from errorMsg if not set yet
+            if (!errorType) {
+                const tm = errorMsg.match(/^([A-Za-z][A-Za-z0-9_]*(?:Error|Exception))/);
+                if (tm) errorType = tm[1];
+            }
         } else if (lang === 'Javascript' || lang === 'TypeScript') {
+            // Use richer data from iframe if available
+            const errName = (meta && meta.errName) || '';
+            const errStack = (meta && meta.errStack) || '';
+            errorType = errName || '';
             if (lines[0]) errorMsg = lines[0];
-            const match = combined.match(/\/([^/:\s]+):(\d+):(\d+)/) || combined.match(/(?:^|\n)([^:\n]+):(\d+):(\d+)/) || combined.match(/at\s+.*:(\d+):(\d+)/);
-            if (match) {
-                if (match.length > 3) { file = match[1] || "main.js"; lineNo = match[2]; column = match[3]; } else { lineNo = match[1]; column = match[2]; }
+            // Parse line number from stack trace — prefer first frame pointing to user code
+            // Stack lines: "    at funcName (file:line:col)" or "    at file:line:col"
+            const stackLines = (errStack || combined).split('\n');
+            for (const sl of stackLines) {
+                // Match "at ... (<anonymous>:line:col)" or "at ...:line:col"
+                const m = sl.match(/at\s+.*?(?:<anonymous>|evalmachine\.__toString__|eval):(\d+):(\d+)/) ||
+                          sl.match(/at\s+.*?:(\d+):(\d+)/);
+                if (m) { lineNo = m[1]; column = m[2]; file = "main.js"; break; }
+            }
+            // Fallback path-style match if stack didn't help
+            if (lineNo === "Unknown line") {
+                const match = combined.match(/\/([^/:\s]+):(\d+):(\d+)/) || combined.match(/(?:^|\n)([^:\n]+):(\d+):(\d+)/);
+                if (match) { file = match[1] || "main.js"; lineNo = match[2]; column = match[3]; }
+            }
+            // Build a clean errorMsg from errName + message portion
+            if (errName && errorMsg) {
+                const msgBody = errorMsg.replace(/^[A-Za-z][A-Za-z0-9_]*Error:\s*/i, '');
+                errorMsg = `${errName}: ${msgBody}`;
             }
         } else if (lang === 'C++' || lang === 'Java') {
             const match = combined.match(/([^:\n]+):(\d+):(?:(\d+):)?\s+(?:fatal\s+)?error:\s+(.+)/i);
-            if (match) { file = match[1]; lineNo = match[2]; column = match[3] || null; errorMsg = match[4]; }
+            if (match) { file = match[1]; lineNo = match[2]; column = match[3] || null; errorMsg = match[4]; errorType = "CompileError"; }
             if (lang === 'Java') {
                 const exception = combined.match(/Exception in thread "[^"]+"\s+([^\n]+)/i);
                 const javaFrame = combined.match(/\bat\s+.*\(([^():]+):(\d+)\)/);
-                if (exception) errorMsg = exception[1].trim();
+                if (exception) { errorMsg = exception[1].trim(); const em = errorMsg.match(/^([A-Za-z.]+Exception)/); if (em) errorType = em[1].split('.').pop(); }
                 if (javaFrame) { file = javaFrame[1]; lineNo = javaFrame[2]; }
             }
         } else {
@@ -390,7 +430,7 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         const insight = this.explainError(errorMsg, lang, combined);
         likelyCause = insight.likelyCause;
         suggestion = insight.suggestion;
-        return { errorMsg, lineNo, file, column, likelyCause, suggestion, rawOutput: combined.trim() };
+        return { errorMsg, lineNo, file, column, likelyCause, suggestion, rawOutput: combined.trim(), errorType };
     }
     static explainError(errorMsg, lang, rawOutput) {
         const text = `${errorMsg}\n${rawOutput || ""}`.toLowerCase();
@@ -448,13 +488,38 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
     }
     static formatSimpleReport(details) {
         const lineNo = details.lineNo || "Unknown";
-        const errorKind = this.getSimpleErrorKind(details.errorMsg || "");
+        // Prefer explicit errorType from parsing, fall back to message-derived kind
+        const errorKind = details.errorType || this.getSimpleErrorKind(details.errorMsg || "");
         const message = this.simplifyErrorMessage(details.errorMsg || "unknown error");
         const icon = this.severityIcon(details.severity);
-        let out = `${icon} Error on Line ${lineNo} — ${errorKind}\n   ${message}`;
+        // Show error type as a bracketed label if we have a specific one
+        const typeLabel = details.errorType ? `[${details.errorType}] ` : '';
+        let out = `${icon} ${typeLabel}Error on Line ${lineNo} — ${errorKind}\n   ${message}`;
         if (details.likelyCause) out += `\n\nLikely cause: ${details.likelyCause}`;
         if (details.suggestion) out += `\nSuggestion:   ${details.suggestion}`;
         return out;
+    }
+    // ── Format Python/multi-line tracebacks more readably ─────────────────────
+    static formatTraceback(stderr) {
+        if (!stderr || !stderr.trim()) return '';
+        const lines = stderr.trim().split('\n');
+        const out = [];
+        for (const line of lines) {
+            const trimmed = line.trim();
+            // Highlight "File ..., line N" frames
+            if (/^File\s+"[^"]+",\s+line\s+\d+/.test(trimmed)) {
+                out.push('  → ' + trimmed);
+            // Highlight the final error type line (e.g. "ValueError: invalid literal")
+            } else if (/^[A-Za-z][A-Za-z0-9_]*(?:Error|Exception|Warning|Interrupt|Stop)\s*:/.test(trimmed)) {
+                out.push('  !! ' + trimmed);
+            // De-emphasize "Traceback (most recent call last):"
+            } else if (/^Traceback\s+\(most recent call last\)/i.test(trimmed)) {
+                out.push('  ' + trimmed);
+            } else {
+                out.push('     ' + line);
+            }
+        }
+        return out.join('\n');
     }
     static getSimpleErrorKind(message) {
         const text = String(message).toLowerCase();
@@ -507,9 +572,17 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
     }
     static printCrashAnalysis(details, stdout, stderr) {
         let output = this.formatSimpleReport(details);
-        if (details.lineNo && details.lineNo !== "Unknown") {
+        if (details.lineNo && details.lineNo !== "Unknown" && details.lineNo !== "—") {
             const frame = this.getCodeFrame(details.file, details.lineNo, details.column);
             if (frame) output += `\n\n${frame}`;
+        }
+        // Show formatted traceback for Python/multi-line stderr
+        if (stderr && stderr.includes('\n')) {
+            const formatted = this.formatTraceback(stderr);
+            if (formatted) output += `\n\n─── Traceback ───\n${formatted}`;
+        }
+        if (stdout && stdout.trim()) {
+            output += `\n\n─── Program output before crash ───\n${stdout.trim()}`;
         }
         if (details.additionalErrors && details.additionalErrors.length > 0) {
             output += `\n\n─── Additional issues ───`;

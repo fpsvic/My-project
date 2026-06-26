@@ -162,7 +162,7 @@ class JungleScanner {
         }
         while (stack.length > 0) {
             const unclosed = stack.pop()!;
-            errors.push(this.makeIssue(unclosed.line, `Unclosed bracket or delimiter '${unclosed.char}' detected.`, `Add '${bracketPairs[unclosed.char]}' to close the block opened here.`, "Delimiter check", unclosed.column));
+            errors.push(this.makeIssue(unclosed.line, `Unclosed '${unclosed.char}' on line ${unclosed.line}, column ${unclosed.column} — never closed.`, `Add '${bracketPairs[unclosed.char]}' to close the '${unclosed.char}' opened here.`, "Delimiter check", unclosed.column));
         }
         return errors;
     }
@@ -281,6 +281,34 @@ class JungleScanner {
                 }
                 if (lang === 'TypeScript' && /\bas\s+any\b/.test(trimmed)) {
                     e(lineNum, "'as any' type assertion bypasses TypeScript safety.", "Use a more specific type assertion or narrow the type properly.", "TypeScript style", "warning");
+                }
+                // Invalid variable declarations: var/let/const with no identifier
+                if (/^\s*(var|let|const)\s*[;=,]/.test(line) || /^\s*(var|let|const)\s*$/.test(trimmed)) {
+                    e(lineNum, `'${trimmed.split(/\s/)[0]}' declaration is missing a variable name.`, `Add a variable name after '${trimmed.split(/\s/)[0]}'.`, "JavaScript syntax");
+                }
+                // Missing semicolons: lines that look like complete statements but lack one
+                // Covers: expression statements, return/throw/break/continue, assignments
+                if (
+                    !/[;{},\\]$/.test(trimmed) &&
+                    !trimmed.endsWith('*/') &&
+                    !/^\s*\/\//.test(line) &&
+                    !/^\s*\/\*/.test(line) &&
+                    (
+                        /^(return|throw|break|continue)\b/.test(trimmed) ||
+                        /^(const|let|var)\s+\w[\w$]*\s*([:,=]|$)/.test(trimmed) && !/[{([]$/.test(trimmed) ||
+                        /^\w[\w$.]*\s*(\+\+|--)$/.test(trimmed) ||
+                        /^\w[\w$.[\]'"]*\s*[+\-*/%|&^]=/.test(trimmed) && !/[{(]$/.test(trimmed)
+                    )
+                ) {
+                    e(lineNum, `Statement appears to be missing a semicolon.`, "Add ';' at the end of this statement.", "JavaScript syntax", "warning");
+                }
+                // Invalid function declarations: 'function' keyword with no name and no assignment context
+                if (/^\s*function\s*\(/.test(line) && !/[=:(,]/.test(line.slice(0, line.indexOf('function')))) {
+                    e(lineNum, "Function declaration is missing a name.", "Add a function name after 'function', or assign this expression to a variable.", "JavaScript syntax");
+                }
+                // Invalid function declarations: function keyword followed immediately by non-identifier
+                if (/\bfunction\s+[^a-zA-Z_$(\s]/.test(trimmed)) {
+                    e(lineNum, "Invalid function name — function names must start with a letter, '$', or '_'.", "Fix the function name.", "JavaScript syntax");
                 }
             } else if (lang === 'Java') {
                 if (/public\s+class\s+[A-Za-z_]\w*/.test(trimmed) && !/[{;]/.test(trimmed)) {
