@@ -586,7 +586,7 @@ def vary_structure(content: str, query: str) -> str:
 # SECTION 9 — CONVENIENCE: drop-in replacement shim for brain.forge()
 # ---------------------------------------------------------------------------
 
-def forge(content: str, query: str, intent: str = "knowledge") -> str:
+def forge(content: str, query: str, intent: str = "knowledge", depth: int = 0) -> str:
     """
     Drop-in replacement for brain.forge().
 
@@ -598,8 +598,9 @@ def forge(content: str, query: str, intent: str = "knowledge") -> str:
          (different sentence construction each time, not just different order).
       2. vary_structure() — applies structural layout variation on top.
 
-    This means the same KB string produces a response that is genuinely
-    rewritten at the sentence level AND restructured at the paragraph level.
+    depth controls how comprehensive the output is:
+      0  — standard response (default)
+      1+ — broader atom selection, more facts included
     """
     if intent in ("build_game", "build_app", "build_any", "math", "programming"):
         return content
@@ -612,13 +613,12 @@ def forge(content: str, query: str, intent: str = "knowledge") -> str:
     if intent in ("knowledge", "space", "earth", "science", "history", "animals"):
         try:
             from services.nlg_engine import generate_from_content
-            nlg_output = generate_from_content(content, query)
-            # Only use NLG output if it produced something meaningful and
-            # different enough from the raw content (sanity check)
+            max_atoms = 5 if depth >= 1 else 3
+            nlg_output = generate_from_content(content, query, max_atoms=max_atoms)
             if nlg_output and len(nlg_output) >= 20:
                 return vary_structure(nlg_output, query)
         except Exception:
-            pass  # Fall through to structural variation only
+            pass
 
     return vary_structure(content, query)
 

@@ -1096,15 +1096,16 @@ def _select_atoms(atoms: list[FactAtom], query: str, focus: str | None, max_atom
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
-def generate_from_content(content: str, query: str) -> str:
+def generate_from_content(content: str, query: str, max_atoms: int = 3) -> str:
     """
     Takes a KB content string and the original query.
     Extracts fact atoms, picks random sentence generators, and composes a fresh
     natural-language response. Every call produces a structurally different result.
 
     Args:
-        content: Raw KB string (may contain markdown, multiple sentences).
-        query:   The user's original question — used to prioritise relevant facts.
+        content:   Raw KB string (may contain markdown, multiple sentences).
+        query:     The user's original question — used to prioritise relevant facts.
+        max_atoms: Maximum fact atoms to use (higher = more comprehensive output).
 
     Returns:
         A freshly generated response string (plain text with optional markdown bold).
@@ -1118,7 +1119,7 @@ def generate_from_content(content: str, query: str) -> str:
     if not atoms:
         return content
 
-    relevant = _select_atoms(atoms, query, focus, max_atoms=3)
+    relevant = _select_atoms(atoms, query, focus, max_atoms=max_atoms)
 
     if len(relevant) == 1:
         atom = relevant[0]

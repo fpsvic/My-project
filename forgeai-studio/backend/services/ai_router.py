@@ -785,7 +785,7 @@ def _quick_response(query: str, q: str) -> str:
         return "Hey! How can I help?"
     return f"I'm not sure about \"{query}\". Try turning off Quick mode for a full answer."
 
-# --- CONVERSATION CONTEXT RESOLUTION ---
+# ── CONVERSATION MEMORY ───────────────────────────────────────────────────────
 
 _FOLLOWUP_EXACT = {
     "tell me more", "more", "more about that", "more about it", "more info",
@@ -795,76 +795,216 @@ _FOLLOWUP_EXACT = {
     "interesting", "cool", "wow", "nice", "really?", "what about it",
     "how so", "why so", "ok and", "okay and", "got it and",
     "ok so", "okay so", "go ahead", "tell me", "say more",
+    "then what", "so what", "and then", "keep talking", "more please",
+    "go on then", "interesting tell me more", "thats cool", "that's cool",
+    "thats interesting", "that's interesting", "i see", "oh interesting",
+    "oh cool", "oh wow", "and what else", "what more", "anything more",
+    "tell me everything", "keep going please", "more details", "more detail",
+    "give me more", "give more details", "expand more",
 }
 
 _FOLLOWUP_STARTS = (
     "tell me more about", "more about", "what else about",
     "can you explain", "explain more about", "expand on",
     "what about its", "what about their", "what about the",
-    "how about", "what about",
+    "how about", "what about", "and what about", "but what about",
+    "also what", "also how", "also why", "also when", "also where",
+    "so how", "so what", "so why", "so when",
 )
 
 _PRONOUN_RE = re.compile(
-    r"\b(it|its|it's|they|them|their|that|this|those|these)\b"
+    r"\b(it|its|it's|they|them|their|that|this|those|these|he|she|him|her)\b"
 )
 
 
-def _extract_prev_topic(history: list) -> str | None:
-    """Get the last user query from history (excluding the current one at the end)."""
-    if len(history) < 2:
-        return None
-    for msg in reversed(history[:-1]):
-        role = msg.get("role", "")
-        text = (msg.get("text") or msg.get("content") or "").strip()
-        if role == "user" and len(text) > 3:
-            return text
-    return None
-
-
-def _resolve_context(query: str, q: str, history: list) -> tuple[str, str]:
-    """Rewrite a follow-up query by injecting the previous topic."""
-    if not history:
-        return query, q
-    prev = _extract_prev_topic(history)
-    if not prev:
-        return query, q
-
-    # Pure follow-up with no new content
+def _is_followup_query(q: str) -> bool:
+    """Return True if q is clearly a follow-up with no new subject."""
     if q in _FOLLOWUP_EXACT:
-        combined = f"tell me more about {prev}"
-        return combined, _normalize(combined)
-
-    # Starts with a follow-up prefix
+        return True
     if any(q.startswith(p) for p in _FOLLOWUP_STARTS):
-        # already has partial subject ("what about its diet") — inject the entity from prev
-        entity = _extract_entity(prev)
-        if entity and entity not in q:
-            combined = f"{query.strip()} {entity}"
-            return combined, _normalize(combined)
-        return query, q
-
-    # Query contains only pronoun references with no real subject
+        return True
+    # Short pronoun-heavy queries
     words = [w for w in q.split() if w not in _STOP_WORDS]
-    if len(words) <= 4 and _PRONOUN_RE.search(q):
-        entity = _extract_entity(prev)
-        if entity:
-            resolved = _PRONOUN_RE.sub(entity, query)
-            return resolved, _normalize(resolved)
-
-    return query, q
+    if len(words) <= 3 and _PRONOUN_RE.search(q):
+        return True
+    return False
 
 
 def _extract_entity(text: str) -> str | None:
-    """Pull the most likely subject noun from a query string."""
+    """Pull the most likely subject noun phrase from a query string."""
     norm = _normalize(text)
-    # Remove question starters
     norm = _QUESTION_STARTERS.sub("", norm).strip()
-    # Remove stop words from start
     words = [w for w in norm.split() if w not in _STOP_WORDS]
     if not words:
         return None
-    # Return up to 3 content words as the entity phrase
-    return " ".join(words[:3])
+    return " ".join(words[:4])
+
+
+def _get_all_user_msgs(history: list) -> list[str]:
+    """Return all user message texts from history, in order."""
+    msgs = []
+    for msg in history:
+        if msg.get("role") == "user":
+            text = (msg.get("text") or msg.get("content") or "").strip()
+            if text:
+                msgs.append(text)
+    return msgs
+
+
+def build_conversation_memory(history: list) -> dict:
+    """
+    Analyse the full conversation history and return a memory dict:
+      active_topic   — the real subject of the current thread (original query text)
+      active_entity  — extracted noun phrase from active_topic
+      thread_depth   — how many consecutive turns have been about this topic
+      covered_aspects — aspects already discussed (speed, diet, etc.)
+      all_topics     — all distinct (non-follow-up) topics seen this session
+      prev_ai_texts  — list of previous AI response texts (for context)
+    """
+    user_msgs = _get_all_user_msgs(history)
+    # Remove current message (last in list) — we only look at what came before
+    prev_user_msgs = user_msgs[:-1] if len(user_msgs) > 1 else []
+
+    ai_texts = []
+    for msg in history:
+        if msg.get("role") == "assistant":
+            text = (msg.get("text") or msg.get("content") or "").strip()
+            if text:
+                ai_texts.append(text)
+
+    if not prev_user_msgs:
+        return {
+            "active_topic": None, "active_entity": None, "thread_depth": 0,
+            "covered_aspects": [], "all_topics": [], "prev_ai_texts": ai_texts,
+        }
+
+    # Walk back from end of history to find where the current topic thread began
+    thread_anchor_idx = len(prev_user_msgs) - 1
+    for i in range(len(prev_user_msgs) - 1, -1, -1):
+        q_i = _normalize(prev_user_msgs[i])
+        if _is_followup_query(q_i):
+            continue   # part of the same thread, keep walking back
+        thread_anchor_idx = i
+        break
+
+    active_topic = prev_user_msgs[thread_anchor_idx]
+    thread_depth = len(prev_user_msgs) - thread_anchor_idx  # turns on this topic
+
+    # Aspects already covered within this thread
+    covered_aspects: list[str] = []
+    for msg in prev_user_msgs[thread_anchor_idx:]:
+        aspect = _detect_aspect(_normalize(msg))
+        if aspect and aspect not in covered_aspects:
+            covered_aspects.append(aspect)
+
+    # All distinct topics seen this session (non-follow-up messages)
+    all_topics = []
+    for msg in prev_user_msgs:
+        if not _is_followup_query(_normalize(msg)):
+            all_topics.append(msg)
+
+    return {
+        "active_topic": active_topic,
+        "active_entity": _extract_entity(active_topic),
+        "thread_depth": thread_depth,
+        "covered_aspects": covered_aspects,
+        "all_topics": all_topics,
+        "prev_ai_texts": ai_texts,
+    }
+
+
+def _resolve_context(query: str, q: str, history: list) -> tuple[str, str, dict]:
+    """
+    Rewrite a follow-up query using full conversation memory.
+    Returns (resolved_query, normalized_q, memory_dict).
+    """
+    mem = build_conversation_memory(history)
+    active_topic = mem.get("active_topic")
+
+    if not active_topic:
+        return query, q, mem
+
+    entity = mem.get("active_entity") or ""
+
+    # 1. Pure follow-up → expand into full topic question
+    if q in _FOLLOWUP_EXACT:
+        covered = mem.get("covered_aspects", [])
+        # Pick an uncovered aspect to go deeper on
+        all_aspects = ["speed", "size", "diet", "habitat", "behavior",
+                       "lifespan", "composition", "date", "inventor", "count"]
+        uncovered = [a for a in all_aspects if a not in covered]
+        if uncovered and mem.get("thread_depth", 0) >= 1:
+            next_aspect = uncovered[0]
+            combined = f"what is the {next_aspect} of {active_topic}" \
+                if not any(w in active_topic.lower() for w in ["what", "how", "why", "when", "who"]) \
+                else f"tell me more about {active_topic}"
+        else:
+            combined = f"tell me more about {active_topic}"
+        return combined, _normalize(combined), mem
+
+    # 2. Follow-up start phrases — inject entity
+    if any(q.startswith(p) for p in _FOLLOWUP_STARTS):
+        if entity and entity not in q:
+            combined = f"{query.strip()} {entity}"
+            return combined, _normalize(combined), mem
+        return query, q, mem
+
+    # 3. Short pronoun-heavy query — replace pronouns with entity
+    words = [w for w in q.split() if w not in _STOP_WORDS]
+    if len(words) <= 4 and _PRONOUN_RE.search(q) and entity:
+        resolved = _PRONOUN_RE.sub(entity, query)
+        return resolved, _normalize(resolved), mem
+
+    # 4. New question on the same entity but different angle — preserve as-is
+    return query, q, mem
+
+
+# ── COMPREHENSIVE RESPONSE BUILDER ───────────────────────────────────────────
+
+def _related_kb_entries(entity: str, exclude_keys: list[str] | None = None) -> list[str]:
+    """Find all KB answers that mention the entity."""
+    exclude_keys = exclude_keys or []
+    results = []
+    ent = entity.lower()
+    for key, answer in GENERAL_KNOWLEDGE.items():
+        if key in exclude_keys:
+            continue
+        if ent in key or ent in answer.lower():
+            results.append(answer)
+    return results[:4]
+
+
+def _build_comprehensive_response(topic: str, entity: str, memory: dict) -> str | None:
+    """
+    For deep follow-ups (thread_depth >= 2), build a rich multi-part response
+    by pulling related KB entries and combining them.
+    """
+    q_topic = _normalize(topic)
+    covered = memory.get("covered_aspects", [])
+
+    # Gather the primary KB hit
+    primary = _kb_fact_lookup(q_topic)
+    if not primary:
+        return None
+
+    # Gather related entries about the same entity
+    related = _related_kb_entries(entity or topic, [])
+    # Filter: skip entries too similar to primary
+    seen_tokens = set(re.findall(r"[a-z]{4,}", primary.lower()))
+    unique_related = []
+    for r in related:
+        r_tokens = set(re.findall(r"[a-z]{4,}", r.lower()))
+        overlap = len(seen_tokens & r_tokens) / max(len(r_tokens), 1)
+        if overlap < 0.6 and r != primary:
+            unique_related.append(r)
+
+    if not unique_related:
+        return None
+
+    # Build a combined comprehensive text
+    sections = [primary] + unique_related[:2]
+    combined = "\n\n".join(sections)
+    return combined
 
 
 # --- MAIN ENTRY POINT ---
@@ -912,8 +1052,19 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     q = _normalize(query)
     if quick_mode:
         return _quick_response(query, q)
-    # Resolve follow-up references ("tell me more", "what about it", pronouns, etc.)
-    query, q = _resolve_context(query, q, history)
+    # Resolve follow-up references using full conversation memory
+    query, q, memory = _resolve_context(query, q, history)
+    thread_depth = memory.get("thread_depth", 0)
+    active_entity = memory.get("active_entity") or ""
+
+    # Deep follow-up: try building a comprehensive multi-KB response
+    if thread_depth >= 2 and active_entity and q not in _FOLLOWUP_EXACT:
+        comp = _build_comprehensive_response(
+            memory.get("active_topic") or query, active_entity, memory
+        )
+        if comp:
+            return forge(comp, query, "knowledge", depth=thread_depth)
+
     if is_update_request(q, history):
         return _dispatch_update(query, history, mode)
     if _score_animals(q) >= 60:
