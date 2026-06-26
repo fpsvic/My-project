@@ -2,70 +2,50 @@ package game;
 
 import java.util.*;
 
-/**
- * Spawns and manages NPCs. NPCs are generated per chunk and cached.
- * Only NPCs near the player are updated each frame.
- */
 public class NPCManager {
 
-    private static final int TILE       = GamePanel.TILE;
-    private static final int CHUNK      = WorldGen.CHUNK_SIZE;
-    private static final double TALK_RADIUS = 40.0;
+    private static final int TILE  = GamePanel.TILE;
+    private static final double TALK_RADIUS = 42.0;
 
-    private final WorldGen world;
-    private final Map<Long, List<NPC>> chunkNPCs = new HashMap<>();
+    private final WorldGen   world;
+    private final List<NPC>  allNPCs = new ArrayList<>();
 
     public NPCManager(WorldGen world) {
         this.world = world;
+        spawnNPCs();
     }
 
-    /** Returns all NPCs whose chunk overlaps the view rectangle (in world pixels). */
-    public List<NPC> getNPCsInView(double camX, double camY, int viewW, int viewH) {
-        int cx0 = (int)Math.floor(camX / (CHUNK * TILE)) - 1;
-        int cy0 = (int)Math.floor(camY / (CHUNK * TILE)) - 1;
-        int cx1 = (int)Math.floor((camX + viewW) / (CHUNK * TILE)) + 1;
-        int cy1 = (int)Math.floor((camY + viewH) / (CHUNK * TILE)) + 1;
+    private void spawnNPCs() {
+        int[][] centres = {{30,25},{120,25},{55,55},{100,55},{78,35},{40,90},{125,85},{78,95}};
+        Random rng = new Random(9999);
+        NPC.Profession[] profs = NPC.Profession.values();
+        for (int[] vc : centres) {
+            int count = 2 + rng.nextInt(4);
+            for (int k = 0; k < count; k++) {
+                int tx = vc[0] + rng.nextInt(10) - 5;
+                int ty = vc[1] + rng.nextInt(10) - 5;
+                if (tx < 1 || ty < 1 || tx >= WorldGen.WORLD_W-1 || ty >= WorldGen.WORLD_H-1) continue;
+                if (!world.get(tx, ty).walkable) continue;
+                NPC.Profession job = profs[rng.nextInt(profs.length)];
+                long seed = Math.abs(rng.nextLong());
+                allNPCs.add(new NPC(tx * TILE + TILE/2.0, ty * TILE + TILE/2.0, job, seed, world));
+            }
+        }
+    }
 
+    public List<NPC> getNPCsInView(double camX, double camY, int w, int h) {
         List<NPC> result = new ArrayList<>();
-        for (int cy = cy0; cy <= cy1; cy++)
-            for (int cx = cx0; cx <= cx1; cx++)
-                result.addAll(getChunkNPCs(cx, cy));
+        for (NPC npc : allNPCs) {
+            if (npc.x > camX - 60 && npc.x < camX + w + 60 &&
+                npc.y > camY - 60 && npc.y < camY + h + 60)
+                result.add(npc);
+        }
         return result;
     }
 
-    public void tryTalk(double playerX, double playerY) {
-        List<NPC> nearby = getNPCsInView(playerX - 80, playerY - 80, 160, 160);
-        for (NPC npc : nearby)
-            if (npc.isNear(playerX, playerY, TALK_RADIUS))
-                npc.startTalk();
+    public void tryTalk(double px, double py) {
+        for (NPC npc : allNPCs)
+            if (npc.isNear(px, py, TALK_RADIUS))
+                npc.startTalk(px, py);
     }
-
-    // ── Chunk NPC generation ──────────────────────────────────────────────────
-
-    private List<NPC> getChunkNPCs(int cx, int cy) {
-        long key = chunkKey(cx, cy);
-        if (!chunkNPCs.containsKey(key))
-            chunkNPCs.put(key, spawnNPCs(cx, cy));
-        return chunkNPCs.get(key);
-    }
-
-    private List<NPC> spawnNPCs(int cx, int cy) {
-        List<NPC> list = new ArrayList<>();
-        Random rng = new Random(chunkKey(cx, cy) ^ 0xDEADBEEFL);
-        int count = rng.nextInt(4); // 0-3 NPCs per chunk
-        for (int i = 0; i < count; i++) {
-            int lx = 2 + rng.nextInt(CHUNK - 4);
-            int ly = 2 + rng.nextInt(CHUNK - 4);
-            int wx = cx * CHUNK + lx;
-            int wy = cy * CHUNK + ly;
-            if (!world.get(wx, wy).walkable) continue;
-            NPC.Profession job = NPC.Profession.values()[rng.nextInt(NPC.Profession.values().length)];
-            long seed = rng.nextLong();
-            NPC npc = new NPC(wx * TILE + TILE / 2.0, wy * TILE + TILE / 2.0, job, Math.abs(seed), world);
-            list.add(npc);
-        }
-        return list;
-    }
-
-    private long chunkKey(int cx, int cy) { return ((long)(cx + 100000)) << 32 | (cy + 100000); }
 }
