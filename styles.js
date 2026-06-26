@@ -86,15 +86,15 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .token-comment { color: #6272A4; font-style: italic; }
 .token-number { color: #FFB86C; }
 .token-type { color: #8BE9FD; }
-.token-fn { color: #F1FA8C; }
-.token-builtin { color: #BD93F9; }
-.token-op { color: #FF5555; }
-.token-punct { color: #6272A4; }
+.token-fn { color: #f1fa8c; }
+.token-builtin { color: #bd93f9; }
+.token-op { color: #ff5555; }
+.token-punct { color: #7f848e; }
 .token-attr { color: #FFB86C; }
 .token-tag { color: #FF79C6; font-weight: bold; }
-.token-property { color: #8BE9FD; }
+.token-property { color: #9cdcfe; }
 .token-value { color: #FFB86C; }
-.token-decorator { color: #BD93F9; font-style: italic; }
+.token-decorator { color: #bd93f9; font-style: italic; }
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.85); display: none; justify-content: center; align-items: center; z-index: 10000; backdrop-filter: blur(6px); }
 .modal-overlay.show { display: flex; }
 .modal-card { background-color: #111413; border: 1px solid #232d2a; border-radius: 12px; width: 360px; padding: 25px; box-shadow: 0 15px 40px rgba(0,0,0,0.8); animation: modalScale 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
