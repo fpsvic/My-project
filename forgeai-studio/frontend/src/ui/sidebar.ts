@@ -19,8 +19,8 @@ function updateWorkspaceUI(): void {
 
   const isChat = state.activeWorkspace === 'chat';
 
-  const activeClass   = 'flex-1 flex items-center justify-center space-x-1.5 py-1.5 rounded-lg text-[11px] font-semibold transition bg-white border border-slate-200 shadow-sm text-slate-800';
-  const inactiveClass = 'flex-1 flex items-center justify-center space-x-1.5 py-1.5 rounded-lg text-[11px] font-medium transition text-slate-400 hover:text-slate-600';
+  const activeClass   = 'flex-1 flex items-center justify-center space-x-1.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all bg-white border border-slate-300 shadow text-slate-800';
+  const inactiveClass = 'flex-1 flex items-center justify-center space-x-1.5 py-1.5 rounded-lg text-[11px] font-medium transition-all border border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-200/60';
 
   if (chatBtn) chatBtn.className = isChat ? activeClass : inactiveClass;
   if (codeBtn) codeBtn.className = isChat ? inactiveClass : activeClass;
