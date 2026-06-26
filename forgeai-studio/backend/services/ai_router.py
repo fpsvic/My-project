@@ -1,18 +1,23 @@
 import re
 from data.knowledge_base import (
-    LANG_HISTORY,
-    LANG_HELLO_WORLD,
     SPACE_KEYWORDS,
     EARTH_KEYWORDS,
     ADVANCED_SCIENCE_KEYWORDS,
     POLITICAL_KEYWORDS,
-    GENERAL_KNOWLEDGE,
-    CODING_HELP,
 )
-try:
-    from data.knowledge_base import LANG_EXAMPLES
-except ImportError:
-    LANG_EXAMPLES = {}
+from data.database import (
+    load_knowledge as _load_knowledge,
+    load_lang_history as _load_lang_history,
+    load_lang_hello_world as _load_lang_hello_world,
+    load_code_examples as _load_code_examples,
+)
+
+# Load DB-backed dicts (cached in memory after first access)
+GENERAL_KNOWLEDGE = _load_knowledge()
+CODING_HELP       = _load_knowledge(categories=["coding"])
+LANG_HISTORY      = _load_lang_history()
+LANG_HELLO_WORLD  = _load_lang_hello_world()
+LANG_EXAMPLES     = _load_code_examples()
 from services.math_engine import generate_math_response
 from services.space_engine import generate_space_response
 from services.earth_engine import generate_earth_response
