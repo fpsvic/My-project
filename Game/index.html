@@ -23,7 +23,6 @@ const ctx=canvas.getContext('2d');
 // 'title' | 'generating' | 'playing' | 'levelcomplete' | 'victory'
 let gameState='title';
 let titleTime=0;
-let genProgress=0;         // 0-1 shown on generation screen
 let worldSeed=0;           // set fresh each new game
 let genFrames=0;           // counts frames during generation
 
@@ -59,9 +58,9 @@ const TWALK=[false,true,true,true,true,false,false,true,true,false,true,true,tru
 let tiles=new Uint8Array(WW*WH);
 // Static world tile cache (viewport-sized offscreen canvas)
 const worldCache=document.createElement('canvas');
-worldCache.width=CW+TILE*2; worldCache.height=CH+TILE*2;
+worldCache.width=CW+TILE*6; worldCache.height=CH+TILE*6;
 const wCtx=worldCache.getContext('2d');
-let wcCamTX=-999, wcCamTY=-999; // last cached camera tile position
+let wcCamTX=-999, wcCamTY=-999; // tile origin the cache was last built for
 let buildings=[];
 let docks=[];
 
@@ -545,7 +544,6 @@ function beginNewGame(mode='endless'){
   adventureLevel=1;
   levelKills=0;
   gameState='generating';
-  genProgress=0;
   genFrames=0;
   worldSeed=Math.random()*99999|0;
 }
@@ -553,7 +551,6 @@ function advanceLevel(){
   adventureLevel++;
   levelKills=0;
   gameState='generating';
-  genProgress=0;
   genFrames=0;
   worldSeed=Math.random()*99999|0;
 }
@@ -871,9 +868,15 @@ function checkLevelUp(){
 
 // ── Update ─────────────────────────────────────────────────────────────────
 let lastTime=0;
+// FPS tracking (smoothed)
+let fps=0, fpsAccum=0, fpsFrames=0, fpsTimer=0;
 function update(ts){
   const dt=Math.min((ts-lastTime)/1000,0.05);
+  const rawDt=(ts-lastTime)/1000;
   lastTime=ts;
+  // smooth the FPS over ~0.25s windows
+  if(rawDt>0){ fpsFrames++; fpsTimer+=rawDt;
+    if(fpsTimer>=0.25){ fps=Math.round(fpsFrames/fpsTimer); fpsFrames=0; fpsTimer=0; } }
 
   if(gameState==='title'){
     titleTime+=dt;
@@ -1399,7 +1402,20 @@ function render(){
   drawMinimap();
   drawVignette();
   drawBigInventory();
+  drawFPS();
   if(gameOver) drawGameOver();
+}
+
+// FPS counter — top-right, just below the minimap (and the adventure kill-bar)
+function drawFPS(){
+  const txt=fps+' FPS';
+  ctx.font='bold 11px monospace';
+  const w=ctx.measureText(txt).width;
+  const y=(gameMode==='adventure')?178:158;
+  const x=CW-10-w;
+  ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(x-5,y-11,w+10,15);
+  ctx.fillStyle=fps>=50?'#66ff66':fps>=30?'#ffdd44':'#ff5555';
+  ctx.textAlign='left'; ctx.fillText(txt,x,y);
 }
 
 function onScreen(wx,wy){
@@ -1410,19 +1426,23 @@ function onScreen(wx,wy){
 function drawWorld(){
   const tx0=Math.floor(camX/TILE), ty0=Math.floor(camY/TILE);
   const tx1=Math.ceil((camX+CW)/TILE)+1, ty1=Math.ceil((camY+CH)/TILE)+1;
-  // rebuild static cache when camera crosses a tile boundary
+  // Static terrain is cached to an offscreen canvas. The cache is drawn in its
+  // own coordinate space (relative to the origin tile), then blitted each frame
+  // at an offset that tracks the smooth camera — so it scrolls per-pixel, not
+  // per-tile. It only rebuilds when the camera crosses into a new tile.
+  const oTX=tx0-1, oTY=ty0-1;          // tile that maps to cache pixel (0,0)
   if(tx0!==wcCamTX||ty0!==wcCamTY){
     wcCamTX=tx0; wcCamTY=ty0;
     wCtx.clearRect(0,0,worldCache.width,worldCache.height);
-    for(let ty=ty0-1;ty<=ty1;ty++)
-      for(let tx=tx0-1;tx<=tx1;tx++){
+    for(let ty=oTY;ty<=ty1;ty++)
+      for(let tx=oTX;tx<=tx1;tx++){
         const t=worldGet(tx,ty);
         if(t!==T.DEEP_WATER&&t!==T.SHALLOW_WATER)
-          drawTile(worldGet(tx,ty),tx,ty,(tx*TILE-camX+TILE)|0,(ty*TILE-camY+TILE)|0,wCtx);
+          drawTile(t,tx,ty,(tx-oTX)*TILE,(ty-oTY)*TILE,wCtx);
       }
   }
-  // blit cache
-  ctx.drawImage(worldCache,-TILE,-TILE);
+  // blit cache, tracking the sub-tile camera position
+  ctx.drawImage(worldCache,(oTX*TILE-camX)|0,(oTY*TILE-camY)|0);
   // animated water on top
   for(let ty=ty0;ty<=ty1;ty++)
     for(let tx=tx0;tx<=tx1;tx++){
@@ -1458,18 +1478,6 @@ function drawTile(t,tx,ty,px,py,c=ctx){const ctx=c;
   }
   ctx.fillStyle=TCOLOR[t]; ctx.fillRect(px,py,TILE,TILE);
 
-  if(t===T.BRIDGE){
-    ctx.fillStyle='#2e8fc0'; ctx.fillRect(px,py,TILE,TILE);
-    const horiz=(worldTerrain(tx-1,ty)===T.BRIDGE||worldTerrain(tx+1,ty)===T.BRIDGE||
-                 worldTerrain(tx-1,ty)===T.PATH||worldTerrain(tx+1,ty)===T.PATH);
-    ctx.fillStyle='#8B6914';
-    if(horiz){ctx.fillRect(px,py+4,TILE,6); ctx.fillRect(px,py+13,TILE,5); ctx.fillRect(px,py+22,TILE,6);}
-    else{ctx.fillRect(px+4,py,6,TILE); ctx.fillRect(px+13,py,5,TILE); ctx.fillRect(px+22,py,6,TILE);}
-    ctx.strokeStyle='#5c3c00'; ctx.lineWidth=2;
-    if(horiz){ctx.beginPath();ctx.moveTo(px,py+2);ctx.lineTo(px+TILE,py+2);ctx.stroke(); ctx.beginPath();ctx.moveTo(px,py+TILE-2);ctx.lineTo(px+TILE,py+TILE-2);ctx.stroke();}
-    else{ctx.beginPath();ctx.moveTo(px+2,py);ctx.lineTo(px+2,py+TILE);ctx.stroke(); ctx.beginPath();ctx.moveTo(px+TILE-2,py);ctx.lineTo(px+TILE-2,py+TILE);ctx.stroke();}
-    return;
-  }
   if(t===T.DOCK){
     ctx.fillStyle='#2e8fc0'; ctx.fillRect(px,py,TILE,TILE);
     ctx.fillStyle='#7a5a20'; ctx.fillRect(px+1,py+1,TILE-2,TILE-2);
