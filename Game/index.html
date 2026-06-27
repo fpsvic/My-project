@@ -63,6 +63,7 @@ const wCtx=worldCache.getContext('2d');
 let wcCamTX=-999, wcCamTY=-999; // tile origin the cache was last built for
 let buildings=[];
 let docks=[];
+let chests=[];      // treasure chests inside houses; each drops 2 items when opened
 
 // Village centres — randomised per seed (8 centres spread across map)
 let CENTRES=[];
@@ -158,6 +159,17 @@ function canPlace(bx,by,bw,bh){
   return true;
 }
 const BTYPE=['Inn','Shop','Blacksmith','Chapel','Cottage'];
+// place a treasure chest on an interior floor tile of a house (loaded with 2 items)
+function addChestToHouse(b,rnd){
+  // interior floor cells are the non-edge tiles
+  const fx=1+rnd(b.w-2), fy=1+rnd(b.h-2);
+  if(b.interior[fy][fx]!==T.FLOOR)return;
+  const contents=[
+    SPAWN_ITEM_KINDS[rnd(SPAWN_ITEM_KINDS.length)],
+    SPAWN_ITEM_KINDS[rnd(SPAWN_ITEM_KINDS.length)],
+  ];
+  chests.push({x:(b.x+fx)*TILE+TILE/2, y:(b.y+fy)*TILE+TILE/2, opened:false, contents});
+}
 // flatten the ground under and around a house footprint to clean grass
 function flattenGround(bx,by,bw,bh){
   for(let dy=-2;dy<bh+2;dy++)
@@ -198,6 +210,7 @@ function placeBuildings(seed){
         if(ty<WH-1){const t=tiles[ty*WW+dpx]; if(TWALK[t]&&t!==T.SHALLOW_WATER&&t!==T.DEEP_WATER)tiles[ty*WW+dpx]=T.PATH;}
       }
       buildings.push(b);
+      addChestToHouse(b,rnd);
       made++;
     }
   }
@@ -221,6 +234,7 @@ function placeBuildings(seed){
         const dpx=gx+doorCol, dpy=gy+h;
         if(dpy<WH-1){const t=tiles[dpy*WW+dpx]; if(TWALK[t]&&t!==T.SHALLOW_WATER&&t!==T.DEEP_WATER)tiles[dpy*WW+dpx]=T.PATH;}
         buildings.push(b);
+        addChestToHouse(b,rnd);
       }
     }
   }
@@ -422,11 +436,13 @@ const ITEM_DEF={
   Ring:       {cat:'ARMOUR', def:2, atk:5, color:'#ffdd44', icon:'💍'},
   // ── Ally healing orb — equip it, then press E near an ally to heal them ─────
   HealOrb:    {cat:'ALLYHEAL', heal:30, color:'#55ffcc', icon:'🔮'},
+  // ── Mythic flame sword — always Mythic; each swing shoots 4 fire winds ──────
+  FlameSword: {cat:'MELEE', atk:6, color:'#ff6622', icon:'🔥', flame:true, alwaysMythic:true},
 };
 const ITEM_KINDS=Object.keys(ITEM_DEF);
-// item kinds that can spawn on the ground (exclude HealOrb from generic random
-// rolls so it stays special, then add it back at a low rate separately)
-const SPAWN_ITEM_KINDS=ITEM_KINDS.filter(k=>k!=='HealOrb');
+// item kinds that can spawn on the ground (exclude special drops from generic
+// random rolls so they stay rare, then add them back at low rates separately)
+const SPAWN_ITEM_KINDS=ITEM_KINDS.filter(k=>k!=='HealOrb'&&k!=='FlameSword');
 
 // ── Procedural NPC dialogue ────────────────────────────────────────────────
 const WB={
@@ -479,8 +495,8 @@ function rollRarity(){
   return RARITIES[0];
 }
 function makeItem(kind,x,y,bob){
-  const rar=rollRarity();
   const base=ITEM_DEF[kind];
+  const rar=base.alwaysMythic?RARITIES[RARITIES.length-1]:rollRarity();
   return {
     kind,x,y,collected:false,
     bob:bob!==undefined?bob:Math.random()*6.28,
@@ -577,6 +593,7 @@ function onKey(code){
   if(code==='KeyI'||code==='Tab'){player.showInventory=!player.showInventory; return;}
   if(code==='KeyF')playerAttack();
   if(code==='KeyE'){
+    if(tryOpenChest())return;       // open a nearby house chest
     if(tryHealAlly())return;        // holding a heal orb near a hurt ally
     if(!tryPickupNearby())talkNearby();
     return;
@@ -605,12 +622,14 @@ function advanceLevel(){
 function doGenerate(){
   // reset world data
   tiles=new Uint8Array(WW*WH);
-  buildings=[]; docks=[];
+  buildings=[]; docks=[]; chests=[];
   enemies=[]; npcs=[]; items=[]; projs=[]; floats=[]; particles=[];
 
   CENTRES=makeCentres(worldSeed);
   generateWorld(worldSeed);
   placeBuildings(worldSeed);
+  // guarantee the mythic flame sword waits in one random chest each world
+  if(chests.length) chests[(Math.random()*chests.length)|0].contents[0]='FlameSword';
   carveRoads();
   placeDocks(worldSeed);
   buildMinimap();
@@ -814,6 +833,23 @@ function talkNearby(){
     }
   }
 }
+// Open a nearby unopened chest, spilling its 2 items onto the floor.
+function tryOpenChest(){
+  const R=(1.8*TILE)**2;
+  for(const ch of chests){
+    if(ch.opened)continue;
+    const dx=ch.x-player.x, dy=ch.y-player.y;
+    if(dx*dx+dy*dy>R)continue;
+    ch.opened=true;
+    ch.contents.forEach((kind,i)=>{
+      const ang=(i/ch.contents.length)*Math.PI*2;
+      items.push(makeItem(kind, ch.x+Math.cos(ang)*18, ch.y+Math.sin(ang)*18));
+    });
+    floats.push({text:'Chest opened!',x:ch.x,y:ch.y-26,color:'#ffdd55',life:1.4});
+    return true;
+  }
+  return false;
+}
 // If the equipped item is a heal orb and a hurt ally is nearby, heal them and
 // consume the orb. Returns true if it did something.
 function tryHealAlly(){
@@ -901,6 +937,13 @@ function playerAttack(){
     const [vx,vy]=dirs[player.dir];
     const spd=item.kind==='Crossbow'?420:300;
     projs.push({x:player.x,y:player.y,vx:vx*spd,vy:vy*spd,fromPlayer:true,damage:atkDmg,life:1.8,dead:false});
+  } else if(idef&&idef.flame){
+    // flame sword: damage comes from 4 fire winds shot out in all directions.
+    // Each wind is tuned so a basic slime (30 HP) takes two hits to kill.
+    const fireDmg=Math.round(atkDmg*0.55);
+    const dirs=[[0,-1],[0,1],[-1,0],[1,0]];
+    for(const [vx,vy] of dirs)
+      projs.push({x:player.x,y:player.y,vx:vx*340,vy:vy*340,fromPlayer:true,damage:fireDmg,life:1.2,dead:false,fire:true});
   } else {
     const range=(idef&&idef.range?idef.range:2.2)*TILE;
     for(const e of enemies){
@@ -1551,6 +1594,29 @@ function drawWorld(){
       ctx.fillStyle='#4a7a4a'; ctx.fillRect(sx-p.r*0.6,sy-p.r*0.4,p.r*1.2,3);
     }
   }
+  // treasure chests inside houses
+  for(const ch of chests){
+    const sx=ch.x-camX, sy=ch.y-camY;
+    if(sx<-40||sx>CW+40||sy<-40||sy>CH+40)continue;
+    ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(sx,sy+8,11,4,0,0,Math.PI*2); ctx.fill();
+    if(ch.opened){
+      ctx.fillStyle='#6b4a25'; ctx.fillRect(sx-10,sy-2,20,10);
+      ctx.fillStyle='#3a2812'; ctx.fillRect(sx-10,sy-12,20,5);   // open lid
+      ctx.fillStyle='#241a0c'; ctx.fillRect(sx-8,sy,16,6);       // empty inside
+    } else {
+      ctx.fillStyle='#7a5326'; ctx.fillRect(sx-10,sy-4,20,12);
+      ctx.fillStyle='#5a3c18'; ctx.fillRect(sx-10,sy-10,20,7);   // closed lid
+      ctx.fillStyle='#d8b24a'; ctx.fillRect(sx-1,sy-8,3,12);     // gold latch
+      ctx.fillStyle='#ffe680'; ctx.fillRect(sx-1,sy-3,3,3);
+      // prompt if player is near
+      const dx=ch.x-player.x, dy=ch.y-player.y;
+      if(dx*dx+dy*dy<(1.8*TILE)**2){
+        ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(sx-13,sy-26,26,13);
+        ctx.fillStyle='#ffff88'; ctx.font='bold 10px monospace'; ctx.textAlign='center'; ctx.fillText('[E]',sx,sy-16);
+      }
+    }
+    ctx.textAlign='left';
+  }
   for(const b of buildings){
     const bsx=(b.x+b.w/2)*TILE-camX, bsy=(b.y-1)*TILE-camY;
     if(bsx<-60||bsx>CW+60||bsy<-20||bsy>CH+20)continue;
@@ -2006,10 +2072,21 @@ function drawItems(){
 function drawProjectiles(){
   for(const p of projs){
     if(p.dead)continue;
-    ctx.fillStyle=p.fromPlayer?'#ffff44':'#ff4444';
-    ctx.shadowColor=ctx.fillStyle; ctx.shadowBlur=8;
-    ctx.beginPath();ctx.arc(p.x-camX|0,p.y-camY|0,4,0,Math.PI*2);ctx.fill();
-    ctx.shadowBlur=0;
+    const x=p.x-camX|0, y=p.y-camY|0;
+    if(p.fire){
+      // flickering fireball — orange core with a yellow centre
+      const flick=2+Math.sin(waterTime*30+p.x)*1.2;
+      ctx.shadowColor='#ff7711'; ctx.shadowBlur=14;
+      ctx.fillStyle='#ff5511'; ctx.beginPath();ctx.arc(x,y,6+flick,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#ffbb33'; ctx.beginPath();ctx.arc(x,y,3.5,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#ffffcc'; ctx.beginPath();ctx.arc(x,y,1.6,0,Math.PI*2);ctx.fill();
+      ctx.shadowBlur=0;
+    } else {
+      ctx.fillStyle=p.fromPlayer?'#ffff44':'#ff4444';
+      ctx.shadowColor=ctx.fillStyle; ctx.shadowBlur=8;
+      ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);ctx.fill();
+      ctx.shadowBlur=0;
+    }
   }
 }
 
