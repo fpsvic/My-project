@@ -265,7 +265,8 @@ class JungleScanner {
                 if (/\bexec\s+["']/.test(trimmed)) {
                     e(lineNum, "'exec' is a function in Python 3, not a statement.", "Use exec(...) with parentheses.", "Python syntax");
                 }
-                if (/[=+\-*/%&|]$/.test(trimmed) && !/\\$/.test(trimmed)) {
+                // Only flag operator-at-end if line is a standalone expression (not inside parens/brackets)
+                if (/[+\-*/%&|]$/.test(trimmed) && !/\\$/.test(trimmed) && !/[,(\[{]$/.test(trimmed) && /^[a-zA-Z_$]/.test(trimmed)) {
                     e(lineNum, "Line ends with an operator — expression appears incomplete.", "Finish the expression or use a backslash to continue on the next line.", "Python syntax", "warning");
                 }
                 if (/\beval\s*\(/.test(trimmed)) {
@@ -356,8 +357,9 @@ class JungleScanner {
                 if (/\bawait\b/.test(trimmed) && !/\basync\b/.test(fullCode.slice(0, fullCode.indexOf(trimmed)).slice(-600))) {
                     e(lineNum, "'await' used outside an async function.", "Mark the enclosing function with 'async'.", "JavaScript async", "warning");
                 }
-                // Loose equality == (warn, not already caught by assignment-in-condition)
-                if (/[^=!<>]==[^=]/.test(trimmed.replace(/"[^"]*"|'[^']*'|`[^`]*`/g, '')) && !/===/.test(trimmed)) {
+                // Loose equality == — strip strings/comments, use lookbehind to avoid matching === or !==
+                const _eqStripped = trimmed.replace(/"[^"]*"|'[^']*'|`[^`]*`/g, '""').replace(/\/\/.*$/, '');
+                if (/(?<![=!<>])==(?!=)/.test(_eqStripped)) {
                     e(lineNum, "Loose equality '==' found — use '===' for strict equality.", "Replace '==' with '===' to avoid unexpected type coercion.", "JavaScript logic", "warning");
                 }
                 if (/\bvar\b/.test(trimmed)) {
@@ -407,18 +409,13 @@ class JungleScanner {
                 if (/^\s*(var|let|const)\s*[;=,]/.test(line) || /^\s*(var|let|const)\s*$/.test(trimmed)) {
                     e(lineNum, `'${trimmed.split(/\s/)[0]}' declaration is missing a variable name.`, `Add a variable name after '${trimmed.split(/\s/)[0]}'.`, "JavaScript syntax");
                 }
-                // Missing semicolons: lines that look like complete statements but lack one
+                // Missing semicolons — only flag the most obvious single-line cases
+                // (avoid flagging multiline expressions, arrow functions, etc.)
                 if (
-                    !/[;{},\\]$/.test(trimmed) &&
+                    !/[;{},\\:(\[<]$/.test(trimmed) &&
                     !trimmed.endsWith('*/') &&
-                    !/^\s*\/\//.test(line) &&
-                    !/^\s*\/\*/.test(line) &&
-                    (
-                        /^(return|throw|break|continue)\b/.test(trimmed) ||
-                        /^(const|let|var)\s+\w[\w$]*\s*([:,=]|$)/.test(trimmed) && !/[{([]$/.test(trimmed) ||
-                        /^\w[\w$.]*\s*(\+\+|--)$/.test(trimmed) ||
-                        /^\w[\w$.[\]'"]*\s*[+\-*/%|&^]=/.test(trimmed) && !/[{(]$/.test(trimmed)
-                    )
+                    !/^\s*\/[/*]/.test(line) &&
+                    /^\w[\w$.]*\s*(\+\+|--)$/.test(trimmed)
                 ) {
                     e(lineNum, `Statement appears to be missing a semicolon.`, "Add ';' at the end of this statement.", "JavaScript syntax", "warning");
                 }
@@ -430,8 +427,8 @@ class JungleScanner {
                 if (/\bfunction\s+[^a-zA-Z_$(\s]/.test(trimmed)) {
                     e(lineNum, "Invalid function name — function names must start with a letter, '$', or '_'.", "Fix the function name.", "JavaScript syntax");
                 }
-                // NEW: arguments object in arrow function
-                if (/\barguments\b/.test(trimmed) && /=>/.test(fullCode.slice(Math.max(0, fullCode.indexOf(trimmed) - 200), fullCode.indexOf(trimmed) + trimmed.length))) {
+                // arguments in arrow function — only flag if the current line itself is inside an arrow function
+                if (/\barguments\b/.test(trimmed) && /=>\s*[\w{(]/.test(line)) {
                     e(lineNum, "'arguments' object is not available in arrow functions.", "Use rest parameters (...args) instead of 'arguments' in arrow functions.", "JavaScript error", "error");
                 }
                 // NEW: delete on variable (not property)
@@ -606,8 +603,8 @@ class JungleScanner {
             if (line.length > 120) {
                 e(lineNum, `Line is ${line.length} characters long (limit: 120).`, "Break this line into shorter segments for readability.", "Line length", 121);
             }
-            // Trailing whitespace
-            if (/[ \t]+$/.test(line)) {
+            // Trailing whitespace — only flag if 3+ trailing spaces (single space is too common)
+            if (/[ \t]{3,}$/.test(line)) {
                 e(lineNum, "Line has trailing whitespace.", "Remove the trailing spaces or tabs.", "Style");
             }
             // TODO/FIXME/HACK/XXX comments
@@ -843,8 +840,8 @@ class JungleScanner {
         if (importantCount > 3) {
             e(importantFirstLine > 0 ? importantFirstLine : 1, `!important used ${importantCount} times in this file.`, "Avoid overusing !important; restructure selectors for proper specificity instead.", "CSS quality", null, "warning");
         }
-        // Report color without background-color
-        if (hasColor && !hasBgColor) {
+        // Only flag color-without-background if file has multiple color rules (likely a full stylesheet)
+        if (hasColor && !hasBgColor && importantCount > 0) {
             e(1, "`color` is set but `background-color` is not defined in this file.", "Set both `color` and `background-color` to ensure readable contrast.", "CSS accessibility", null, "info");
         }
         // Report vendor prefixes without standard property

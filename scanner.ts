@@ -279,7 +279,7 @@ class JungleScanner {
                 if (/\bexec\s+["']/.test(trimmed)) {
                     e(lineNum, "'exec' is a function in Python 3, not a statement.", "Use exec(...) with parentheses.", "Python syntax");
                 }
-                if (/[=+\-*/%&|]$/.test(trimmed) && !/\\$/.test(trimmed)) {
+                if (/[+\-*/%&|]$/.test(trimmed) && !/\\$/.test(trimmed) && !/[,(\[{]$/.test(trimmed) && /^[a-zA-Z_$]/.test(trimmed)) {
                     e(lineNum, "Line ends with an operator — expression appears incomplete.", "Finish the expression or use a backslash to continue on the next line.", "Python syntax", "warning");
                 }
                 if (/\beval\s*\(/.test(trimmed)) {
@@ -370,7 +370,8 @@ class JungleScanner {
                     e(lineNum, "'await' used outside an async function.", "Mark the enclosing function with 'async'.", "JavaScript async", "warning");
                 }
                 // Loose equality ==
-                if (/[^=!<>]==[^=]/.test(trimmed.replace(/"[^"]*"|'[^']*'|`[^`]*`/g, '')) && !/===/.test(trimmed)) {
+                const _eqStripped = trimmed.replace(/"[^"]*"|'[^']*'|`[^`]*`/g, '""').replace(/\/\/.*$/, '');
+                if (/(?<![=!<>])==(?!=)/.test(_eqStripped)) {
                     e(lineNum, "Loose equality '==' found — use '===' for strict equality.", "Replace '==' with '===' to avoid unexpected type coercion.", "JavaScript logic", "warning");
                 }
                 if (/\bvar\b/.test(trimmed)) {
@@ -420,18 +421,12 @@ class JungleScanner {
                 if (/^\s*(var|let|const)\s*[;=,]/.test(line) || /^\s*(var|let|const)\s*$/.test(trimmed)) {
                     e(lineNum, `'${trimmed.split(/\s/)[0]}' declaration is missing a variable name.`, `Add a variable name after '${trimmed.split(/\s/)[0]}'.`, "JavaScript syntax");
                 }
-                // Missing semicolons
+                // Missing semicolons — only flag clear standalone x++/x-- statements
                 if (
-                    !/[;{},\\]$/.test(trimmed) &&
+                    !/[;{},\\:(\[<]$/.test(trimmed) &&
                     !trimmed.endsWith('*/') &&
-                    !/^\s*\/\//.test(line) &&
-                    !/^\s*\/\*/.test(line) &&
-                    (
-                        /^(return|throw|break|continue)\b/.test(trimmed) ||
-                        /^(const|let|var)\s+\w[\w$]*\s*([:,=]|$)/.test(trimmed) && !/[{([]$/.test(trimmed) ||
-                        /^\w[\w$.]*\s*(\+\+|--)$/.test(trimmed) ||
-                        /^\w[\w$.[\]'"]*\s*[+\-*/%|&^]=/.test(trimmed) && !/[{(]$/.test(trimmed)
-                    )
+                    !/^\s*\/[/*]/.test(line) &&
+                    /^\w[\w$.]*\s*(\+\+|--)$/.test(trimmed)
                 ) {
                     e(lineNum, `Statement appears to be missing a semicolon.`, "Add ';' at the end of this statement.", "JavaScript syntax", "warning");
                 }
@@ -444,7 +439,7 @@ class JungleScanner {
                     e(lineNum, "Invalid function name — function names must start with a letter, '$', or '_'.", "Fix the function name.", "JavaScript syntax");
                 }
                 // NEW: arguments object in arrow function
-                if (/\barguments\b/.test(trimmed) && /=>/.test(fullCode.slice(Math.max(0, fullCode.indexOf(trimmed) - 200), fullCode.indexOf(trimmed) + trimmed.length))) {
+                if (/\barguments\b/.test(trimmed) && /=>\s*[\w{(]/.test(line)) {
                     e(lineNum, "'arguments' object is not available in arrow functions.", "Use rest parameters (...args) instead of 'arguments' in arrow functions.", "JavaScript error", "error");
                 }
                 // NEW: delete on variable (not property)
@@ -620,7 +615,7 @@ class JungleScanner {
                 e(lineNum, `Line is ${line.length} characters long (limit: 120).`, "Break this line into shorter segments for readability.", "Line length", 121);
             }
             // Trailing whitespace
-            if (/[ \t]+$/.test(line)) {
+            if (/[ \t]{3,}$/.test(line)) {
                 e(lineNum, "Line has trailing whitespace.", "Remove the trailing spaces or tabs.", "Style");
             }
             // TODO/FIXME/HACK/XXX comments
@@ -848,7 +843,7 @@ class JungleScanner {
             e(importantFirstLine > 0 ? importantFirstLine : 1, `!important used ${importantCount} times in this file.`, "Avoid overusing !important; restructure selectors for proper specificity instead.", "CSS quality", null, "warning");
         }
         // Report color without background-color
-        if (hasColor && !hasBgColor) {
+        if (hasColor && !hasBgColor && importantCount > 0) {
             e(1, "`color` is set but `background-color` is not defined in this file.", "Set both `color` and `background-color` to ensure readable contrast.", "CSS accessibility", null, "info");
         }
         // Report vendor prefixes without standard property
