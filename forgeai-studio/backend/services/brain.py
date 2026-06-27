@@ -2688,7 +2688,7 @@ def _detect_aspect(q: str) -> str | None:
         if re.search(pattern, q):
             return aspect
     for aspect, keywords in _ASPECT_KEYWORDS.items():
-        if any(k in q for k in keywords):
+        if any(re.search(rf"(?<![a-z0-9]){re.escape(k)}(?![a-z0-9])", q) for k in keywords):
             return aspect
     return None
 
@@ -3678,24 +3678,23 @@ class ThinkingTrace:
         q_short = self.query[:90] + ("…" if len(self.query) > 90 else "")
         conf_label = _confidence_label(self.confidence)
         if compact:
-            obs = random.choice(self.observations) if self.observations else ""
-            step = random.choice(self.steps) if self.steps else ""
+            step = self.strategy or (self.steps[-1] if self.steps else "")
             lines = [
-                "### Thinking",
-                f"- **Read:** {self.interpreted}",
-                f"- **Plan:** {self.source_plan} ({conf_label})",
+                "### Reasoning",
+                f"- **Understanding:** {self.interpreted}",
+                f"- **Best route:** {_human_source_label(self.source_plan)} ({conf_label})",
             ]
+            if self.intent_guess:
+                lines.append(f"- **Likely intent:** {self.intent_guess.replace('_', ' ')}")
             if step:
-                lines.append(f"- **Next:** {step}")
-            if obs:
-                lines.append(f"- *{obs}*")
+                lines.append(f"- **Answer plan:** {_polish_reasoning_step(step)}")
             return "\n".join(lines)
 
         lines = [
-            "### Thinking Process",
-            f"- **Original question:** \"{q_short}\"",
-            f"- **How I read it:** {self.interpreted}",
-            f"- **Question type:** {self.question_type} · **Complexity:** {self.complexity}",
+            "### Reasoning Process",
+            f"- **Question:** \"{q_short}\"",
+            f"- **Understanding:** {self.interpreted}",
+            f"- **Type:** {self.question_type} · **Difficulty:** {self.complexity}",
         ]
         if self.entity:
             lines.append(f"- **Subject / entity:** {self.entity}")
@@ -3704,17 +3703,17 @@ class ThinkingTrace:
         if self.memory_notes:
             lines.append(f"- **Conversation context:** {'; '.join(self.memory_notes[:3])}")
         lines += [
-            f"- **Information source:** {self.source_plan}",
+            f"- **Best source:** {_human_source_label(self.source_plan)}",
             f"- **Confidence:** {conf_label} ({self.confidence}%)",
             f"- **Answer strategy:** {self.strategy}",
-            "- **Reasoning steps:**",
+            "- **Plan:**",
         ]
         for i, step in enumerate(self.steps, 1):
-            lines.append(f"  {i}. {step}")
+            lines.append(f"  {i}. {_polish_reasoning_step(step)}")
         if self.observations:
-            lines.append("- **Internal notes:**")
+            lines.append("- **Quality checks:**")
             for obs in self.observations[:4]:
-                lines.append(f"  - *{obs}*")
+                lines.append(f"  - {_polish_reasoning_step(obs)}")
         return "\n".join(lines)
 
 
@@ -3737,63 +3736,63 @@ _QUESTION_TYPE_PATTERNS: list[tuple[str, str]] = [
 
 _THINKING_OBSERVATIONS: dict[str, list[str]] = {
     "specific": [
-        "The user wants a precise fact, not a lecture — lead with the answer.",
-        "This is a narrow question; I should avoid unrelated tangents.",
-        "A single strong sentence may be enough if the fact is clear.",
-        "I'll extract the exact figure or date before elaborating.",
+        "Lead with the exact answer before adding context.",
+        "Keep the response narrow and avoid unrelated tangents.",
+        "Use a short support line only if it helps the fact make sense.",
+        "Check numbers, dates, and units before stating them.",
     ],
     "broad": [
-        "This is open-ended — I should cover several angles without overwhelming.",
-        "A layered answer works better than a single fact dump here.",
-        "I'll prioritize the most surprising or useful facts first.",
-        "The user likely wants breadth; I'll weave connections between facts.",
+        "Cover several angles without overwhelming the answer.",
+        "Use a layered structure instead of a fact dump.",
+        "Prioritize the most useful facts first.",
+        "Connect related facts so the answer feels coherent.",
     ],
     "followup": [
-        "This continues an earlier thread — I must stay on the same subject.",
-        "Context from prior messages should shape what I emphasize next.",
-        "I should not re-introduce basics already covered in this conversation.",
-        "Picking an uncovered aspect will feel more helpful than repeating.",
+        "Stay anchored to the earlier thread.",
+        "Use prior messages to decide what to emphasize next.",
+        "Avoid repeating basics already covered.",
+        "Prefer a new angle over restating the same information.",
     ],
     "build": [
-        "This is a creation request — templates and synthesis both need consideration.",
-        "I should parse features, genre, and complexity before generating files.",
-        "The output must be runnable in-browser with clean file separation.",
-        "If the request is unusual, a quick web lookup may improve the build.",
+        "Parse requested features before generating files.",
+        "Choose the best project type and language path.",
+        "Return a clean file tree with useful entry points.",
+        "Use research only when it improves an unusual build.",
     ],
     "math": [
-        "Symbolic math needs step-by-step working, not just a final number.",
-        "I'll check for calculus, trig, or algebra patterns before solving.",
-        "Showing the method matters as much as the result here.",
+        "Show the method, not just the final result.",
+        "Identify calculus, trig, algebra, or unit-conversion patterns first.",
+        "Keep each step checkable.",
     ],
     "unknown": [
-        "This may not be in the local knowledge base — I'll plan a fallback path.",
-        "Low confidence locally — web search is a reasonable backup.",
-        "I should be honest if coverage is thin rather than inventing details.",
+        "Use a fallback source if local coverage is thin.",
+        "Be clear when confidence is limited.",
+        "Avoid inventing details beyond the available evidence.",
     ],
 }
 
 _THINKING_STEP_POOL: dict[str, list[str]] = {
     "parse": [
-        "Parse the question literally — identify subject, aspect, and desired answer shape",
-        "Strip filler words and isolate the core information need",
-        "Determine whether this is specific, broad, or a follow-up",
-        "Read the question as a human would — what are they really trying to learn?",
+        "Identify the subject, the requested aspect, and the best answer shape",
+        "Remove filler words and isolate the core request",
+        "Decide whether the user wants a fact, overview, follow-up, or build",
+        "Read the question for what the user is trying to accomplish",
     ],
     "context": [
-        "Scan the full conversation for topic continuity and unresolved references",
-        "Check if pronouns like \"it\" or \"they\" refer to an earlier subject",
-        "Note which aspects were already discussed so I don't repeat myself",
-        "Anchor follow-ups to the active thread entity from memory",
+        "Check the conversation for topic continuity and unresolved references",
+        "Resolve pronouns like \"it\" or \"they\" from earlier messages",
+        "Notice what was already covered to avoid repetition",
+        "Anchor follow-ups to the active topic from the conversation",
     ],
     "source": [
-        "Search the knowledge base for the longest matching key",
-        "Route to the specialised engine (space, earth, science, history, animals)",
-        "Evaluate whether local data is sufficient or web lookup is needed",
-        "Pick compile vs synthesize path for build requests",
+        "Find the strongest matching knowledge entry",
+        "Route to the correct domain or coding generator",
+        "Check whether local data is enough or a fallback is needed",
+        "Choose the best build path for creation requests",
     ],
     "compose": [
         "Lead with a direct answer, then add supporting context",
-        "Vary sentence structure so the reply feels natural, not canned",
+        "Use natural wording and avoid canned phrasing",
         "Select 2–4 fact atoms that best match the question focus",
         "Tie the conclusion back to the exact wording of the question",
     ],
@@ -3844,6 +3843,9 @@ def _analyze_literal_meaning(query: str, q: str, comprehend: dict) -> str:
     aspect = comprehend.get("aspect") or _detect_aspect(q)
     entity = comprehend.get("entity") or _extract_entity(query) or "the topic"
     qtype = _classify_question_type(q)
+    lang = detect_power_language(q)
+    if lang and score_programming(q) >= 60 and not any(w in q for w in ("project", "app", "game", "website")):
+        return f"The user wants a **{lang.title() if lang != 'r' else 'R'} code example** for: \"{query[:70]}\"."
     if aspect:
         aspect_labels = {
             "speed": f"a question about how fast **{entity}** is",
@@ -3900,9 +3902,9 @@ def _plan_information_source(
     """Return (source_description, confidence 0-100)."""
     entity = comprehend.get("entity") or memory.get("active_entity") or ""
     if comprehend.get("is_build") or _has_build_verb(q):
-        return "code generator — compile / synthesize project files", 85
+        return "code generator — build the requested files", 85
     if _score_math(q) >= 50:
-        return "math engine — symbolic computation", 90
+        return "math solver — symbolic computation", 90
     kb = _kb_fact_lookup(q, entity=entity)
     if kb:
         return "local knowledge base — direct key match", 88
@@ -3919,12 +3921,12 @@ def _plan_information_source(
     top_score = engine_scores[top_engine]
     if top_score >= 55:
         labels = {
-            "space": "space engine — astronomy facts",
-            "earth": "earth engine — geology / geography",
-            "science": "science engine — physics / chemistry / biology",
-            "history": "history engine — events and people",
-            "animals": "animals engine — species facts",
-            "programming": "programming KB — languages and patterns",
+            "space": "domain database — astronomy facts",
+            "earth": "domain database — geology / geography",
+            "science": "domain database — physics / chemistry / biology",
+            "history": "domain database — events and people",
+            "animals": "animal knowledge database — species facts",
+            "programming": "coding generator — languages and patterns",
         }
         return labels[top_engine], min(95, top_score + 10)
     if _score_knowledge(q) >= 40:
@@ -3937,31 +3939,31 @@ def _plan_information_source(
 def _plan_answer_strategy(comprehend: dict, complexity: str, source: str) -> str:
     if comprehend.get("is_build"):
         options = [
-            "Parse build spec → route to game or app compiler → split HTML into files",
-            "Detect genre and features → compile template or synthesize custom logic",
-            "Enrich query with detected theme/features → generate multi-file project",
+            "Parse the requested features → choose the right generator → return clean project files",
+            "Detect project type, language, and complexity → build the strongest matching output",
+            "Turn the request into a file plan → generate source, docs, and runnable entry points",
         ]
         return random.choice(options)
     if comprehend.get("is_specific"):
         options = [
-            "Extract exact fact → NLG rewrite → varied natural phrasing",
-            "Pull best-matching sentence → lead with answer → optional context line",
-            "Aspect-targeted extraction → bold lead fact → brief supporting detail",
+            "Find the exact fact → answer directly → add one useful support line",
+            "Pull the best-matching detail → lead with it → keep the rest concise",
+            "Target the requested aspect → give the fact first → add brief context",
         ]
         return random.choice(options)
     if comprehend.get("is_broad") or complexity == "high":
         options = [
-            "Multi-atom NLG compose → structural variation → key takeaway",
-            "Pull related KB entries → comprehensive thread-aware response",
-            "Layer facts from general to specific → varied connectors and closer",
+            "Select the strongest related facts → organize them into a clear overview",
+            "Build a layered answer from basics to deeper context",
+            "Group related facts → explain connections → finish with a takeaway",
         ]
         return random.choice(options)
     if "web lookup" in source:
-        return "Search web → summarize snippets → forge into readable answer"
+        return "Search the web → summarize the best available context → answer clearly"
     return random.choice([
-        "Knowledge lookup → forge pipeline → varied structure",
-        "Engine dispatch → fact extraction → natural language generation",
-        "Score intents → best engine → compose with thread context",
+        "Look up the best local match → rewrite it in natural language",
+        "Route to the best domain → extract the important facts → compose clearly",
+        "Compare likely intents → pick the best source → answer with context",
     ])
 
 
@@ -3973,6 +3975,51 @@ def _confidence_label(score: int) -> str:
     if score >= 45:
         return "low"
     return "very low"
+
+
+def _human_source_label(source: str) -> str:
+    """Convert implementation-y source labels into user-facing language."""
+    labels = {
+        "code generator": "code/project generator",
+        "compile / synthesize project files": "build the requested files",
+        "math engine": "math solver",
+        "symbolic computation": "step-by-step math solving",
+        "local knowledge base": "knowledge database",
+        "domain database": "domain database",
+        "space engine": "space database",
+        "earth engine": "earth science database",
+        "science engine": "science database",
+        "history engine": "history database",
+        "animals engine": "animal knowledge database",
+        "programming KB": "coding knowledge and generators",
+        "web lookup": "web lookup fallback",
+    }
+    friendly = source
+    for raw, nice in labels.items():
+        friendly = friendly.replace(raw, nice)
+    return friendly.replace("—", "-")
+
+
+def _polish_reasoning_step(step: str) -> str:
+    """Make visible reasoning sound intentional instead of implementation-heavy."""
+    replacements = {
+        "NLG": "answer-writing",
+        "KB": "knowledge database",
+        "atom": "fact",
+        "atoms": "facts",
+        "compile vs synthesize": "best build path",
+        "HTML/CSS/JS split": "file structure",
+        "templates and synthesis": "available builders",
+        "Engine dispatch": "Route to the best domain",
+        "Score intents": "Compare likely intents",
+    }
+    out = step.strip()
+    for raw, nice in replacements.items():
+        out = out.replace(raw, nice)
+    out = re.sub(r"\s+", " ", out)
+    if out:
+        out = out[0].upper() + out[1:]
+    return out
 
 
 def _pick_thinking_observations(
@@ -4060,8 +4107,45 @@ def _should_attach_thinking(mode: str) -> bool:
     return mode in ("forge_thinking", "forge_code")
 
 
+def _polish_final_answer_text(text: str) -> str:
+    """Final public-message cleanup without changing facts or code."""
+    if not text:
+        return text
+
+    # Do not rewrite fenced-code responses; they are usually code snippets or generated files.
+    if "```" in text:
+        return re.sub(r"\n{4,}", "\n\n\n", text).strip()
+
+    replacements = {
+        "Based on my internal offline cosmological database, I have processed your inquiry regarding": "Here's the clearest overview I can give for",
+        "Based on my internal offline scientific database, I have processed": "Here's the clearest scientific overview I can give for",
+        "Based on my internal historical database, I have processed": "Here's the clearest historical overview I can give for",
+        "Based on my internal offline": "Based on the available",
+        "database sync": "knowledge check",
+        "Database Sync": "Knowledge Check",
+        "Active & Calibrated": "Ready",
+        "Active & Synchronized": "Ready",
+    }
+    polished = text
+    for raw, nice in replacements.items():
+        polished = polished.replace(raw, nice)
+
+    # Clean awkward markdown and spacing generated by varied NLG.
+    polished = re.sub(r"\n{4,}", "\n\n\n", polished)
+    polished = re.sub(r"[ \t]+\n", "\n", polished)
+    polished = re.sub(r"(?<!\n)\n(#{2,4}\s)", r"\n\n\1", polished)
+    polished = re.sub(r"\bHere is\b", random.choice(["Here’s", "Here is"]), polished, count=1)
+    return polished.strip()
+
+
 def _attach_thinking(result: str | dict, trace: ThinkingTrace | None, mode: str) -> str | dict:
     """Prepend the thinking trace before the final answer."""
+    if isinstance(result, dict):
+        text = _polish_final_answer_text(result.get("text", ""))
+        result = {**result, "text": text}
+    elif isinstance(result, str):
+        result = _polish_final_answer_text(result)
+
     if not trace or not _should_attach_thinking(mode):
         return result
     compact = mode == "forge_code"
@@ -4368,7 +4452,9 @@ def _deep_intent_analysis(q: str, scores: dict[str, int]) -> list[str]:
 def _domain_thinking_notes(intent: str, comprehend: dict) -> list[str]:
     """Domain-specific reasoning hints appended to thinking observations."""
     pool: list[str] = []
-    if comprehend.get("is_build"):
+    if intent == "programming":
+        pool = _DOMAIN_THINKING_HINTS.get("programming", [])
+    elif comprehend.get("is_build"):
         if comprehend.get("build_game_score", 0) >= comprehend.get("build_app_score", 0):
             pool = _DOMAIN_THINKING_HINTS.get("build_game", [])
         else:
@@ -4419,6 +4505,13 @@ def _enrich_thinking_trace(
         if ranked:
             trace.observations.append(f"Intent ranking: {'; '.join(ranked[:2])}")
     intent = trace.intent_guess or "knowledge"
+    if intent == "programming":
+        trace.steps = [
+            step for step in trace.steps
+            if "production-ready files" not in step.lower() and "project files" not in step.lower()
+        ]
+        trace.strategy = "Generate a focused language-specific example with practical structure"
+        trace.steps.append("Return a focused language-specific example with practical structure")
     trace.observations.extend(_domain_thinking_notes(intent, comprehend))
     return trace
 
@@ -4441,6 +4534,24 @@ _INTENT_LABELS_EXTENDED: dict[str, str] = {
 
 def _label_intent(intent: str) -> str:
     return _INTENT_LABELS_EXTENDED.get(intent, intent.replace("_", " ").title())
+
+
+def _source_plan_for_intent(intent: str, workspace: str, current: str) -> str:
+    if intent in ("build_game", "build_app", "build_any"):
+        return "code generator — build the requested files"
+    if intent == "programming":
+        return "coding generator — language-specific code"
+    if intent == "math":
+        return "math solver — step-by-step math solving"
+    if intent in ("space", "earth", "science", "history"):
+        return "domain database — topic facts"
+    if intent == "animals":
+        return "animal knowledge database — species facts"
+    if intent == "knowledge":
+        return "knowledge database — best matching facts"
+    if workspace == "code":
+        return "code workspace — project generation"
+    return current
 
 
 # =============================================================================
@@ -4535,10 +4646,6 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     best_intent = max(scores, key=lambda k: scores[k])
     best_score = scores[best_intent]
 
-    # Enrich thinking trace now that intent scores are known
-    thinking.intent_guess = best_intent
-    thinking = _enrich_thinking_trace(thinking, comprehend, memory, scores)
-
     # Comprehension hint boosts the most likely intent
     hint = comprehend.get("intent_hint")
     if hint and hint in scores:
@@ -4564,6 +4671,11 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     ):
         best_intent = "programming"
         best_score = scores["programming"]
+
+    # Enrich thinking trace after all scoring and tie-breakers so it reflects the final route.
+    thinking.intent_guess = best_intent
+    thinking.source_plan = _source_plan_for_intent(best_intent, workspace, thinking.source_plan)
+    thinking = _enrich_thinking_trace(thinking, comprehend, memory, scores)
 
     if best_score < (20 if code_mode else 30):
         if _has_build_verb(q) or code_mode:
