@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ForgeAI Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['Fira Code', 'monospace'] },
+                }
+            }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: #f8fafc; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .grid-bg {
+            background-size: 24px 24px;
+            background-image: radial-gradient(circle, rgba(15, 23, 42, 0.03) 1px, transparent 1px);
+        }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        .shimmer-bg { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite linear; }
+        @media (max-width: 768px) {
+            .sidebar-drawer { transform: translateX(-100%); transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
+            .sidebar-drawer.open { transform: translateX(0); }
+        }
+        #codePanel { display: none; }
+        #codePanel.panel-open { display: flex; }
+        @media (max-width: 900px) { #codePanel { display: none !important; } }
+    </style>
+</head>
+<body class="bg-white text-slate-800 font-sans min-h-screen flex overflow-hidden antialiased grid-bg">
+
+    <!-- Splash Screen -->
+    <div id="splashScreen" class="fixed inset-0 bg-white flex items-center justify-center z-50 select-none transition-opacity duration-500">
+        <div class="flex flex-col items-center text-center space-y-6 px-8">
+            <div class="h-16 w-16 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg">
+                <i class="fa-solid fa-wand-magic-sparkles text-2xl text-white"></i>
+            </div>
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900 tracking-tight">ForgeAI Studio</h1>
+                <p class="text-sm text-slate-400 mt-1">Your local AI assistant</p>
+            </div>
+            <button id="btnEnterStudio" class="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition-all shadow-md">
+                <span id="splashBtnText">Enter Workspace</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside id="sidebarPanel" class="sidebar-drawer fixed md:static z-40 top-0 left-0 h-screen w-[240px] bg-slate-50 border-r border-slate-200/80 flex flex-col shrink-0">
+        <div class="p-4 border-b border-slate-200/60 flex items-center justify-between shrink-0 bg-slate-50">
+            <div class="flex items-center space-x-2">
+                <div class="h-6 w-6 bg-slate-900 rounded flex items-center justify-center shadow-sm">
+                    <i class="fa-solid fa-code text-white text-[11px]"></i>
+                </div>
+                <span class="font-bold text-xs tracking-wider uppercase text-slate-700">ForgeAI Studio</span>
+            </div>
+            <button id="btnMobileSidebarClose" class="md:hidden text-slate-400 hover:text-slate-900 p-1 rounded-lg hover:bg-slate-200/50">
+                <i class="fa-solid fa-xmark text-sm"></i>
+            </button>
+        </div>
+        <!-- Workspace tabs -->
+        <div class="px-3 pt-3 pb-2 shrink-0">
+            <div class="flex items-center bg-slate-100 border border-slate-200 rounded-xl p-1 space-x-1 shadow-inner">
+                <button id="wsTabChat" class="flex-1 flex items-center justify-center space-x-1.5 py-1.5 rounded-lg text-[11px] font-semibold transition bg-white border border-slate-200 shadow-sm text-slate-800">
+                    <i class="fa-solid fa-message text-[9px] text-violet-400"></i><span>Chat</span>
+                </button>
+                <button id="wsTabCode" class="flex-1 flex items-center justify-center space-x-1.5 py-1.5 rounded-lg text-[11px] font-medium transition text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-code text-[9px] text-indigo-400"></i><span>Code</span>
+                </button>
+            </div>
+        </div>
+        <div class="px-4 pb-2 flex items-center justify-between shrink-0">
+            <span id="sessionListLabel" class="font-semibold text-[11px] tracking-wider uppercase text-slate-400">Conversations</span>
+            <button id="btnNewSession" class="h-7 w-7 flex items-center justify-center bg-white hover:bg-slate-100 border border-slate-200 hover:border-slate-300 text-slate-700 rounded-lg transition shadow-sm" title="New Conversation">
+                <i class="fa-solid fa-plus text-xs"></i>
+            </button>
+        </div>
+        <div class="flex-1 w-full overflow-y-auto px-2 pb-4 space-y-1" id="sessionListContainer"></div>
+    </aside>
+
+    <div id="sidebarBackdrop" class="fixed inset-0 bg-slate-900/10 backdrop-blur-sm z-30 hidden md:hidden"></div>
+
+    <!-- Main Content -->
+    <main class="flex-1 h-screen flex flex-col overflow-hidden bg-white/70">
+        <header class="border-b border-slate-200/60 bg-white/90 backdrop-blur-md py-3 px-6 flex items-center justify-between shrink-0">
+            <div class="flex items-center space-x-3">
+                <button id="btnMobileSidebarToggle" class="md:hidden text-slate-500 hover:text-slate-900 p-1.5 rounded hover:bg-slate-100">
+                    <i class="fa-solid fa-bars text-sm"></i>
+                </button>
+                <div class="flex items-center space-x-2">
+                    <span class="font-bold text-slate-900 text-base tracking-tight">ForgeAI</span>
+                    <span id="workspaceBadge" class="text-[10px] font-semibold font-mono px-2 py-0.5 rounded border bg-violet-50 text-violet-500 border-violet-200/40">Chat</span>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button id="btnOpenSettings" class="text-xs text-slate-500 hover:text-indigo-600 px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:border-indigo-200 transition flex items-center space-x-1.5 shadow-sm">
+                    <i class="fa-solid fa-sliders text-[10px]"></i>
+                    <span class="font-medium">Settings</span>
+                </button>
+                <button id="btnReturnToSplash" class="text-xs text-slate-500 hover:text-indigo-600 px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:border-indigo-200 transition flex items-center space-x-1.5 shadow-sm">
+                    <i class="fa-solid fa-circle-info text-[10px]"></i>
+                    <span class="font-medium">Welcome Screen</span>
+                </button>
+            </div>
+        </header>
+
+        <div id="chatFeed" class="flex-1 overflow-y-auto py-6 px-6 space-y-6 max-w-3xl mx-auto w-full"></div>
+
+        <footer class="border-t border-slate-200/60 bg-white py-4 px-4 shrink-0">
+            <div class="max-w-3xl mx-auto">
+                <form id="chatForm" class="relative bg-slate-50 border border-slate-200 focus-within:border-slate-400 focus-within:bg-white rounded-xl transition shadow-inner flex flex-col">
+                    <textarea id="userInput" rows="2" class="w-full bg-transparent px-4 pt-3.5 pb-1 text-sm text-slate-800 placeholder-slate-400 focus:outline-none resize-none rounded-t-xl"
+                        placeholder="Ask to build games, evaluate calculus/trigonometry, or explore science systems..."></textarea>
+                    <div class="flex items-center justify-between px-3 pb-2.5 shrink-0 rounded-b-xl">
+                        <button type="button" id="btnQuickMode" class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-500 rounded-lg text-xs font-medium shadow-sm transition select-none" title="Quick mode: short, simple answers">
+                            <i class="fa-solid fa-bolt text-[10px] text-slate-400" id="quickModeIcon"></i>
+                            <span class="font-medium">Quick</span>
+                        </button>
+                        <div class="flex items-center space-x-2">
+                            <div class="relative">
+                                <button type="button" id="btnModeSelector" class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-600 hover:text-slate-900 rounded-lg text-xs font-medium shadow-sm transition">
+                                    <i class="fa-solid fa-code text-[10px] text-indigo-500"></i>
+                                    <span id="currentModeText">Cosmos 2.8</span>
+                                    <i class="fa-solid fa-chevron-up text-[9px] text-slate-400"></i>
+                                </button>
+                                <div id="modeMenu" class="absolute bottom-full right-0 mb-2 w-56 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 hidden z-50 text-left">
+                                    <button type="button" data-mode="forge_code" title="Full responses with code examples and detailed explanations" class="w-full px-3 py-2 text-xs text-indigo-600 bg-indigo-50/40 flex items-center space-x-2.5 transition font-semibold">
+                                        <i class="fa-solid fa-code text-indigo-500 w-4 text-center"></i><div class="flex flex-col items-start"><span>Cosmos 2.8</span><p class="text-[9px] text-slate-400 font-normal mt-0.5">Great for anything — chat, questions, and code</p></div>
+                                    </button>
+                                    <button type="button" data-mode="forge_thinking" title="Deep analytical mode — thorough step-by-step reasoning" class="w-full px-3 py-2 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 flex items-center space-x-2.5 transition font-medium">
+                                        <i class="fa-solid fa-brain text-amber-500 w-4 text-center"></i><div class="flex flex-col items-start"><span>Solar 2.6</span><p class="text-[9px] text-slate-400 font-normal mt-0.5">Deep analytical mode — thorough step-by-step reasoning</p></div>
+                                    </button>
+                                    <button type="button" data-mode="forge_instant" title="Fastest response mode — concise and direct" class="w-full px-3 py-2 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 flex items-center space-x-2.5 transition font-medium">
+                                        <i class="fa-solid fa-bolt text-emerald-500 w-4 text-center"></i><div class="flex flex-col items-start"><span>Sprint 2.6</span><p class="text-[9px] text-slate-400 font-normal mt-0.5">Fastest response mode — concise and direct</p></div>
+                                    </button>
+                                </div>
+                            </div>
+                            <button type="submit" id="btnSubmit" class="h-8 w-8 bg-slate-900 hover:bg-slate-800 text-white rounded-lg flex items-center justify-center shadow transition-all hover:scale-[1.01]">
+                                <i class="fa-solid fa-arrow-up text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </footer>
+    </main>
+
+    <!-- Right Code Panel -->
+    <div id="codePanel" class="flex-col w-[460px] h-screen bg-[#0d1117] border-l border-slate-700/50 shrink-0 font-mono overflow-hidden">
+      <!-- Panel header -->
+      <div class="flex items-center justify-between px-4 py-2.5 border-b border-slate-700/50 bg-[#161b22] shrink-0">
+        <div class="flex items-center space-x-2 min-w-0">
+          <i class="fa-solid fa-code-branch text-indigo-400 text-[10px] shrink-0"></i>
+          <span id="panelProjectTitle" class="text-xs text-slate-200 font-semibold truncate">Project</span>
+          <span id="panelProjectKind" class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shrink-0">App</span>
+        </div>
+        <div class="flex items-center space-x-1 shrink-0 ml-2">
+          <button id="btnPanelRun" class="flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-semibold transition">
+            <i class="fa-solid fa-play text-[8px]"></i><span>Run</span>
+          </button>
+          <button id="btnPanelCopy" class="flex items-center space-x-1.5 px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded text-[10px] transition">
+            <i class="fa-solid fa-copy text-[9px]"></i><span>Copy</span>
+          </button>
+          <button id="btnClosePanel" class="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 rounded transition ml-1">
+            <i class="fa-solid fa-xmark text-xs"></i>
+          </button>
+        </div>
+      </div>
+      <!-- File tabs -->
+      <div id="codePanelTabs" class="flex items-end overflow-x-auto border-b border-slate-700/50 bg-[#0d1117] shrink-0" style="min-height:34px"></div>
+      <!-- Body: file tree + code content -->
+      <div class="flex flex-1 min-h-0">
+        <!-- File tree -->
+        <div class="w-36 border-r border-slate-700/30 bg-[#0d1117] flex flex-col pt-2 px-1.5 pb-2 shrink-0 overflow-y-auto">
+          <p class="text-[9px] text-slate-600 uppercase tracking-widest font-semibold px-1 mb-2">Explorer</p>
+          <div id="codePanelFileTree" class="space-y-0.5"></div>
+        </div>
+        <!-- Code content -->
+        <div id="codePanelCode" class="flex-1 overflow-auto bg-[#0d1117] relative">
+          <div id="codePanelContent" class="p-4 min-h-full"></div>
+        </div>
+      </div>
+      <!-- Status bar -->
+      <div class="px-4 py-1.5 border-t border-slate-700/50 bg-[#161b22] shrink-0 flex items-center space-x-3">
+        <span id="codePanelStats" class="text-[9px] text-slate-600 font-mono"></span>
+      </div>
+    </div>
+
+    <!-- Sandbox Modal -->
+    <div id="sandboxModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div class="px-6 py-4 bg-slate-950/50 border-b border-slate-800 flex justify-between items-center shrink-0">
+                <div class="flex items-center space-x-2">
+                    <span class="h-2 w-2 bg-emerald-500 rounded-full animate-pulse mr-1"></span>
+                    <span class="text-xs font-bold text-white tracking-widest uppercase font-mono">LIVE ARCADE SANDBOX</span>
+                </div>
+                <button onclick="window.closeSandbox()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+            <div class="flex-1 bg-slate-950 relative">
+                <iframe id="sandboxFrame" class="w-full h-full border-none" sandbox="allow-scripts allow-popups"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toastNotification" class="fixed bottom-6 right-6 z-[100] bg-white border border-slate-200 rounded-xl shadow-lg px-4 py-2.5 flex items-center space-x-2 text-xs text-slate-700 font-medium translate-y-12 opacity-0 transition-all duration-300 pointer-events-none">
+        <i class="fa-solid fa-circle-check text-emerald-500 text-xs"></i>
+        <span id="toastMessage"></span>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

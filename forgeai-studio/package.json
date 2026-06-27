@@ -1,0 +1,12 @@
+{
+  "name": "forgeai-studio-workspace",
+  "private": true,
+  "scripts": {
+    "kb:export": "tsx scripts/export-knowledgebase.ts",
+    "frontend:dev": "npm run dev --prefix frontend",
+    "frontend:build": "npm run build --prefix frontend"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}
