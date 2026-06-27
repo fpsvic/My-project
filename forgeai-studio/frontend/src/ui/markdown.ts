@@ -1,4 +1,5 @@
 import { escapeHTML } from '../utils/helpers';
+import { state } from '../state';
 
 function renderCard(type: string, content: string): string {
   const parts = content.split('|').reduce<Record<string, string>>((acc, part) => {
@@ -117,12 +118,14 @@ export function formatMarkdown(text: string): string {
       displayLang === 'HTML' &&
       (cleanCode.includes('<!DOCTYPE html>') || cleanCode.includes('<html'));
 
-    const playBtn = isGame
+    const allowPreview = state.activeWorkspace === 'code';
+
+    const playBtn = allowPreview && isGame
       ? `<button type="button" onclick="window.openSandboxFromCode(this)"
            class="hover:text-white text-indigo-400 font-semibold transition flex items-center space-x-1.5 border border-indigo-500/30 hover:border-indigo-400/50 bg-indigo-950/20 px-2.5 py-1 rounded-md">
            <i class="fa-solid fa-gamepad text-[10px]"></i><span class="text-[9px]">Play Game</span>
          </button>`
-      : isApp
+      : allowPreview && isApp
       ? `<button type="button" onclick="window.openSandboxFromCode(this)"
            class="hover:text-white text-emerald-400 font-semibold transition flex items-center space-x-1.5 border border-emerald-500/30 hover:border-emerald-400/50 bg-emerald-950/20 px-2.5 py-1 rounded-md">
            <i class="fa-solid fa-rocket text-[10px]"></i><span class="text-[9px]">Launch App</span>

@@ -36,6 +36,8 @@ from services.code_generater import (
     _last_searched,
     dispatch_programming,
     score_programming,
+    generate_chat_code_response,
+    detect_power_language,
 )
 from services.update_handler import is_update_request, apply_update
 
@@ -3079,41 +3081,40 @@ def _dispatch_animals(query: str, q: str) -> str:
         f"> `tell me about {mentioned}s` · `what do {mentioned}s eat` · `where do {mentioned}s live` · `what eats {mentioned}s`"
     )
 
-def _dispatch_project(query: str, kind: str = "auto", mode: str = "forge_code") -> dict:
-    """Generate a multi-file project and return a response dict."""
+def _dispatch_project(query: str, kind: str = "auto", mode: str = "forge_code", workspace: str = "code") -> str | dict:
+    """Generate a multi-file project (code workspace) or inline snippet (chat workspace)."""
+    if workspace == "chat":
+        return generate_chat_code_response(query)
+
     from services.code_generater import parse_build_request
-    spec = parse_build_request(query)
-    project, researched = generate_anything_with_meta(query)
-    verb = "autonomously coded" if spec.use_autonomous else ("compiled" if project.kind == "game" else "built")
+    spec = parse_build_request(query, workspace="code")
+    project, researched = generate_anything_with_meta(query, workspace="code")
     action = "Play Game" if project.kind == "game" else "Run Project"
     n = len(project.files)
     file_list = ", ".join(f"`{f.name}`" for f in project.files)
-    research_note = " I looked up context on Google to understand your request." if researched else ""
 
     if mode == "forge_thinking":
         feat_line = f"- **Features detected:** {', '.join(spec.features[:6])}\n" if spec.features else ""
         intro = (
             f"### Thinking Process\n"
-            f"- **Intent:** {'Autonomous game coding' if project.kind == 'game' else 'Autonomous app generation'}\n"
-            f"- **Approach:** Original code written from scratch — no templates copied\n"
+            f"- **Intent:** {'Game' if project.kind == 'game' else 'App'} project generation\n"
             f"- **Parsed:** kind={spec.kind}, genre={spec.genre or 'n/a'}, app={spec.app_type or 'n/a'}\n"
             f"{feat_line}"
-            + (f"- **Web research:** gathered context for this custom build\n" if researched else "")
+            + (f"- **Web research:** gathered context for this build\n" if researched else "")
             + f"- **Output:** {n} file{'s' if n != 1 else ''} — {file_list}\n\n"
             f"---\n\n"
-            f"I {verb} **{project.title}** with {n} production-ready file{'s' if n != 1 else ''}.{research_note} "
-            f"Browse the file tree below, then hit **\"{action}\"** to launch it live."
+            f"**{project.title}** is ready — {n} file{'s' if n != 1 else ''}. "
+            f"Hit **\"{action}\"** to launch."
         )
     elif mode == "forge_instant":
         intro = (
-            f"**{project.title}** ready — {n} file{'s' if n != 1 else ''}. "
+            f"**{project.title}** — {n} file{'s' if n != 1 else ''}. "
             f"Hit **\"{action}\"** to launch."
         )
     else:
         intro = (
-            f"I {verb} **{project.title}** from scratch — {n} original file{'s' if n != 1 else ''} ({file_list}).{research_note} "
-            f"No templates were copied; the logic was composed for your exact request. "
-            f"Browse the files below, then hit **\"{action}\"** to launch."
+            f"**{project.title}** is ready — {n} file{'s' if n != 1 else ''} ({file_list}). "
+            f"Hit **\"{action}\"** to launch."
         )
     return {
         "text": intro,
@@ -3121,14 +3122,14 @@ def _dispatch_project(query: str, kind: str = "auto", mode: str = "forge_code") 
     }
 
 # Keep these for backward compat — now all go through _dispatch_project
-def _dispatch_game(query: str, q: str, mode: str) -> dict:
-    return _dispatch_project(query, "game", mode)
+def _dispatch_game(query: str, q: str, mode: str, workspace: str = "code") -> str | dict:
+    return _dispatch_project(query, "game", mode, workspace)
 
-def _dispatch_app(query: str, mode: str) -> dict:
-    return _dispatch_project(query, "app", mode)
+def _dispatch_app(query: str, mode: str, workspace: str = "code") -> str | dict:
+    return _dispatch_project(query, "app", mode, workspace)
 
-def _dispatch_dynamic(query: str, mode: str) -> dict:
-    return _dispatch_project(query, "app", mode)
+def _dispatch_dynamic(query: str, mode: str, workspace: str = "code") -> str | dict:
+    return _dispatch_project(query, "app", mode, workspace)
 
 def _dispatch_update(query: str, history: list, mode: str) -> str | dict:
     from services.update_handler import extract_last_project
@@ -4501,7 +4502,7 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
 
     if is_update_request(q, history):
         return _finish(_dispatch_update(query, history, mode))
-    if _score_animals(q) >= 60:
+    if _score_animals(q) >= 60 and not comprehend.get("is_build") and not _has_build_verb(q):
         return _finish(_forge_or_exact(_dispatch_animals(query, q), query, q, "animals", mode=mode, memory=memory))
 
     # KB lookup with entity context from comprehension
@@ -4526,6 +4527,8 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
         "animals":     _score_animals(q),
         "knowledge":   _score_knowledge(q),
     }
+    if code_mode:
+        scores["programming"] = min(100, scores["programming"] + 20)
     best_intent = max(scores, key=lambda k: scores[k])
     best_score = scores[best_intent]
 
@@ -4549,20 +4552,30 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
             best_intent = max(scores, key=lambda k: scores[k])
             best_score = scores[best_intent]
 
+    # Language-specific code requests beat generic "write X" build routing
+    if (
+        scores.get("programming", 0) >= 70
+        and detect_power_language(q)
+        and not _match(q, *(_GAME_NOUNS | _APP_NOUNS))
+        and not any(w in q for w in ("game", "app", "website", "dashboard", "tool", "project"))
+    ):
+        best_intent = "programming"
+        best_score = scores["programming"]
+
     if best_score < (20 if code_mode else 30):
         if _has_build_verb(q) or code_mode:
-            return _finish(_dispatch_project(query, mode=mode))
+            return _finish(_dispatch_project(query, mode=mode, workspace=workspace))
         return _finish(_web_lookup_summarized(query, mode, memory))
     if best_intent == "greeting":
         return _finish(_dispatch_greeting(mode))
     if best_intent == "build_game":
-        return _finish(_dispatch_game(query, q, mode))
+        return _finish(_dispatch_game(query, q, mode, workspace))
     if best_intent == "build_any":
-        return _finish(_dispatch_dynamic(query, mode))
+        return _finish(_dispatch_dynamic(query, mode, workspace))
     if best_intent == "build_app":
         if _match(q, *_APP_NOUNS):
-            return _finish(_dispatch_app(query, mode))
-        return _finish(_dispatch_dynamic(query, mode))
+            return _finish(_dispatch_app(query, mode, workspace))
+        return _finish(_dispatch_dynamic(query, mode, workspace))
     if best_intent == "math":
         return _finish(generate_math_response(query, mode))
     if best_intent == "space":
@@ -4578,7 +4591,7 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
         full = generate_history_response(query, mode)
         return _finish(_forge_or_exact(full, query, q, "history", depth=thread_depth, mode=mode, memory=memory))
     if best_intent == "programming":
-        return _finish(dispatch_programming(query, mode))
+        return _finish(dispatch_programming(query, mode, workspace))
     if best_intent == "animals":
         raw = _dispatch_animals(query, q)
         return _finish(_forge_or_exact(raw, query, q, "animals", depth=thread_depth, mode=mode, memory=memory))
@@ -4586,6 +4599,6 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
         for key, answer in GENERAL_KNOWLEDGE.items():
             if key in q or q in key:
                 return _finish(_forge_or_exact(answer, query, q, "knowledge", depth=thread_depth, mode=mode, memory=memory))
-    if code_mode and _has_build_verb(q):
-        return _finish(_dispatch_project(query, mode=mode))
+    if code_mode and _has_build_verb(q) and best_intent != "programming":
+        return _finish(_dispatch_project(query, mode=mode, workspace=workspace))
     return _finish(_web_lookup_summarized(query, mode, memory))

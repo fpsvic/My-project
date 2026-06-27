@@ -233,16 +233,12 @@ export function renderCurrentSessionChat(): void {
     session.messages.forEach((msg) => {
       if (msg.role === 'user') {
         addUserMessageUI(msg.text);
-      } else if (msg.project_files && msg.project_files.length > 0) {
+      } else if (msg.project_files && msg.project_files.length > 0 && session.workspace === 'code') {
         const kind = msg.project_files.some(f => f.name === 'game.js') ? 'game' : 'app';
-        if (session.workspace === 'code') {
-          const titleMatch = msg.text.match(/\*\*(.+?)\*\*/);
-          const projTitle = titleMatch ? titleMatch[1] : (kind === 'game' ? 'Game' : 'Project');
-          showProjectInPanel(msg.project_files, projTitle, kind);
-          addAIStreamUI(msg.text, false);
-        } else {
-          addAIProjectUI(msg.text, msg.project_files, kind);
-        }
+        const titleMatch = msg.text.match(/\*\*(.+?)\*\*/);
+        const projTitle = titleMatch ? titleMatch[1] : (kind === 'game' ? 'Game' : 'Project');
+        showProjectInPanel(msg.project_files, projTitle, kind);
+        addAIStreamUI(msg.text, false);
       } else {
         addAIStreamUI(msg.text, false);
       }
@@ -328,23 +324,20 @@ export function initChatForm(): void {
       session.messages.push({
         role: 'assistant',
         text: res.text,
-        project_files: res.project_files?.length ? res.project_files : undefined,
+        project_files:
+          state.activeWorkspace === 'code' && res.project_files?.length
+            ? res.project_files
+            : undefined,
       });
       saveSessions(state.sessions);
       renderSessionList();
 
-      if (res.project_files && res.project_files.length > 0) {
+      if (res.project_files && res.project_files.length > 0 && state.activeWorkspace === 'code') {
         const kind = res.project_files.some(f => f.name === 'game.js') ? 'game' : 'app';
-        // Extract project title from response text
         const titleMatch = res.text.match(/\*\*(.+?)\*\*/);
         const projTitle = titleMatch ? titleMatch[1] : (kind === 'game' ? 'Game' : 'Project');
-        // Show in right panel if in code workspace, else inline
-        if (state.activeWorkspace === 'code') {
-          showProjectInPanel(res.project_files, projTitle, kind);
-          await addAIStreamUI(res.text, false);
-        } else {
-          addAIProjectUI(res.text, res.project_files, kind);
-        }
+        showProjectInPanel(res.project_files, projTitle, kind);
+        await addAIStreamUI(res.text, false);
       } else {
         await addAIStreamUI(res.text, true);
       }
