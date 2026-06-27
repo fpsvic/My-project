@@ -81,7 +81,11 @@ function _setRunEnabled(enabled: boolean): void {
   btn.disabled = !enabled;
   btn.classList.toggle('opacity-40', !enabled);
   btn.classList.toggle('cursor-not-allowed', !enabled);
-  btn.title = enabled ? 'Run project in preview' : 'Wait until code generation finishes';
+  btn.title = enabled ? 'Run project in preview' : 'No browser preview is available for this project';
+}
+
+function _hasPreviewableHtml(): boolean {
+  return _files.some((file) => file.name.endsWith('.html'));
 }
 
 function _render(): void {
@@ -92,7 +96,7 @@ function _render(): void {
     _renderContent();
   }
   _renderStats();
-  _setRunEnabled(_ready);
+  _setRunEnabled(_ready && _hasPreviewableHtml());
 }
 
 function _renderHeader(): void {
@@ -100,10 +104,12 @@ function _renderHeader(): void {
   const k = document.getElementById('panelProjectKind');
   if (t) t.textContent = _title;
   if (k) {
-    k.textContent = _kind === 'game' ? 'Game' : 'App';
+    k.textContent = _kind === 'game' ? 'Game' : (_kind === 'code' ? 'Code' : 'App');
     k.className = _kind === 'game'
       ? 'text-xs font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0'
-      : 'text-xs font-medium px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shrink-0';
+      : _kind === 'code'
+        ? 'text-xs font-medium px-1.5 py-0.5 rounded bg-fuchsia-500/10 text-fuchsia-300 border border-fuchsia-500/20 shrink-0'
+        : 'text-xs font-medium px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shrink-0';
   }
 }
 
@@ -192,6 +198,16 @@ function _icon(lang: string): string {
     css: '<i class="fa-brands fa-css3-alt text-blue-400 text-xs shrink-0"></i>',
     javascript: '<i class="fa-brands fa-js text-yellow-400 text-xs shrink-0"></i>',
     typescript: '<i class="fa-brands fa-js text-yellow-400 text-xs shrink-0"></i>',
+    python: '<i class="fa-brands fa-python text-blue-300 text-xs shrink-0"></i>',
+    java: '<i class="fa-brands fa-java text-orange-300 text-xs shrink-0"></i>',
+    rust: '<i class="fa-brands fa-rust text-orange-500 text-xs shrink-0"></i>',
+    ruby: '<i class="fa-solid fa-gem text-rose-400 text-xs shrink-0"></i>',
+    sql: '<i class="fa-solid fa-database text-cyan-300 text-xs shrink-0"></i>',
+    r: '<i class="fa-solid fa-chart-line text-sky-300 text-xs shrink-0"></i>',
+    json: '<i class="fa-solid fa-brackets-curly text-slate-300 text-xs shrink-0"></i>',
+    toml: '<i class="fa-solid fa-gear text-slate-400 text-xs shrink-0"></i>',
+    xml: '<i class="fa-solid fa-code text-orange-300 text-xs shrink-0"></i>',
+    makefile: '<i class="fa-solid fa-hammer text-amber-300 text-xs shrink-0"></i>',
     markdown: '<i class="fa-brands fa-markdown text-slate-400 text-xs shrink-0"></i>',
   };
   return m[lang] ?? '<i class="fa-solid fa-file-code text-slate-500 text-xs shrink-0"></i>';
@@ -199,6 +215,7 @@ function _icon(lang: string): string {
 
 function _runProject(): void {
   if (!_ready || !_files.length) return;
+  if (!_hasPreviewableHtml()) return;
   const html = stitchProject(_files);
   if (!html.trim()) return;
   openSandboxPreview(html);

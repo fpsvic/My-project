@@ -234,7 +234,11 @@ export function renderCurrentSessionChat(): void {
       if (msg.role === 'user') {
         addUserMessageUI(msg.text);
       } else if (msg.project_files && msg.project_files.length > 0 && session.workspace === 'code') {
-        const kind = msg.project_files.some(f => f.name === 'game.js') ? 'game' : 'app';
+        const kind = msg.project_files.some(f => f.name === 'game.js')
+          ? 'game'
+          : msg.project_files.some(f => f.name.endsWith('.html'))
+            ? 'app'
+            : 'code';
         const titleMatch = msg.text.match(/\*\*(.+?)\*\*/);
         const projTitle = titleMatch ? titleMatch[1] : (kind === 'game' ? 'Game' : 'Project');
         showProjectInPanel(msg.project_files, projTitle, kind);
@@ -333,7 +337,11 @@ export function initChatForm(): void {
       renderSessionList();
 
       if (res.project_files && res.project_files.length > 0 && state.activeWorkspace === 'code') {
-        const kind = res.project_files.some(f => f.name === 'game.js') ? 'game' : 'app';
+        const kind = res.project_files.some(f => f.name === 'game.js')
+          ? 'game'
+          : res.project_files.some(f => f.name.endsWith('.html'))
+            ? 'app'
+            : 'code';
         const titleMatch = res.text.match(/\*\*(.+?)\*\*/);
         const projTitle = titleMatch ? titleMatch[1] : (kind === 'game' ? 'Game' : 'Project');
         showProjectInPanel(res.project_files, projTitle, kind);

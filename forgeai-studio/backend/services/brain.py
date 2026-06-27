@@ -3091,7 +3091,8 @@ def _dispatch_project(query: str, kind: str = "auto", mode: str = "forge_code", 
     from services.code_generater import parse_build_request
     spec = parse_build_request(query, workspace="code")
     project, researched = generate_anything_with_meta(query, workspace="code")
-    action = "Play Game" if project.kind == "game" else "Run Project"
+    has_preview = any(f.name.endswith(".html") for f in project.files)
+    action = "Play Game" if project.kind == "game" else ("Run Project" if has_preview else "Review Files")
     n = len(project.files)
     file_list = ", ".join(f"`{f.name}`" for f in project.files)
 
@@ -3099,24 +3100,24 @@ def _dispatch_project(query: str, kind: str = "auto", mode: str = "forge_code", 
         feat_line = f"- **Features detected:** {', '.join(spec.features[:6])}\n" if spec.features else ""
         intro = (
             f"### Thinking Process\n"
-            f"- **Intent:** {'Game' if project.kind == 'game' else 'App'} project generation\n"
+            f"- **Intent:** {'Game' if project.kind == 'game' else ('Code' if project.kind == 'code' else 'App')} project generation\n"
             f"- **Parsed:** kind={spec.kind}, genre={spec.genre or 'n/a'}, app={spec.app_type or 'n/a'}\n"
             f"{feat_line}"
             + (f"- **Web research:** gathered context for this build\n" if researched else "")
             + f"- **Output:** {n} file{'s' if n != 1 else ''} — {file_list}\n\n"
             f"---\n\n"
             f"**{project.title}** is ready — {n} file{'s' if n != 1 else ''}. "
-            f"Hit **\"{action}\"** to launch."
+            + (f"Hit **\"{action}\"** to launch." if has_preview else "Browse the generated files in the code panel.")
         )
     elif mode == "forge_instant":
         intro = (
             f"**{project.title}** — {n} file{'s' if n != 1 else ''}. "
-            f"Hit **\"{action}\"** to launch."
+            + (f"Hit **\"{action}\"** to launch." if has_preview else "Open the code panel to review files.")
         )
     else:
         intro = (
             f"**{project.title}** is ready — {n} file{'s' if n != 1 else ''} ({file_list}). "
-            f"Hit **\"{action}\"** to launch."
+            + (f"Hit **\"{action}\"** to launch." if has_preview else "Browse the generated files in the code panel.")
         )
     return {
         "text": intro,

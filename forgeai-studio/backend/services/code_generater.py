@@ -6750,6 +6750,700 @@ export interface AppConfig {
     return files + [ProjectFile("types.ts", ts, "typescript")]
 
 
+_MULTILANG_ALL = ("typescript", "javascript", "java", "python", "ruby", "sql", "r", "rust")
+
+
+def _is_multilang_project_query(query: str) -> bool:
+    q = query.lower()
+    return bool(re.search(
+        r"\b(multi[-\s]?language|multilanguage|polyglot|cross[-\s]?language|many languages|"
+        r"full[-\s]?stack sdk|multi[-\s]?runtime)\b",
+        q,
+    ))
+
+
+def _detect_project_languages(query: str) -> list[str]:
+    q = query.lower()
+    if _is_multilang_project_query(q) and re.search(r"\b(all|every|everything|each language)\b", q):
+        langs = list(_MULTILANG_ALL)
+    else:
+        langs = []
+    for alias, canonical in sorted(_LANG_ALIASES.items(), key=lambda x: -len(x[0])):
+        if canonical not in _MULTILANG_ALL or canonical in langs:
+            continue
+        if canonical == "r":
+            if re.search(r"(?:^|\b)r(?:\b|\s+lang(?:uage)?|\s+script|\s+analytics|\s+data)\b", q):
+                langs.append(canonical)
+            continue
+        if re.search(rf"\b{re.escape(alias)}\b", q):
+            langs.append(canonical)
+    if not langs and _is_multilang_project_query(q):
+        langs = ["typescript", "python", "rust", "sql"]
+    return [lang for lang in _MULTILANG_ALL if lang in langs]
+
+
+def _project_slug(title: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    return slug or "forgeai-polyglot-project"
+
+
+def _domain_from_query(query: str) -> str:
+    q = query.lower()
+    if any(w in q for w in ("auth", "login", "user", "jwt")):
+        return "user authentication"
+    if any(w in q for w in ("todo", "task", "kanban")):
+        return "task workflow"
+    if any(w in q for w in ("data", "analytics", "report", "dashboard", "metric")):
+        return "analytics workflow"
+    if any(w in q for w in ("api", "service", "microservice", "backend")):
+        return "service workflow"
+    return "business workflow"
+
+
+def _title_from_query(query: str, fallback: str = "Polyglot Forge Project") -> str:
+    query = query.split("—", 1)[0]
+    words = re.sub(r"[^a-zA-Z0-9\s-]", " ", query).strip().split()
+    filtered = [
+        w for w in words
+        if w.lower() not in {
+            "make", "build", "create", "generate", "write", "code", "a", "an", "the",
+            "multi", "language", "multilanguage", "polyglot", "project", "in", "with",
+        }
+    ]
+    title = " ".join(filtered[:7]).strip()
+    return title.title() if title else fallback
+
+
+def _python_project_files(title: str, slug: str, domain: str) -> list[ProjectFile]:
+    pkg = slug.replace("-", "_")
+    return [
+        ProjectFile("python/pyproject.toml", f'''[project]
+name = "{slug}-python"
+version = "0.1.0"
+description = "Python package for {title}"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "ruff>=0.6.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+''', "toml"),
+        ProjectFile(f"python/src/{pkg}/__init__.py", f'''from .pipeline import Job, Pipeline, run
+
+__all__ = ["Job", "Pipeline", "run"]
+''', "python"),
+        ProjectFile(f"python/src/{pkg}/pipeline.py", f'''from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Iterable
+
+
+@dataclass(frozen=True)
+class Job:
+    id: str
+    payload: dict
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class Pipeline:
+    """Small but production-shaped Python core for a {domain}."""
+
+    def __init__(self) -> None:
+        self._processed: list[dict] = []
+
+    def process(self, job: Job) -> dict:
+        result = {{
+            "id": job.id,
+            "status": "processed",
+            "keys": sorted(job.payload.keys()),
+            "created_at": job.created_at.isoformat(),
+        }}
+        self._processed.append(result)
+        return result
+
+    def run_many(self, jobs: Iterable[Job]) -> list[dict]:
+        return [self.process(job) for job in jobs]
+
+    @property
+    def processed_count(self) -> int:
+        return len(self._processed)
+
+
+def run(payload: dict) -> dict:
+    return Pipeline().process(Job(id="job-1", payload=payload))
+''', "python"),
+        ProjectFile(f"python/tests/test_pipeline.py", f'''from {pkg} import Job, Pipeline
+
+
+def test_pipeline_processes_payload_keys():
+    pipe = Pipeline()
+    result = pipe.process(Job(id="abc", payload={{"name": "ForgeAI", "tier": "pro"}}))
+
+    assert result["status"] == "processed"
+    assert result["keys"] == ["name", "tier"]
+    assert pipe.processed_count == 1
+''', "python"),
+    ]
+
+
+def _typescript_project_files(title: str, slug: str, domain: str) -> list[ProjectFile]:
+    return [
+        ProjectFile("typescript/package.json", f'''{{
+  "name": "{slug}-typescript",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {{
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
+  }},
+  "devDependencies": {{
+    "typescript": "latest",
+    "@types/node": "latest"
+  }}
+}}
+''', "json"),
+        ProjectFile("typescript/tsconfig.json", '''{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src"]
+}
+''', "json"),
+        ProjectFile("typescript/src/pipeline.ts", f'''export interface Job<TPayload extends Record<string, unknown> = Record<string, unknown>> {{
+  id: string;
+  payload: TPayload;
+  createdAt: Date;
+}}
+
+export interface Result {{
+  id: string;
+  status: "processed";
+  keys: string[];
+  createdAt: string;
+}}
+
+export class Pipeline {{
+  private processed: Result[] = [];
+
+  process(job: Job): Result {{
+    const result: Result = {{
+      id: job.id,
+      status: "processed",
+      keys: Object.keys(job.payload).sort(),
+      createdAt: job.createdAt.toISOString(),
+    }};
+    this.processed.push(result);
+    return result;
+  }}
+
+  processBatch(jobs: Job[]): Result[] {{
+    return jobs.map((job) => this.process(job));
+  }}
+
+  get processedCount(): number {{
+    return this.processed.length;
+  }}
+}}
+
+export const createJob = (id: string, payload: Record<string, unknown>): Job => ({{
+  id,
+  payload,
+  createdAt: new Date(),
+}});
+''', "typescript"),
+        ProjectFile("typescript/src/index.ts", f'''import {{ Pipeline, createJob }} from "./pipeline.js";
+
+const pipeline = new Pipeline();
+const result = pipeline.process(createJob("job-1", {{
+  project: "{title}",
+  domain: "{domain}",
+}}));
+
+console.log(JSON.stringify(result, null, 2));
+''', "typescript"),
+    ]
+
+
+def _javascript_project_files(title: str, slug: str, domain: str) -> list[ProjectFile]:
+    return [
+        ProjectFile("javascript/package.json", f'''{{
+  "name": "{slug}-javascript",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {{
+    "start": "node src/index.js",
+    "test": "node --test"
+  }}
+}}
+''', "json"),
+        ProjectFile("javascript/src/pipeline.js", f'''export class Pipeline {{
+  #processed = [];
+
+  process(job) {{
+    if (!job?.id || typeof job.payload !== "object") {{
+      throw new TypeError("job requires id and payload object");
+    }}
+    const result = {{
+      id: job.id,
+      status: "processed",
+      keys: Object.keys(job.payload).sort(),
+      createdAt: new Date(job.createdAt ?? Date.now()).toISOString(),
+    }};
+    this.#processed.push(result);
+    return result;
+  }}
+
+  get processedCount() {{
+    return this.#processed.length;
+  }}
+}}
+
+export function createJob(id, payload) {{
+  return {{ id, payload, createdAt: new Date() }};
+}}
+''', "javascript"),
+        ProjectFile("javascript/src/index.js", f'''import {{ Pipeline, createJob }} from "./pipeline.js";
+
+const pipeline = new Pipeline();
+console.log(pipeline.process(createJob("job-1", {{
+  project: "{title}",
+  domain: "{domain}",
+}})));
+''', "javascript"),
+        ProjectFile("javascript/test/pipeline.test.js", '''import test from "node:test";
+import assert from "node:assert/strict";
+import { Pipeline, createJob } from "../src/pipeline.js";
+
+test("pipeline processes jobs", () => {
+  const pipeline = new Pipeline();
+  const result = pipeline.process(createJob("abc", { b: 2, a: 1 }));
+  assert.deepEqual(result.keys, ["a", "b"]);
+  assert.equal(pipeline.processedCount, 1);
+});
+''', "javascript"),
+    ]
+
+
+def _java_project_files(title: str, slug: str, domain: str) -> list[ProjectFile]:
+    package = "com.forgeai.polyglot"
+    base = "java/src/main/java/com/forgeai/polyglot"
+    test_base = "java/src/test/java/com/forgeai/polyglot"
+    return [
+        ProjectFile("java/pom.xml", f'''<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.forgeai</groupId>
+  <artifactId>{slug}-java</artifactId>
+  <version>0.1.0</version>
+  <properties>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+  </properties>
+</project>
+''', "xml"),
+        ProjectFile(f"{base}/Job.java", f'''package {package};
+
+import java.time.Instant;
+import java.util.Map;
+
+public record Job(String id, Map<String, Object> payload, Instant createdAt) {{
+    public static Job of(String id, Map<String, Object> payload) {{
+        return new Job(id, payload, Instant.now());
+    }}
+}}
+''', "java"),
+        ProjectFile(f"{base}/PipelineResult.java", f'''package {package};
+
+import java.time.Instant;
+import java.util.List;
+
+public record PipelineResult(String id, String status, List<String> keys, Instant createdAt) {{}}
+''', "java"),
+        ProjectFile(f"{base}/Pipeline.java", f'''package {package};
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
+public final class Pipeline {{
+    private final List<PipelineResult> processed = new ArrayList<>();
+
+    public PipelineResult process(Job job) {{
+        var keys = job.payload().keySet().stream()
+            .sorted(Comparator.naturalOrder())
+            .toList();
+        var result = new PipelineResult(job.id(), "processed", keys, job.createdAt());
+        processed.add(result);
+        return result;
+    }}
+
+    public int processedCount() {{
+        return processed.size();
+    }}
+}}
+''', "java"),
+        ProjectFile(f"{base}/App.java", f'''package {package};
+
+import java.util.Map;
+
+public final class App {{
+    public static void main(String[] args) {{
+        var pipeline = new Pipeline();
+        var result = pipeline.process(Job.of("job-1", Map.of(
+            "project", "{title}",
+            "domain", "{domain}"
+        )));
+        System.out.println(result);
+    }}
+}}
+''', "java"),
+        ProjectFile(f"{test_base}/PipelineTest.java", f'''package {package};
+
+import java.util.Map;
+
+public final class PipelineTest {{
+    public static void main(String[] args) {{
+        var pipeline = new Pipeline();
+        var result = pipeline.process(Job.of("abc", Map.of("b", 2, "a", 1)));
+        assert result.keys().equals(java.util.List.of("a", "b"));
+        assert pipeline.processedCount() == 1;
+    }}
+}}
+''', "java"),
+    ]
+
+
+def _rust_project_files(title: str, slug: str, domain: str) -> list[ProjectFile]:
+    crate = slug.replace("-", "_")
+    return [
+        ProjectFile("rust/Cargo.toml", f'''[package]
+name = "{crate}"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = {{ version = "1", features = ["derive"] }}
+serde_json = "1"
+''', "toml"),
+        ProjectFile("rust/src/lib.rs", f'''use serde::{{Deserialize, Serialize}};
+use std::collections::BTreeMap;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Job {{
+    pub id: String,
+    pub payload: BTreeMap<String, serde_json::Value>,
+}}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PipelineResult {{
+    pub id: String,
+    pub status: String,
+    pub keys: Vec<String>,
+}}
+
+#[derive(Debug, Default)]
+pub struct Pipeline {{
+    processed: Vec<PipelineResult>,
+}}
+
+impl Pipeline {{
+    pub fn process(&mut self, job: Job) -> PipelineResult {{
+        let keys = job.payload.keys().cloned().collect::<Vec<_>>();
+        let result = PipelineResult {{
+            id: job.id,
+            status: "processed".to_string(),
+            keys,
+        }};
+        self.processed.push(result.clone());
+        result
+    }}
+
+    pub fn processed_count(&self) -> usize {{
+        self.processed.len()
+    }}
+}}
+
+#[cfg(test)]
+mod tests {{
+    use super::*;
+
+    #[test]
+    fn processes_sorted_payload_keys() {{
+        let mut payload = BTreeMap::new();
+        payload.insert("a".into(), serde_json::json!(1));
+        payload.insert("b".into(), serde_json::json!(2));
+        let mut pipeline = Pipeline::default();
+        let result = pipeline.process(Job {{ id: "abc".into(), payload }});
+        assert_eq!(result.keys, vec!["a", "b"]);
+        assert_eq!(pipeline.processed_count(), 1);
+    }}
+}}
+''', "rust"),
+        ProjectFile("rust/src/main.rs", f'''use {crate}::{{Job, Pipeline}};
+use std::collections::BTreeMap;
+
+fn main() {{
+    let mut payload = BTreeMap::new();
+    payload.insert("project".to_string(), serde_json::json!("{title}"));
+    payload.insert("domain".to_string(), serde_json::json!("{domain}"));
+
+    let mut pipeline = Pipeline::default();
+    let result = pipeline.process(Job {{ id: "job-1".into(), payload }});
+    println!("{{:#?}}", result);
+}}
+''', "rust"),
+    ]
+
+
+def _ruby_project_files(title: str, slug: str, domain: str) -> list[ProjectFile]:
+    module = "".join(part.capitalize() for part in slug.split("-")[:3]) or "ForgeProject"
+    return [
+        ProjectFile("ruby/Gemfile", '''source "https://rubygems.org"
+
+gem "minitest", "~> 5.25"
+''', "ruby"),
+        ProjectFile("ruby/lib/pipeline.rb", f'''# frozen_string_literal: true
+
+module {module}
+  Job = Struct.new(:id, :payload, :created_at, keyword_init: true)
+
+  class Pipeline
+    attr_reader :processed
+
+    def initialize
+      @processed = []
+    end
+
+    def process(job)
+      result = {{
+        id: job.id,
+        status: "processed",
+        keys: job.payload.keys.map(&:to_s).sort,
+        created_at: job.created_at.iso8601
+      }}
+      @processed << result
+      result
+    end
+  end
+end
+''', "ruby"),
+        ProjectFile("ruby/exe/run", f'''#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "time"
+require_relative "../lib/pipeline"
+
+pipeline = {module}::Pipeline.new
+job = {module}::Job.new(
+  id: "job-1",
+  payload: {{ project: "{title}", domain: "{domain}" }},
+  created_at: Time.now.utc
+)
+
+puts pipeline.process(job)
+''', "ruby"),
+        ProjectFile("ruby/test/pipeline_test.rb", f'''# frozen_string_literal: true
+
+require "minitest/autorun"
+require "time"
+require_relative "../lib/pipeline"
+
+class PipelineTest < Minitest::Test
+  def test_pipeline_processes_job
+    pipeline = {module}::Pipeline.new
+    job = {module}::Job.new(id: "abc", payload: {{ b: 2, a: 1 }}, created_at: Time.now.utc)
+    result = pipeline.process(job)
+
+    assert_equal ["a", "b"], result[:keys]
+    assert_equal 1, pipeline.processed.length
+  end
+end
+''', "ruby"),
+    ]
+
+
+def _sql_project_files(title: str, slug: str, domain: str) -> list[ProjectFile]:
+    return [
+        ProjectFile("sql/schema.sql", f'''CREATE TABLE IF NOT EXISTS jobs (
+  id TEXT PRIMARY KEY,
+  payload JSON NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  processed_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_status_created
+  ON jobs (status, created_at);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  job_id TEXT NOT NULL REFERENCES jobs(id),
+  event_name TEXT NOT NULL,
+  metadata JSON NOT NULL DEFAULT '{{}}',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+''', "sql"),
+        ProjectFile("sql/queries.sql", f'''-- {title}: operational queries for a {domain}
+
+INSERT INTO jobs (id, payload, status)
+VALUES (:id, :payload, 'queued')
+ON CONFLICT (id) DO UPDATE
+SET payload = EXCLUDED.payload,
+    status = 'queued',
+    processed_at = NULL;
+
+UPDATE jobs
+SET status = 'processed',
+    processed_at = CURRENT_TIMESTAMP
+WHERE id = :id;
+
+SELECT
+  status,
+  COUNT(*) AS job_count,
+  MIN(created_at) AS oldest_job,
+  MAX(processed_at) AS newest_processed_job
+FROM jobs
+GROUP BY status
+ORDER BY status;
+''', "sql"),
+    ]
+
+
+def _r_project_files(title: str, slug: str, domain: str) -> list[ProjectFile]:
+    return [
+        ProjectFile("r/analysis.R", f'''#!/usr/bin/env Rscript
+
+jobs <- data.frame(
+  id = c("job-1", "job-2", "job-3"),
+  status = c("processed", "queued", "processed"),
+  latency_ms = c(120, NA, 98)
+)
+
+summary_by_status <- aggregate(
+  id ~ status,
+  data = jobs,
+  FUN = length
+)
+names(summary_by_status) <- c("status", "job_count")
+
+print("{title}: {domain}")
+print(summary_by_status)
+
+processed <- subset(jobs, status == "processed")
+cat("Average latency:", mean(processed$latency_ms, na.rm = TRUE), "ms\\n")
+''', "r"),
+        ProjectFile("r/README.md", f'''# R analytics
+
+Run:
+
+```bash
+Rscript analysis.R
+```
+
+This script summarizes generated pipeline job telemetry for **{title}**.
+''', "markdown"),
+    ]
+
+
+_PROJECT_FILE_BUILDERS = {
+    "python": _python_project_files,
+    "typescript": _typescript_project_files,
+    "javascript": _javascript_project_files,
+    "java": _java_project_files,
+    "rust": _rust_project_files,
+    "ruby": _ruby_project_files,
+    "sql": _sql_project_files,
+    "r": _r_project_files,
+}
+
+
+def generate_multilanguage_project(query: str) -> ProjectResult | None:
+    langs = _detect_project_languages(query)
+    if len(langs) < 2:
+        return None
+    title = _title_from_query(query, "Polyglot Forge Project")
+    slug = _project_slug(title)
+    domain = _domain_from_query(query)
+    files: list[ProjectFile] = [
+        ProjectFile("README.md", f'''# {title}
+
+Polyglot project generated by ForgeAI Studio.
+
+## Languages
+
+{chr(10).join(f"- {lang.title() if lang != "r" else "R"}" for lang in langs)}
+
+## Architecture
+
+Each language folder implements the same small production-shaped `{domain}` pipeline:
+
+1. Accept a job payload.
+2. Validate/process it.
+3. Return stable status and sorted payload keys.
+4. Include a runnable entry point or test where that ecosystem expects one.
+
+## Suggested commands
+
+```bash
+# TypeScript
+cd typescript && npm install && npm run build && npm start
+
+# JavaScript
+cd javascript && npm test && npm start
+
+# Python
+cd python && python -m pytest
+
+# Java
+cd java && mvn test
+
+# Rust
+cd rust && cargo test && cargo run
+
+# Ruby
+cd ruby && bundle install && ruby test/pipeline_test.rb
+
+# SQL
+psql -f sql/schema.sql -f sql/queries.sql
+
+# R
+Rscript r/analysis.R
+```
+''', "markdown"),
+        ProjectFile(".gitignore", '''node_modules/
+dist/
+target/
+__pycache__/
+.pytest_cache/
+.venv/
+vendor/bundle/
+*.class
+*.log
+''', "text"),
+        ProjectFile("Makefile", '''install:
+\t@echo "Install dependencies per language folder"
+
+test:
+\t@echo "Run ecosystem tests: npm test, pytest, mvn test, cargo test, ruby tests"
+
+clean:
+\trm -rf typescript/dist rust/target python/.pytest_cache
+''', "makefile"),
+    ]
+    for lang in langs:
+        files.extend(_PROJECT_FILE_BUILDERS[lang](title, slug, domain))
+    return ProjectResult(title=title, kind="code", files=_cap_project_files(files))
+
+
 def _cap_project_files(files: list[ProjectFile]) -> list[ProjectFile]:
     """Keep project output within MAX_PROJECT_FILES (same logic, bounded file count)."""
     if len(files) <= MAX_PROJECT_FILES:
@@ -6818,7 +7512,10 @@ def generate_project(query: str, workspace: str = "code") -> ProjectResult:
     """Main entry point — routes to the best generator with fallbacks."""
     spec = parse_build_request(query, workspace)
 
-    if spec.kind == "game" or (_is_game_query(query) and not _is_explicit_app_query(spec.normalized)):
+    multi = generate_multilanguage_project(query)
+    if workspace == "code" and multi:
+        result = multi
+    elif spec.kind == "game" or (_is_game_query(query) and not _is_explicit_app_query(spec.normalized)):
         result = generate_game_project(query, workspace)
     elif spec.kind in ("crud", "tool", "app") or _is_explicit_app_query(spec.normalized):
         result = generate_app_project(query, workspace)
@@ -7597,6 +8294,56 @@ print(analyze(samples))'''
 
 
 def _compose_rust(task: str, query: str) -> str:
+    if task == "trait":
+        return '''use std::fmt::Debug;
+
+pub trait Repository<T>
+where
+    T: Clone + Debug,
+{
+    fn save(&mut self, value: T) -> usize;
+    fn get(&self, id: usize) -> Option<&T>;
+    fn list(&self) -> Vec<T>;
+}
+
+#[derive(Debug, Default)]
+pub struct MemoryRepository<T>
+where
+    T: Clone + Debug,
+{
+    items: Vec<T>,
+}
+
+impl<T> Repository<T> for MemoryRepository<T>
+where
+    T: Clone + Debug,
+{
+    fn save(&mut self, value: T) -> usize {
+        self.items.push(value);
+        self.items.len() - 1
+    }
+
+    fn get(&self, id: usize) -> Option<&T> {
+        self.items.get(id)
+    }
+
+    fn list(&self) -> Vec<T> {
+        self.items.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repository_trait_works() {
+        let mut repo = MemoryRepository::default();
+        let id = repo.save("ForgeAI".to_string());
+        assert_eq!(repo.get(id), Some(&"ForgeAI".to_string()));
+        assert_eq!(repo.list(), vec!["ForgeAI".to_string()]);
+    }
+}'''
     if task == "struct" or task == "ownership":
         return '''#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserId(u64);
