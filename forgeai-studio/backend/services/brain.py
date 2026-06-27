@@ -1911,9 +1911,21 @@ def forge(
 
     effective_depth = _mode_depth(mode, depth)
     max_atoms = _mode_max_atoms(mode, effective_depth)
+    qn = _normalize(query)
+
+    # Specific questions: extract and return the exact answer — skip NLG paraphrasing
+    if _is_specific_question(qn) and intent in (
+        "knowledge", "space", "earth", "science", "history", "animals", "programming",
+    ):
+        exact = _extract_exact_answer(query, content)
+        if exact and len(exact) >= 8:
+            return _format_exact_response(query, exact, mode, memory, content)
 
     # Instant mode: extract the most relevant fact directly, skip NLG rewrite
     if mode == "forge_instant" and intent in ("knowledge", "space", "earth", "science", "history", "animals"):
+        exact = _extract_exact_answer(query, content)
+        if exact:
+            return _format_exact_response(query, exact, mode, memory, content)
         first_para = content.split("\n\n")[0].strip()
         first_para = re.sub(r'^#{1,4}\s+', '', first_para)
         if len(first_para) >= 20:
@@ -2302,7 +2314,7 @@ def _score_build_app(q: str) -> int:
     if m:
         subject = m.group(2).strip()
         detected = detect_app_type(subject)
-        if detected != "calculator" or "calc" in subject:
+        if detected or "calc" in subject or "app" in subject:
             score += 60
     if noun_match and _has_build_verb(q):
         score += 90
@@ -2667,7 +2679,7 @@ def _is_heading_line(s: str) -> bool:
         return True
     return False
 
-def _extract_aspect(answer: str, aspect: str) -> str | None:
+def _extract_aspect(answer: str, aspect: str, *, exact: bool = False) -> str | None:
     keywords = _ASPECT_KEYWORDS.get(aspect, [])
     lines = [s.strip() for s in re.split(r'\n+|(?<=[.!?])\s+', answer) if s.strip()]
     clean = [re.sub(r'[*#>`_]+', '', l).strip() for l in lines]
@@ -2679,6 +2691,8 @@ def _extract_aspect(answer: str, aspect: str) -> str | None:
     ]
     if not matches:
         return None
+    if exact:
+        return matches[0] if len(matches) == 1 else "  ".join(matches[:2])
     intro = random.choice(_ASPECT_INTROS.get(aspect, [""]))
     return intro + "  ".join(matches[:2])
 
@@ -2697,6 +2711,12 @@ _SPECIFIC_PATTERNS = [
     (r"what (eats|hunts|kills|attacks|preys on)", "predator"),
     (r"what (do|does|did).{0,30}eat", "diet"),
     (r"where (do|does|did).{0,30}(live|found|come from|habitat|home)", "habitat"),
+    (r"what is the (speed|distance|temperature|mass|weight|height|depth|age)", "speed"),
+    (r"capital of", "definition"),
+    (r"how deep", "distance"),
+    (r"how tall", "size"),
+    (r"how heavy", "size"),
+    (r"how much does.{0,20}weigh", "size"),
 ]
 
 def _detect_aspect(q: str) -> str | None:
@@ -2738,16 +2758,233 @@ def _query_keywords(q: str) -> list[str]:
     words = re.findall(r"[a-z0-9]+(?:'[a-z]+)?", stripped)
     return [w for w in words if w not in _STOP_WORDS and len(w) > 2]
 
+
+_BROAD_QUESTION_MARKERS = (
+    "tell me about", "tell me more", "explain", "describe", "overview of",
+    "everything about", "learn about", "what can you tell", "go deeper",
+    "more about", "all about", "talk about",
+)
+
+_ASPECT_QUESTION_LABELS = {
+    "speed": "how fast something is",
+    "size": "how big or heavy something is",
+    "temperature": "how hot or cold something is",
+    "distance": "how far something is",
+    "count": "how many there are",
+    "date": "when something happened or how old it is",
+    "lifespan": "how long something lives or lasts",
+    "inventor": "who created or discovered it",
+    "composition": "what it is made of",
+    "diet": "what it eats",
+    "habitat": "where it lives",
+    "predator": "what hunts it",
+    "behavior": "how it behaves",
+    "definition": "what it is",
+}
+
+
+def _is_broad_question(q: str) -> bool:
+    return any(m in q for m in _BROAD_QUESTION_MARKERS)
+
+
+def _is_specific_question(q: str) -> bool:
+    """True when the user wants a precise fact, not a general overview."""
+    if _is_broad_question(q) and not _detect_aspect(q):
+        return False
+    if _detect_aspect(q):
+        return True
+    if re.search(
+        r"^(what is|what are|who is|who was|when was|when did|where is|where are|"
+        r"which is|how many|how much|how fast|how far|how old|how long|how hot|"
+        r"how big|how tall|how heavy|how deep|capital of|name of)\b",
+        q,
+    ):
+        return True
+    return bool(_QUESTION_STARTERS.match(q))
+
+
+def _interpret_question(query: str) -> str:
+    """Plain-English restatement of what the user is asking."""
+    q = _normalize(query)
+    aspect = _detect_aspect(q)
+    subject = _extract_entity(query) or "this topic"
+    if aspect and aspect in _ASPECT_QUESTION_LABELS:
+        return f"You asked { _ASPECT_QUESTION_LABELS[aspect] } — specifically about **{subject}**."
+    if re.search(r"^what is\b", q):
+        return f"You asked what **{subject}** is."
+    if re.search(r"^who (is|was)\b", q):
+        return f"You asked who **{subject}** is."
+    if re.search(r"^when\b", q):
+        return f"You asked when **{subject}** happened or existed."
+    if re.search(r"^where\b", q):
+        return f"You asked where **{subject}** is or lives."
+    if re.search(r"capital of", q):
+        return f"You asked for the capital city — **{subject}**."
+    return f"You asked a specific question about **{subject}**."
+
+
+def _score_sentence_for_query(sent: str, q: str, kws: list[str], aspect: str | None) -> float:
+    low = sent.lower()
+    score = sum(2.0 for w in kws if w in low)
+    if aspect and any(k in low for k in _ASPECT_KEYWORDS.get(aspect, [])):
+        score += 8.0
+    if re.search(r"\d", sent):
+        score += 5.0 if aspect in ("speed", "count", "size", "distance", "temperature", "date", "lifespan") else 2.0
+    if re.search(r"\*\*[^*]+\*\*", sent):
+        score += 3.0
+    if _is_heading_line(sent):
+        score -= 20.0
+    if len(sent) < 12:
+        score -= 5.0
+    if len(sent) > 280:
+        score -= 2.0
+    return score
+
+
+def _extract_from_bullets(answer: str, q: str, kws: list[str]) -> str | None:
+    """Pull the exact bullet/list line that answers the query."""
+    best_score, best_line = 0.0, None
+    for raw in answer.split("\n"):
+        line = raw.strip()
+        if not line or not (line.startswith("-") or line.startswith("*") or re.match(r"^\d+\.", line)):
+            continue
+        clean = re.sub(r'^[-*]\s*|\d+\.\s*', '', line)
+        clean = re.sub(r'[*#>`_]+', '', clean).strip()
+        if len(clean) < 8:
+            continue
+        score = _score_sentence_for_query(clean, q, kws, _detect_aspect(q))
+        if score > best_score:
+            best_score, best_line = score, clean
+    return best_line if best_score >= 4.0 else None
+
+
+def _extract_exact_answer(query: str, content: str) -> str | None:
+    """
+    Extract the precise fact that directly answers the query — no paraphrasing.
+    """
+    if not content or not content.strip():
+        return None
+
+    q = _normalize(query)
+    aspect = _detect_aspect(q)
+    kws = _query_keywords(q)
+
+    # 1. Aspect-targeted sentence from prose
+    if aspect:
+        hit = _extract_aspect(content, aspect, exact=True)
+        if hit and len(hit) >= 10:
+            return hit.strip()
+
+    # 2. Bullet / list line that matches the question
+    if kws:
+        bullet = _extract_from_bullets(content, q, kws)
+        if bullet:
+            return bullet
+
+    # 3. Best-scoring sentence in the content
+    if kws or aspect:
+        raw_lines = [s.strip() for s in re.split(r'\n+|(?<=[.!?])\s+', content) if s.strip()]
+        clean = [re.sub(r'[*#>`_\-]+', '', l).strip() for l in raw_lines]
+        scored: list[tuple[float, str]] = []
+        for sent in clean:
+            if not sent or _is_heading_line(sent):
+                continue
+            sc = _score_sentence_for_query(sent, q, kws, aspect)
+            if sc >= 4.0:
+                scored.append((sc, sent))
+        if scored:
+            scored.sort(key=lambda x: -x[0])
+            top = scored[0][1]
+            if scored[0][0] >= 8.0 and len(scored) > 1 and scored[1][0] >= 6.0:
+                return f"{top}  {scored[1][1]}"
+            return top
+
+    # 4. First bold value sentence (numeric / named answers)
+    for para in content.split("\n\n"):
+        p = para.strip()
+        if p.startswith("```") or p.startswith("["):
+            continue
+        if re.search(r"\*\*[^*]{2,}\*\*", p):
+            for sent in re.split(r"(?<=[.!?])\s+", _clean(p)):
+                if len(sent) >= 15 and not _is_heading_line(sent):
+                    if not kws or any(w in sent.lower() for w in kws):
+                        return sent.strip()
+
+    return None
+
+
+def _one_support_line(content: str, query: str, exact: str) -> str | None:
+    """One supporting detail that does not repeat the exact answer."""
+    q = _normalize(query)
+    kws = _query_keywords(q)
+    exact_low = exact.lower()
+    for sent in re.split(r"(?<=[.!?])\s+", _clean(content)):
+        if len(sent) < 20 or sent.lower()[:40] in exact_low:
+            continue
+        if _is_heading_line(sent):
+            continue
+        if kws and not any(w in sent.lower() for w in kws):
+            continue
+        if sent.lower() not in exact_low:
+            return sent.strip()
+    return None
+
+
+def _format_exact_response(
+    query: str,
+    exact: str,
+    mode: str,
+    memory: dict | None = None,
+    content: str = "",
+) -> str:
+    """Format a precise answer — exact fact first, optional brief context."""
+    exact = exact.strip()
+    if not exact:
+        return exact
+
+    parts: list[str] = []
+
+    if mode == "forge_thinking":
+        parts.append(
+            "### Thinking Process\n"
+            f"- **Understood:** {_interpret_question(query)}\n"
+            f"- **Answer type:** exact fact (no paraphrasing)\n"
+            f"- **Result:**\n"
+        )
+        parts.append("---")
+    elif memory and memory.get("continuing_thread") and memory.get("thread_confidence", 0) >= 55:
+        topic = (memory.get("active_topic") or "")[:60]
+        parts.append(f"*Re: {topic}*")
+
+    # Lead with the exact answer — bold if not already
+    if "**" not in exact[:30]:
+        parts.append(f"**{exact}**")
+    else:
+        parts.append(exact)
+
+    if mode == "forge_thinking" and content:
+        support = _one_support_line(content, query, exact)
+        if support:
+            parts.append(f"*Context:* {support}")
+
+    if mode == "forge_instant":
+        return parts[-1]
+
+    return "\n\n".join(parts)
+
+
 def _try_extract_fact(answer: str, q: str) -> str | None:
-    """Try to pull just the specific fact from a longer answer.
-    First tries aspect-keyword matching; falls back to query-keyword scoring."""
-    # 1. Try predefined aspect extraction
+    """Try to pull just the specific fact from a longer answer."""
+    exact = _extract_exact_answer(q, answer) if _is_specific_question(q) else None
+    if exact:
+        return exact
+
     aspect = _detect_aspect(q)
     if aspect:
-        result = _extract_aspect(answer, aspect)
+        result = _extract_aspect(answer, aspect, exact=True)
         if result:
             return result
-    # 2. Universal: only engage if it looks like a specific question
+
     if not _QUESTION_STARTERS.match(q):
         return None
     kws = _query_keywords(q)
@@ -2755,21 +2992,17 @@ def _try_extract_fact(answer: str, q: str) -> str | None:
         return None
     raw_lines = [s.strip() for s in re.split(r'\n+|(?<=[.!?])\s+', answer) if s.strip()]
     clean = [re.sub(r'[*#>`_\-]+', '', l).strip() for l in raw_lines]
-    # Score each sentence by how many query keywords it contains; skip headings
     scored = []
     for sent in clean:
         if _is_heading_line(sent):
             continue
-        low = sent.lower()
-        hits = sum(1 for w in kws if w in low)
-        if hits > 0 and len(sent) > 15:
-            scored.append((hits, sent))
+        sc = _score_sentence_for_query(sent, q, kws, aspect)
+        if sc >= 4.0:
+            scored.append((sc, sent))
     if not scored:
         return None
-    # Boost sentences that contain a number/unit (more likely to be the direct answer)
-    scored.sort(key=lambda x: (-(x[0] * 2 + bool(re.search(r'\d', x[1])))))
-    top = [s for _, s in scored[:2]]
-    return "  ".join(top)
+    scored.sort(key=lambda x: -x[0])
+    return scored[0][1]
 
 def _dispatch_animals(query: str, q: str) -> str:
     # Direct key match
@@ -2820,6 +3053,8 @@ def _dispatch_animals(query: str, q: str) -> str:
 
 def _dispatch_project(query: str, kind: str = "auto", mode: str = "forge_code") -> dict:
     """Generate a multi-file project and return a response dict."""
+    from services.code_generater import parse_build_request
+    spec = parse_build_request(query)
     project, researched = generate_anything_with_meta(query)
     verb = "compiled" if project.kind == "game" else "built"
     action = "Play Game" if project.kind == "game" else "Run Project"
@@ -2828,11 +3063,13 @@ def _dispatch_project(query: str, kind: str = "auto", mode: str = "forge_code") 
     research_note = " I looked up context on Google to understand your request." if researched else ""
 
     if mode == "forge_thinking":
+        feat_line = f"- **Features detected:** {', '.join(spec.features[:6])}\n" if spec.features else ""
         intro = (
             f"### Thinking Process\n"
             f"- **Intent:** {'Game compilation' if project.kind == 'game' else 'App generation'}\n"
-            f"- **Query parsed:** genre/type detection, theme extraction, feature flags\n"
-            + (f"- **Web research:** Used Google/DuckDuckGo to gather context for this custom build\n" if researched else "")
+            f"- **Parsed:** kind={spec.kind}, genre={spec.genre or 'n/a'}, app={spec.app_type or 'n/a'}\n"
+            f"{feat_line}"
+            + (f"- **Web research:** gathered context for this custom build\n" if researched else "")
             + f"- **Output:** {n} file{'s' if n != 1 else ''} — {file_list}\n\n"
             f"---\n\n"
             f"I {verb} **{project.title}** with {n} production-ready file{'s' if n != 1 else ''}.{research_note} "
@@ -3556,24 +3793,41 @@ def _related_kb_entries(entity: str, exclude_keys: list[str] | None = None) -> l
     return results[:4]
 
 
+def _forge_or_exact(
+    content: str,
+    query: str,
+    q: str,
+    intent: str,
+    *,
+    depth: int = 0,
+    mode: str = "forge_code",
+    memory: dict | None = None,
+) -> str:
+    """Return exact answer for specific questions; otherwise run full forge pipeline."""
+    if _is_specific_question(q):
+        exact = _extract_exact_answer(query, content)
+        if exact:
+            return _format_exact_response(query, exact, mode, memory, content)
+        fact = _try_extract_fact(content, q)
+        if fact:
+            return _format_exact_response(query, fact, mode, memory, content)
+    return forge(content, query, intent, depth=depth, mode=mode, memory=memory)
+
+
 def _build_comprehensive_response(topic: str, entity: str, memory: dict) -> str | None:
-    """
-    Build a rich multi-part response by pulling related KB entries and combining them.
-    """
+    """Build a rich multi-part response by pulling related KB entries."""
     q_topic = _normalize(topic)
     covered = memory.get("covered_aspects", [])
 
     primary = _kb_fact_lookup(q_topic)
+    primary_key = None
     if not primary:
-        primary_key = None
         for key, answer in GENERAL_KNOWLEDGE.items():
             if entity and entity.lower() in key:
                 primary, primary_key = answer, key
                 break
         if not primary:
             return None
-    else:
-        primary_key = None
 
     related = _related_kb_entries(entity or topic, exclude_keys=[primary_key] if primary_key else [])
     seen_tokens = set(re.findall(r"[a-z]{4,}", primary.lower()))
@@ -3589,27 +3843,31 @@ def _build_comprehensive_response(topic: str, entity: str, memory: dict) -> str 
 
     sections = [primary] + unique_related[:3]
     combined = "\n\n".join(sections)
-
     uncovered = [a for a in ["speed", "size", "diet", "habitat", "behavior", "lifespan", "composition", "date"]
                  if a not in covered]
     if uncovered:
         combined += f"\n\n*Still to explore on this topic: {', '.join(uncovered[:3])}.*"
-
     return combined
 
 
 # --- MAIN ENTRY POINT ---
 
-def _kb_fact_lookup(q: str) -> str | None:
-    """Return a KB answer for factual questions.
+def _kb_fact_lookup(q: str, entity: str = "") -> str | None:
+    """Return a KB answer for factual questions."""
+    ent = (entity or "").lower().strip()
 
-    Pass 1 — direct substring: find the longest KB key that appears literally in the
-    query (e.g. "speed of sound" matches "what is the speed of sound in air").
+    # Pass 0: entity-aware key match from conversation context
+    if ent and len(ent) >= 3:
+        best_len, best_answer = 0, None
+        for key, answer in GENERAL_KNOWLEDGE.items():
+            if ent in key or ent in answer.lower()[:200]:
+                key_hits = sum(1 for w in ent.split() if w in key)
+                q_hits = sum(1 for w in q.split() if len(w) > 3 and w in key)
+                if key_hits + q_hits >= 1 and len(key) > best_len:
+                    best_len, best_answer = len(key), answer
+        if best_answer and best_len >= 4:
+            return best_answer
 
-    Pass 2 — token overlap: for questions phrased differently from any key, require
-    at least 2 meaningful token hits AND coverage ≥ 50% of the key's tokens.
-    This avoids false positives like "many" matching "how many bones".
-    """
     # Pass 1: longest key that is a literal substring of the query
     best_len, best_answer = 0, None
     for key, answer in GENERAL_KNOWLEDGE.items():
@@ -3637,7 +3895,48 @@ def _kb_fact_lookup(q: str) -> str | None:
             continue
         if hits > best_score or (hits == best_score and ratio > best_ratio):
             best_score, best_ratio, best_answer = hits, ratio, answer
-    return best_answer  # let forge/vary_structure handle extraction
+    return best_answer
+
+
+def _comprehend_query(query: str, q: str, memory: dict | None = None) -> dict:
+    """
+    Deep parse of what the user is asking — used before routing and answering.
+    """
+    memory = memory or {}
+    entity = memory.get("active_entity") or _extract_entity(query) or ""
+    aspect = _detect_aspect(q)
+    kws = _query_keywords(q)
+
+    build_game = _score_build_game(q)
+    build_app = _score_build_app(q)
+    is_build = _has_build_verb(q) or build_game >= 60 or build_app >= 60
+
+    intent_hint = None
+    if is_build:
+        intent_hint = "build_game" if build_game >= build_app else "build_app"
+    elif aspect:
+        intent_hint = {"speed": "science", "distance": "space", "composition": "science",
+                       "date": "history", "inventor": "history", "habitat": "earth",
+                       "diet": "animals", "count": "knowledge"}.get(aspect, "knowledge")
+    elif kws:
+        intent_hint = memory.get("thread_intent")
+
+    return {
+        "raw": query,
+        "normalized": q,
+        "entity": entity,
+        "aspect": aspect,
+        "keywords": kws,
+        "is_specific": _is_specific_question(q),
+        "is_broad": _is_broad_question(q),
+        "is_build": is_build,
+        "build_game_score": build_game,
+        "build_app_score": build_app,
+        "intent_hint": intent_hint,
+        "continuing": memory.get("continuing_thread", False),
+        "question_read": _interpret_question(query) if _is_specific_question(q) else "",
+    }
+
 
 def generate_response(query: str, mode: str, history: list, quick_mode: bool = False, workspace: str = "chat") -> str | dict:
     q = _normalize(query)
@@ -3648,35 +3947,39 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     query, q, memory = _resolve_context(query, q, history, context_scan)
     thread_depth = memory.get("thread_depth", 0)
     active_entity = memory.get("active_entity") or ""
+    comprehend = _comprehend_query(query, q, memory)
 
     # Thread follow-up: build a richer multi-KB response when continuing a topic
     if (
-        memory.get("continuing_thread")
+        comprehend["continuing"]
         and memory.get("thread_confidence", 0) >= 60
         and active_entity
         and q not in _FOLLOWUP_EXACT
+        and not comprehend["is_specific"]
     ):
         comp = _build_comprehensive_response(
             memory.get("active_topic") or query, active_entity, memory
         )
         if comp:
-            return forge(comp, query, "knowledge", depth=thread_depth, mode=mode, memory=memory)
+            return _forge_or_exact(comp, query, q, "knowledge", depth=thread_depth, mode=mode, memory=memory)
 
     if is_update_request(q, history):
         return _dispatch_update(query, history, mode)
     if _score_animals(q) >= 60:
-        return forge(_dispatch_animals(query, q), q, "animals", mode=mode, memory=memory)
-    # Universal specific-question pre-check: KB lookup beats domain engines
-    kb_hit = _kb_fact_lookup(q)
+        return _forge_or_exact(_dispatch_animals(query, q), query, q, "animals", mode=mode, memory=memory)
+
+    # KB lookup with entity context from comprehension
+    kb_hit = _kb_fact_lookup(q, entity=comprehend["entity"] or active_entity)
     if kb_hit:
-        return forge(kb_hit, q, "knowledge", mode=mode, memory=memory)
+        return _forge_or_exact(kb_hit, query, q, "knowledge", mode=mode, memory=memory)
+
     code_mode = workspace == "code"
-    BUILD_BOOST = 25 if code_mode else 0
-    build_verb_score = 65 if _has_build_verb(q) and not _match(q, *(_GAME_NOUNS | _APP_NOUNS)) else 0
+    BUILD_BOOST = 30 if code_mode else 0
+    build_verb_score = 70 if comprehend["is_build"] and not _match(q, *(_GAME_NOUNS | _APP_NOUNS)) else 0
     scores: dict[str, int] = {
         "greeting":    _score_greeting(q),
-        "build_game":  min(100, _score_build_game(q) + BUILD_BOOST),
-        "build_app":   min(100, _score_build_app(q) + BUILD_BOOST),
+        "build_game":  min(100, comprehend["build_game_score"] + BUILD_BOOST),
+        "build_app":   min(100, comprehend["build_app_score"] + BUILD_BOOST),
         "build_any":   min(100, build_verb_score + BUILD_BOOST),
         "math":        _score_math(q),
         "space":       _score_space(q),
@@ -3689,6 +3992,13 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     }
     best_intent = max(scores, key=lambda k: scores[k])
     best_score = scores[best_intent]
+
+    # Comprehension hint boosts the most likely intent
+    hint = comprehend.get("intent_hint")
+    if hint and hint in scores:
+        scores[hint] = min(100, scores[hint] + 12)
+        best_intent = max(scores, key=lambda k: scores[k])
+        best_score = scores[best_intent]
 
     # Boost intent when chat scan shows we're still on the same topic
     if memory.get("continuing_thread") and not memory.get("topic_shift"):
@@ -3717,35 +4027,25 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
         return generate_math_response(query, mode)
     if best_intent == "space":
         full = generate_space_response(query, mode)
-        fact = _try_extract_fact(full, q)
-        raw = fact if fact else full
-        return forge(raw, q, "space", depth=thread_depth, mode=mode, memory=memory)
+        return _forge_or_exact(full, query, q, "space", depth=thread_depth, mode=mode, memory=memory)
     if best_intent == "earth":
         full = generate_earth_response(query, mode)
-        fact = _try_extract_fact(full, q)
-        raw = fact if fact else full
-        return forge(raw, q, "earth", depth=thread_depth, mode=mode, memory=memory)
+        return _forge_or_exact(full, query, q, "earth", depth=thread_depth, mode=mode, memory=memory)
     if best_intent == "science":
         full = generate_science_response(query, mode)
-        fact = _try_extract_fact(full, q)
-        raw = fact if fact else full
-        return forge(raw, q, "science", depth=thread_depth, mode=mode, memory=memory)
+        return _forge_or_exact(full, query, q, "science", depth=thread_depth, mode=mode, memory=memory)
     if best_intent == "history":
         full = generate_history_response(query, mode)
-        fact = _try_extract_fact(full, q)
-        raw = fact if fact else full
-        return forge(raw, q, "history", depth=thread_depth, mode=mode, memory=memory)
+        return _forge_or_exact(full, query, q, "history", depth=thread_depth, mode=mode, memory=memory)
     if best_intent == "programming":
         return _dispatch_programming(query, mode)
     if best_intent == "animals":
         raw = _dispatch_animals(query, q)
-        return forge(raw, q, "animals", depth=thread_depth, mode=mode, memory=memory)
+        return _forge_or_exact(raw, query, q, "animals", depth=thread_depth, mode=mode, memory=memory)
     if best_intent == "knowledge":
         for key, answer in GENERAL_KNOWLEDGE.items():
             if key in q or q in key:
-                fact = _try_extract_fact(answer, q)
-                raw = fact if fact else answer
-                return forge(raw, q, "knowledge", depth=thread_depth, mode=mode, memory=memory)
+                return _forge_or_exact(answer, query, q, "knowledge", depth=thread_depth, mode=mode, memory=memory)
     if code_mode and _has_build_verb(q):
         return _dispatch_project(query, mode=mode)
     return web_lookup(query)

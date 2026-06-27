@@ -12,6 +12,7 @@ import json
 import re
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass, field
 
 from data.game_templates import GAME_TEMPLATES
 
@@ -3378,13 +3379,14 @@ ctx.fillStyle='{text}';ctx.font='13px monospace';ctx.fillText('Press SPACE to be
 def should_synthesize(description: str) -> bool:
     """Return True if this description needs synthesis rather than templates."""
     q = description.lower()
-    # Synthesis handles complex multi-feature games and unknown types
     complex_indicators = [
-        len(q) > 60,
-        sum(1 for w in ["wizard", "ninja", "dragon", "robot", "frog", "ball", "knight", "astronaut"] if w in q) > 0,
-        bool(re.search(r"(shoot|fire|blast|laser|lightning|spell)", q)) and any(w in q for w in ["zombie", "monster", "alien", "ghost"]),
-        "platform" in q or ("jump" in q and not "snake" in q),
-        len([w for w in ["collect", "avoid", "shoot", "jump", "survive"] if w in q]) >= 2,
+        len(q) > 55,
+        sum(1 for w in ["wizard", "ninja", "dragon", "robot", "frog", "ball", "knight", "astronaut", "pirate", "zombie"] if w in q) > 0,
+        bool(re.search(r"(shoot|fire|blast|laser|lightning|spell|magic)", q)),
+        "platform" in q or ("jump" in q and "snake" not in q),
+        len([w for w in ["collect", "avoid", "shoot", "jump", "survive", "boss", "powerup", "multiplayer"] if w in q]) >= 2,
+        bool(re.search(r"\b(with|that has|featuring|including)\b", q)),
+        _detect_genre(q) == "universal",
     ]
     return any(complex_indicators)
 
@@ -3478,7 +3480,21 @@ def detect_app_type(q: str) -> str:
         return "grade_calculator"
     if any(w in q for w in ("currency", "exchange", "forex", "money convert")):
         return "currency_converter"
-    return "calculator"  # default fallback
+    return ""
+
+
+def _is_explicit_app_query(q: str) -> bool:
+    """True when the user clearly asked for an app/tool, not a game."""
+    if detect_app_type(q):
+        return True
+    return any(
+        w in q
+        for w in (
+            "app", "application", "tool", "utility", "widget", "dashboard",
+            "crud", "inventory", "database", "admin panel", "manager",
+            "notepad", "spreadsheet", "form", "landing page", "website",
+        )
+    )
 
 
 # ─── Individual builders ──────────────────────────────────────────────────────
@@ -5858,44 +5874,184 @@ _GENRE_NAMES = {
 
 
 def generate_game_project(query: str) -> ProjectResult:
+    spec = parse_build_request(query)
+    effective = _enrich_query_from_spec(query, spec)
+    q = spec.normalized
 
-    q = query.lower()
-    genre = _detect_genre(q)
-
-    # For complex/custom descriptions, use the synthesis engine
-    if genre == "universal" or should_synthesize(query):
-        code = synthesize_game(query)
-        feat = _extract_game_features(q)
-        title = _build_game_title(q, feat)
+    if spec.use_synthesis or spec.genre == "universal" or spec.complexity == "complex":
+        code = synthesize_game(effective)
+        title = spec.title
     else:
-        compiled = compile_game(query)
-        title = compiled.get("title", "Game")
+        compiled = compile_game(effective)
+        title = compiled.get("title", spec.title)
         code = compiled.get("code", "")
+        if not code or len(code) < 200:
+            code = synthesize_game(effective)
+            title = spec.title
 
-    js_name = "game.js"
-    files = split_html_to_files(code, js_name)
+    files = split_html_to_files(code, "game.js")
+    files = _append_typescript_types(files, spec)
     return ProjectResult(title=title, kind="game", files=files)
 
 
 # ─── App Project ──────────────────────────────────────────────────────────────
 
 def generate_app_project(query: str) -> ProjectResult:
-    q = query.lower()
-    static_type = detect_app_type(q)
+    spec = parse_build_request(query)
+    effective = _enrich_query_from_spec(query, spec)
+    q = spec.normalized
 
-    if static_type:
-        built = build_app(query)
+    if spec.kind == "crud" or any(w in q for w in ("dashboard", "inventory", "database", "crud", "admin")):
+        built = build_dynamic_app(effective)
+    elif spec.app_type:
+        built = build_app(effective)
+    elif spec.kind == "tool":
+        built = build_dynamic_app(effective)
     else:
-        built = build_dynamic_app(query)
+        built = build_dynamic_app(effective)
 
-    title = built.get("title", "App")
+    title = built.get("title", spec.title)
     code = built.get("code", "")
+    if not code or len(code) < 100:
+        built = build_app(effective)
+        title = built.get("title", spec.title)
+        code = built.get("code", "")
 
     files = split_html_to_files(code, "app.js")
+    files = _append_typescript_types(files, spec)
     return ProjectResult(title=title, kind="app", files=files)
 
 
 # ─── Main entry point ─────────────────────────────────────────────────────────
+
+@dataclass
+class BuildSpec:
+    """Parsed build request — what the user wants generated."""
+    raw: str
+    normalized: str
+    title: str = "Project"
+    kind: str = "auto"          # game | app | tool | crud
+    genre: str = ""
+    app_type: str = ""
+    features: list[str] = field(default_factory=list)
+    theme: str = "dark"
+    use_synthesis: bool = False
+    use_research: bool = False
+    complexity: str = "medium"  # simple | medium | complex
+
+
+def parse_build_request(query: str) -> BuildSpec:
+    """Deep-parse a build query into structured generation instructions."""
+    q = query.lower().strip()
+    spec = BuildSpec(raw=query, normalized=q)
+
+    spec.genre = _detect_genre(q)
+    spec.app_type = detect_app_type(q)
+    spec.use_synthesis = spec.genre == "universal" or should_synthesize(query)
+    spec.use_research = _has_build_intent(q) and (
+        spec.genre == "universal"
+        or spec.use_synthesis
+        or spec.complexity == "complex"
+        or spec.kind in ("crud", "tool")
+    )
+
+    feat = _extract_game_features(q)
+    spec.features = [k for k, v in feat.items() if v and k not in ("title",)]
+    spec.theme = _detect_theme(q).get("name", "dark")
+
+    if _is_game_query(query) or (
+        spec.genre != "universal"
+        and any(w in q for w in ("game", "arcade", "playable", "shooter", "platformer"))
+    ):
+        spec.kind = "game"
+        spec.title = _build_game_title(q, feat)
+    elif _is_explicit_app_query(q):
+        if any(w in q for w in ("dashboard", "crud", "inventory", "database", "admin panel", "manager")):
+            spec.kind = "crud"
+            spec.title = query[:48].strip().title() or "Data Manager"
+        elif any(w in q for w in ("tool", "utility", "converter", "generator", "widget")):
+            spec.kind = "tool"
+            spec.title = query[:48].strip().title() or "Tool"
+        else:
+            spec.kind = "app"
+            spec.title = query[:48].strip().title() or "App"
+    elif spec.use_synthesis and not _is_explicit_app_query(q):
+        spec.kind = "game"
+        spec.title = _build_game_title(q, feat)
+    else:
+        spec.kind = "app"
+        spec.title = query[:48].strip().title() or "App"
+
+    spec.complexity = (
+        "complex" if len(spec.features) >= 3 or len(q) > 80 or spec.use_synthesis
+        else "simple" if len(q) < 30
+        else "medium"
+    )
+    return spec
+
+
+def _enrich_query_from_spec(query: str, spec: BuildSpec) -> str:
+    """Append structured hints so generators pick the right template."""
+    hints: list[str] = []
+    if spec.features:
+        hints.append("features: " + ", ".join(spec.features[:8]))
+    if spec.genre and spec.genre != "universal":
+        hints.append(f"genre: {spec.genre}")
+    if spec.app_type:
+        hints.append(f"app: {spec.app_type}")
+    if spec.theme:
+        hints.append(f"theme: {spec.theme}")
+    if not hints:
+        return query
+    return f"{query} — {'; '.join(hints)}"
+
+
+def _append_typescript_types(files: list[ProjectFile], spec: BuildSpec) -> list[ProjectFile]:
+    """Add a shared types.ts for multi-file projects."""
+    if len(files) < 2:
+        return files
+    ts = """// Shared types for this ForgeAI project
+export interface GameState {
+  score: number;
+  lives: number;
+  level: number;
+  paused: boolean;
+}
+
+export interface AppConfig {
+  theme: string;
+  title: string;
+}
+"""
+    if any(f.name == "types.ts" for f in files):
+        return files
+    return files + [ProjectFile("types.ts", ts, "typescript")]
+
+
+def _append_readme(result: ProjectResult, spec: BuildSpec) -> ProjectResult:
+    lines = [
+        f"# {result.title}",
+        "",
+        "Generated by **ForgeAI Studio**.",
+        "",
+        f"- **Kind:** {result.kind}",
+        f"- **Complexity:** {spec.complexity}",
+    ]
+    if spec.genre:
+        lines.append(f"- **Genre:** {spec.genre}")
+    if spec.app_type:
+        lines.append(f"- **App type:** {spec.app_type}")
+    if spec.features:
+        lines.append(f"- **Features:** {', '.join(spec.features)}")
+    lines += ["", "## Files", ""]
+    for f in result.files:
+        lines.append(f"- `{f.name}` ({f.language})")
+    readme = "\n".join(lines)
+    files = list(result.files)
+    if not any(f.name == "README.md" for f in files):
+        files.append(ProjectFile("README.md", readme, "markdown"))
+    return ProjectResult(result.title, result.kind, files)
+
 
 _GAME_KEYWORDS = {
     "game", "snake", "pong", "flappy", "bird", "tetris", "breakout", "brickbreaker",
@@ -5918,10 +6074,19 @@ def _is_game_query(query: str) -> bool:
 
 
 def generate_project(query: str) -> ProjectResult:
-    """Main entry point. Returns a ProjectResult with title, kind, and files."""
-    if _is_game_query(query):
-        return generate_game_project(query)
-    return generate_app_project(query)
+    """Main entry point — routes to the best generator with fallbacks."""
+    spec = parse_build_request(query)
+
+    if spec.kind == "game" or (_is_game_query(query) and not _is_explicit_app_query(spec.normalized)):
+        result = generate_game_project(query)
+    elif spec.kind in ("crud", "tool", "app") or _is_explicit_app_query(spec.normalized):
+        result = generate_app_project(query)
+    elif spec.use_synthesis:
+        result = generate_game_project(query)
+    else:
+        result = generate_app_project(query)
+
+    return _append_readme(result, spec)
 
 
 # =============================================================================
@@ -6017,12 +6182,14 @@ def _needs_web_research(query: str) -> bool:
     q = query.lower()
     if not _has_build_intent(q):
         return False
-    if _is_game_query(query):
+    spec = parse_build_request(query)
+    if spec.kind == "game" and spec.genre != "universal" and not spec.use_synthesis:
         return False
-    if detect_app_type(q):
+    if spec.app_type or _is_explicit_app_query(q):
         return False
-    # Any unclassified build request — research first, then generate
-    return True
+    if spec.use_synthesis or spec.complexity == "complex":
+        return True
+    return spec.kind in ("crud", "tool", "auto") or spec.genre == "universal"
 
 
 def _plain_context(text: str) -> str:
@@ -6044,21 +6211,25 @@ def generate_anything(query: str) -> ProjectResult:
     Universal generator: builds games, apps, and tools.
     Researches unknown requests on the web before synthesising code.
     """
+    spec = parse_build_request(query)
     effective = query
-    if _needs_web_research(query):
+    if spec.use_research or _needs_web_research(query):
         ctx = research_for_build(query)
         if ctx:
-            effective = f"{query} — context: {ctx}"
+            effective = f"{query}\n\nResearch context:\n{ctx}"
+    effective = _enrich_query_from_spec(effective, spec)
     return generate_project(effective)
 
 
 def generate_anything_with_meta(query: str) -> tuple[ProjectResult, bool]:
     """Like generate_anything but also returns whether web research was used."""
+    spec = parse_build_request(query)
     researched = False
     effective = query
-    if _needs_web_research(query):
+    if spec.use_research or _needs_web_research(query):
         ctx = research_for_build(query)
         if ctx:
             researched = True
-            effective = f"{query} — context: {ctx}"
+            effective = f"{query}\n\nResearch context:\n{ctx}"
+    effective = _enrich_query_from_spec(effective, spec)
     return generate_project(effective), researched
