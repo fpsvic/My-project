@@ -313,6 +313,7 @@ function doScore(team) {
   state.phaseTimer = 3.0;
   state.goalFlash  = 1.0;
   state.goalTeam   = team;
+  triggerCrowdCheer();
   updateUI();
   showOverlay(
     team === 0 ? '🎉 GOAL!' : '😬 GOAL!',
@@ -428,6 +429,44 @@ function drawPowerCharge() {
   ctx.restore();
 }
 
+// ——— Stands ———
+function drawStands() {
+  const rows = 3, rowGap = 11;
+  const S = FIELD;
+
+  // Helper: draw a stand section with tiered rows
+  function stand(x, y, w, h) {
+    // Back row darker, front row lighter
+    for (let r = rows - 1; r >= 0; r--) {
+      const t = r / (rows - 1);
+      const lightness = 22 + t * 12;
+      ctx.fillStyle = `hsl(230, 18%, ${lightness}%)`;
+      if (w > h) {  // horizontal stand (top/bottom)
+        ctx.fillRect(x, y + (rows - 1 - r) * rowGap * (h > 0 ? 1 : -1), w, Math.abs(rowGap));
+      } else {       // vertical stand (left/right)
+        ctx.fillRect(x + (rows - 1 - r) * rowGap * (w > 0 ? 1 : -1), y, Math.abs(rowGap), h);
+      }
+    }
+  }
+
+  // Top stands
+  stand(S.x, S.y - rows * rowGap, S.w, rows * rowGap);
+  // Bottom stands
+  stand(S.x, S.y + S.h, S.w, rows * rowGap);
+  // Left stands
+  stand(S.x - rows * rowGap, S.y - rows * rowGap, rows * rowGap, S.h + rows * rowGap * 2);
+  // Right stands
+  stand(S.x + S.w, S.y - rows * rowGap, rows * rowGap, S.h + rows * rowGap * 2);
+
+  // Stand edge highlight lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  for (let r = 0; r < rows; r++) {
+    ctx.beginPath(); ctx.moveTo(S.x, S.y - r * rowGap); ctx.lineTo(S.x + S.w, S.y - r * rowGap); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(S.x, S.y + S.h + r * rowGap); ctx.lineTo(S.x + S.w, S.y + S.h + r * rowGap); ctx.stroke();
+  }
+}
+
 // ——— Goal flash ———
 function drawGoalFlash() {
   if (state.goalFlash <= 0) return;
@@ -448,6 +487,8 @@ function loop(ts) {
 
   ctx.fillStyle = '#0f0f1a';
   ctx.fillRect(0, 0, W, H);
+  drawStands();
+  drawCrowd(ctx, ts / 1000);
   drawField();
 
   if (state.phase === 'kickoff') {
@@ -501,6 +542,7 @@ function loop(ts) {
   requestAnimationFrame(loop);
 }
 
+initCrowd(W, H, FIELD);
 initGame();
 requestAnimationFrame(loop);
 </script>

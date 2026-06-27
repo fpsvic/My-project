@@ -2,6 +2,135 @@
 
 const SKIN = ['#f5c89a', '#e8a87c', '#c68642', '#8d5524'];
 
+// ——— Crowd system ———
+const CROWD_COLORS = [
+  '#e63946','#1d3557','#f4a261','#2a9d8f','#e9c46a',
+  '#264653','#6a4c93','#f72585','#4cc9f0','#ffffff',
+  '#ff6b6b','#ffd166','#06d6a0','#118ab2','#ef233c',
+];
+
+let crowdPeople = [];
+
+function initCrowd(W, H, FIELD) {
+  crowdPeople = [];
+  // Seating rows: top stands, bottom stands, left end, right end
+  const rows = 3;
+  const rowGap = 11;
+
+  // Top stands (above field)
+  for (let row = 0; row < rows; row++) {
+    const count = Math.floor((FIELD.w - 20) / 13);
+    for (let i = 0; i < count; i++) {
+      crowdPeople.push({
+        x: FIELD.x + 10 + i * 13 + (row % 2) * 6,
+        y: FIELD.y - 12 - row * rowGap,
+        color: CROWD_COLORS[Math.floor(Math.random() * CROWD_COLORS.length)],
+        skin: SKIN[Math.floor(Math.random() * SKIN.length)],
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.8 + Math.random() * 1.2,
+        cheer: 0,
+        side: 'top',
+      });
+    }
+  }
+
+  // Bottom stands
+  for (let row = 0; row < rows; row++) {
+    const count = Math.floor((FIELD.w - 20) / 13);
+    for (let i = 0; i < count; i++) {
+      crowdPeople.push({
+        x: FIELD.x + 10 + i * 13 + (row % 2) * 6,
+        y: FIELD.y + FIELD.h + 12 + row * rowGap,
+        color: CROWD_COLORS[Math.floor(Math.random() * CROWD_COLORS.length)],
+        skin: SKIN[Math.floor(Math.random() * SKIN.length)],
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.8 + Math.random() * 1.2,
+        cheer: 0,
+        side: 'bottom',
+      });
+    }
+  }
+
+  // Left end stands (player side)
+  for (let row = 0; row < rows; row++) {
+    const count = Math.floor((FIELD.h - 20) / 14);
+    for (let i = 0; i < count; i++) {
+      crowdPeople.push({
+        x: FIELD.x - 12 - row * rowGap,
+        y: FIELD.y + 10 + i * 14 + (row % 2) * 6,
+        color: '#1db954',  // home team colors on this side
+        skin: SKIN[Math.floor(Math.random() * SKIN.length)],
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.8 + Math.random() * 1.2,
+        cheer: 0,
+        side: 'left',
+      });
+    }
+  }
+
+  // Right end stands (AI side)
+  for (let row = 0; row < rows; row++) {
+    const count = Math.floor((FIELD.h - 20) / 14);
+    for (let i = 0; i < count; i++) {
+      crowdPeople.push({
+        x: FIELD.x + FIELD.w + 12 + row * rowGap,
+        y: FIELD.y + 10 + i * 14 + (row % 2) * 6,
+        color: '#e63946',  // away colors on this side
+        skin: SKIN[Math.floor(Math.random() * SKIN.length)],
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.8 + Math.random() * 1.2,
+        cheer: 0,
+        side: 'right',
+      });
+    }
+  }
+}
+
+function triggerCrowdCheer() {
+  for (const p of crowdPeople) p.cheer = 1.5;
+}
+
+function drawCrowd(ctx, t) {
+  for (const p of crowdPeople) {
+    const bob = Math.sin(t * p.speed + p.phase);
+    const cheer = p.cheer > 0 ? p.cheer : 0;
+    const raise  = cheer * 5;
+
+    // Decay cheer
+    if (p.cheer > 0) p.cheer -= 0.012;
+
+    // Seat / stand color (stadium concrete)
+    const bobY = p.y - Math.abs(bob) * (1 + cheer * 3) - raise;
+
+    // Body (shirt)
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.ellipse(p.x, bobY + 2, 4, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head
+    ctx.fillStyle = p.skin;
+    ctx.beginPath();
+    ctx.arc(p.x, bobY - 3, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Arms raised during cheer
+    if (cheer > 0.3) {
+      ctx.strokeStyle = p.skin;
+      ctx.lineWidth = 1.5;
+      const armRaise = cheer * 6;
+      ctx.beginPath();
+      ctx.moveTo(p.x - 3.5, bobY + 1);
+      ctx.lineTo(p.x - 6, bobY - armRaise);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(p.x + 3.5, bobY + 1);
+      ctx.lineTo(p.x + 6, bobY - armRaise);
+      ctx.stroke();
+    }
+  }
+}
+
 function drawCharacter(ctx, x, y, angle, jerseyColor, shortsColor, skinTone, number, isPlayer, stamina) {
   ctx.save();
   ctx.translate(x, y);
