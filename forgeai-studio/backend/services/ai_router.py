@@ -712,16 +712,35 @@ def _dispatch_animals(query: str, q: str) -> str:
         f"> `tell me about {mentioned}s` · `what do {mentioned}s eat` · `where do {mentioned}s live` · `what eats {mentioned}s`"
     )
 
-def _dispatch_project(query: str, kind: str = "auto") -> dict:
+def _dispatch_project(query: str, kind: str = "auto", mode: str = "forge_code") -> dict:
     """Generate a multi-file project and return a response dict."""
     project = generate_project(query)
     verb = "compiled" if project.kind == "game" else "built"
     action = "Play Game" if project.kind == "game" else "Run Project"
     n = len(project.files)
-    intro = (
-        f"I {verb} **{project.title}** — {n} file{'s' if n != 1 else ''} generated. "
-        f"Browse the files below, then hit **\"{action}\"** to launch."
-    )
+    file_list = ", ".join(f"`{f.name}`" for f in project.files)
+
+    if mode == "forge_thinking":
+        intro = (
+            f"### Thinking Process\n"
+            f"- **Intent:** {'Game compilation' if project.kind == 'game' else 'App generation'}\n"
+            f"- **Query parsed:** genre/type detection, theme extraction, feature flags\n"
+            f"- **Output:** {n} file{'s' if n != 1 else ''} — {file_list}\n\n"
+            f"---\n\n"
+            f"I {verb} **{project.title}** with {n} production-ready file{'s' if n != 1 else ''}. "
+            f"Browse the file tree below, then hit **\"{action}\"** to launch it live."
+        )
+    elif mode == "forge_instant":
+        intro = (
+            f"**{project.title}** ready — {n} file{'s' if n != 1 else ''}. "
+            f"Hit **\"{action}\"** to launch."
+        )
+    else:
+        intro = (
+            f"I {verb} **{project.title}** — {n} file{'s' if n != 1 else ''} generated ({file_list}). "
+            f"The code is split into separate modules for easy editing. "
+            f"Browse the files below, then hit **\"{action}\"** to launch."
+        )
     return {
         "text": intro,
         "project_files": [{"name": f.name, "content": f.content, "language": f.language} for f in project.files],
@@ -729,13 +748,13 @@ def _dispatch_project(query: str, kind: str = "auto") -> dict:
 
 # Keep these for backward compat — now all go through _dispatch_project
 def _dispatch_game(query: str, q: str, mode: str) -> dict:
-    return _dispatch_project(query, "game")
+    return _dispatch_project(query, "game", mode)
 
 def _dispatch_app(query: str, mode: str) -> dict:
-    return _dispatch_project(query, "app")
+    return _dispatch_project(query, "app", mode)
 
 def _dispatch_dynamic(query: str, mode: str) -> dict:
-    return _dispatch_project(query, "app")
+    return _dispatch_project(query, "app", mode)
 
 def _dispatch_update(query: str, history: list, mode: str) -> str | dict:
     from services.update_handler import extract_last_project
@@ -775,28 +794,42 @@ def _dispatch_programming(query: str, mode: str) -> str:
             snippet = lang_examples[concept]
             display_lang = lang.replace("golang", "Go").replace("cpp", "C++").replace("csharp", "C#")
             display_lang = display_lang.capitalize() if display_lang == lang else display_lang
-            return (
-                f"### {display_lang} — {concept.replace('_', ' ').title()}\n\n"
-                f"```{lang}\n{snippet}\n```"
-            )
+            heading = f"### {display_lang} — {concept.replace('_', ' ').title()}"
+            body = f"```{lang}\n{snippet}\n```"
+            if mode == "forge_thinking":
+                return (
+                    f"### Thinking Process\n"
+                    f"- **Intent:** Programming concept — {concept.replace('_', ' ')} in {display_lang}\n"
+                    f"- **Approach:** Retrieve canonical example with inline explanation\n\n"
+                    f"---\n\n{heading}\n\n{body}"
+                )
+            return f"{heading}\n\n{body}"
     for lang_key, hw in LANG_HELLO_WORLD.items():
         if lang_key in q and _match(q, "hello world", "syntax", "example", "how to write", "sample", "print"):
-            return (
-                f"### {lang_key.capitalize()} — Hello World\n\n"
-                f"```{lang_key}\n{hw}\n```\n\n"
-                + LANG_HISTORY.get(lang_key, "")
-            )
+            history = LANG_HISTORY.get(lang_key, "")
+            body = f"```{lang_key}\n{hw}\n```\n\n{history}" if history else f"```{lang_key}\n{hw}\n```"
+            if mode == "forge_thinking" and history:
+                return (
+                    f"### Thinking Process\n"
+                    f"- **Intent:** {lang_key.capitalize()} syntax example + language history\n\n"
+                    f"---\n\n### {lang_key.capitalize()} — Hello World\n\n{body}"
+                )
+            return f"### {lang_key.capitalize()} — Hello World\n\n{body}"
     for lang_key, history in LANG_HISTORY.items():
         if lang_key in q and _match(q, "history", "origin", "created", "designed", "who made",
                                      "when", "invented", "by whom", "who built", "who wrote"):
             hw = LANG_HELLO_WORLD.get(lang_key, "")
             block = f"\n\n```{lang_key}\n{hw}\n```" if hw else ""
-            return f"### {lang_key.capitalize()} Language Origin\n\n{history}{block}"
+            raw = f"### {lang_key.capitalize()} Language Origin\n\n{history}{block}"
+            if mode != "forge_instant":
+                return forge(history, query, "programming", mode=mode)
+            return raw
     for key, answer in CODING_HELP.items():
         if key in q:
-            return answer
-    # Synthesize a response for unrecognized programming questions
-    return _synthesize_programming_response(query, q)
+            if "```" in answer:
+                return answer
+            return forge(answer, query, "programming", mode=mode)
+    return _synthesize_programming_response(query, q, mode)
 
 # --- SYNTHESIZED PROGRAMMING RESPONSES ---
 
@@ -960,6 +993,64 @@ _CONCEPT_RESPONSES: dict[str, str] = {
         "if (saved === 'dark') document.documentElement.classList.add('dark');\n```\n\n"
         "```css\n:root { --bg: #fff; --text: #0f172a; }\n.dark { --bg: #0f172a; --text: #f1f5f9; }\nbody { background: var(--bg); color: var(--text); }\n```"
     ),
+    "binary search": (
+        "### Binary Search\n\n"
+        "Requires a **sorted array**. Halves the search space each step — O(log n):\n\n"
+        "```javascript\nfunction binarySearch(arr, target) {\n"
+        "  let lo = 0, hi = arr.length - 1;\n"
+        "  while (lo <= hi) {\n"
+        "    const mid = (lo + hi) >> 1;\n"
+        "    if (arr[mid] === target) return mid;\n"
+        "    if (arr[mid] < target) lo = mid + 1;\n"
+        "    else hi = mid - 1;\n"
+        "  }\n  return -1;\n}\n```"
+    ),
+    "linked list": (
+        "### Linked List\n\n"
+        "```javascript\nclass Node {\n  constructor(val) { this.val = val; this.next = null; }\n}\n"
+        "class LinkedList {\n  constructor() { this.head = null; }\n"
+        "  append(val) {\n"
+        "    const node = new Node(val);\n"
+        "    if (!this.head) { this.head = node; return; }\n"
+        "    let cur = this.head;\n"
+        "    while (cur.next) cur = cur.next;\n"
+        "    cur.next = node;\n  }\n}\n```"
+    ),
+    "stack": (
+        "### Stack (LIFO)\n\n"
+        "```javascript\nclass Stack {\n"
+        "  constructor() { this.items = []; }\n"
+        "  push(val) { this.items.push(val); }\n"
+        "  pop() { return this.items.pop(); }\n"
+        "  peek() { return this.items[this.items.length - 1]; }\n"
+        "  isEmpty() { return this.items.length === 0; }\n}\n```"
+    ),
+    "hash map": (
+        "### Hash Map / Dictionary\n\n"
+        "```javascript\nconst map = new Map();\n"
+        "map.set('user:1', { name: 'Alice', score: 42 });\n"
+        "console.log(map.get('user:1'));  // { name: 'Alice', score: 42 }\n"
+        "for (const [key, val] of map) console.log(key, val);\n```"
+    ),
+    "error handling": (
+        "### Error Handling\n\n"
+        "```javascript\nclass ValidationError extends Error {\n"
+        "  constructor(msg) { super(msg); this.name = 'ValidationError'; }\n}\n"
+        "function parseAge(input) {\n"
+        "  const age = Number(input);\n"
+        "  if (isNaN(age) || age < 0) throw new ValidationError(`Invalid age: ${input}`);\n"
+        "  return age;\n}\n"
+        "try { console.log(parseAge('25')); }\n"
+        "catch (e) { console.error(e.message); }\n```"
+    ),
+    "module": (
+        "### ES Modules\n\n"
+        "```javascript\n// math.js\nexport const add = (a, b) => a + b;\n"
+        "export default class Calculator {}\n\n"
+        "// app.js\nimport Calculator, { add } from './math.js';\n"
+        "console.log(add(2, 3)); // 5\n```\n\n"
+        "Use `type=\"module\"` on your `<script>` tag for browser ES modules."
+    ),
 }
 
 _CONCEPT_KEYWORDS: list[tuple[list[str], str]] = [
@@ -979,17 +1070,29 @@ _CONCEPT_KEYWORDS: list[tuple[list[str], str]] = [
     (["array", "map filter reduce", "flatmap", "array method", "iterate array"], "array"),
     (["state", "state management", "reactive", "subscribe", "observer"], "state management"),
     (["dark mode", "night mode", "theme toggle", "color scheme", "prefers-color-scheme"], "dark mode"),
+    (["binary search", "bisect", "log n search", "sorted search"], "binary search"),
+    (["linked list", "linkedlist", "singly linked", "doubly linked"], "linked list"),
+    (["stack", "lifo", "push pop", "call stack"], "stack"),
+    (["hash map", "hashmap", "dictionary", "hash table", "key value store"], "hash map"),
+    (["error handling", "try catch", "exception", "throw error", "error handling"], "error handling"),
+    (["module", "import export", "es module", "esm", "require import"], "module"),
 ]
 
 
-def _synthesize_programming_response(query: str, q: str) -> str:
+def _synthesize_programming_response(query: str, q: str, mode: str = "forge_code") -> str:
     """Give a real answer for programming questions that don't match the KB."""
-    # Check synthesized concept map
     for keywords, concept_key in _CONCEPT_KEYWORDS:
         if any(kw in q for kw in keywords):
-            return _CONCEPT_RESPONSES[concept_key]
+            response = _CONCEPT_RESPONSES[concept_key]
+            if mode == "forge_thinking":
+                return (
+                    f"### Thinking Process\n"
+                    f"- **Intent:** Programming concept — {concept_key}\n"
+                    f"- **Approach:** Canonical pattern with working code example\n\n"
+                    f"---\n\n{response}"
+                )
+            return response
 
-    # Fall back to web search for truly unknown programming questions
     from services.web_search import web_lookup
     return web_lookup(query)
 
@@ -1294,16 +1397,16 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
             memory.get("active_topic") or query, active_entity, memory
         )
         if comp:
-            return forge(comp, query, "knowledge", depth=thread_depth)
+            return forge(comp, query, "knowledge", depth=thread_depth, mode=mode)
 
     if is_update_request(q, history):
         return _dispatch_update(query, history, mode)
     if _score_animals(q) >= 60:
-        return forge(_dispatch_animals(query, q), q, "animals")
+        return forge(_dispatch_animals(query, q), q, "animals", mode=mode)
     # Universal specific-question pre-check: KB lookup beats domain engines
     kb_hit = _kb_fact_lookup(q)
     if kb_hit:
-        return forge(kb_hit, q, "knowledge")
+        return forge(kb_hit, q, "knowledge", mode=mode)
     code_mode = workspace == "code"
     BUILD_BOOST = 25 if code_mode else 0
     build_verb_score = 65 if _has_build_verb(q) and not _match(q, *(_GAME_NOUNS | _APP_NOUNS)) else 0
@@ -1342,34 +1445,34 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
         full = generate_space_response(query, mode)
         fact = _try_extract_fact(full, q)
         raw = fact if fact else full
-        return forge(raw, q, "space")
+        return forge(raw, q, "space", depth=thread_depth, mode=mode)
     if best_intent == "earth":
         full = generate_earth_response(query, mode)
         fact = _try_extract_fact(full, q)
         raw = fact if fact else full
-        return forge(raw, q, "earth")
+        return forge(raw, q, "earth", depth=thread_depth, mode=mode)
     if best_intent == "science":
         full = generate_science_response(query, mode)
         fact = _try_extract_fact(full, q)
         raw = fact if fact else full
-        return forge(raw, q, "science")
+        return forge(raw, q, "science", depth=thread_depth, mode=mode)
     if best_intent == "history":
         full = generate_history_response(query, mode)
         fact = _try_extract_fact(full, q)
         raw = fact if fact else full
-        return forge(raw, q, "history")
+        return forge(raw, q, "history", depth=thread_depth, mode=mode)
     if best_intent == "programming":
         return _dispatch_programming(query, mode)
     if best_intent == "animals":
         raw = _dispatch_animals(query, q)
-        return forge(raw, q, "animals")
+        return forge(raw, q, "animals", depth=thread_depth, mode=mode)
     if best_intent == "knowledge":
         for key, answer in GENERAL_KNOWLEDGE.items():
             if key in q or q in key:
                 fact = _try_extract_fact(answer, q)
                 raw = fact if fact else answer
-                return forge(raw, q, "knowledge")
+                return forge(raw, q, "knowledge", depth=thread_depth, mode=mode)
     if code_mode and _has_build_verb(q):
-        return _dispatch_project(query)
+        return _dispatch_project(query, mode=mode)
     from services.web_search import web_lookup
     return web_lookup(query)

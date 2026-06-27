@@ -1096,7 +1096,7 @@ def _select_atoms(atoms: list[FactAtom], query: str, focus: str | None, max_atom
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
-def generate_from_content(content: str, query: str, max_atoms: int = 3) -> str:
+def generate_from_content(content: str, query: str, max_atoms: int = 3, elaborate: bool = False) -> str:
     """
     Takes a KB content string and the original query.
     Extracts fact atoms, picks random sentence generators, and composes a fresh
@@ -1106,6 +1106,7 @@ def generate_from_content(content: str, query: str, max_atoms: int = 3) -> str:
         content:   Raw KB string (may contain markdown, multiple sentences).
         query:     The user's original question — used to prioritise relevant facts.
         max_atoms: Maximum fact atoms to use (higher = more comprehensive output).
+        elaborate: When True, always add context and elaboration sentences.
 
     Returns:
         A freshly generated response string (plain text with optional markdown bold).
@@ -1124,12 +1125,20 @@ def generate_from_content(content: str, query: str, max_atoms: int = 3) -> str:
     if len(relevant) == 1:
         atom = relevant[0]
         sentence = _generate_sentence(atom)
-        if random.random() < 0.55:
+        parts = [sentence]
+        if elaborate or random.random() < 0.55:
             ctx = _single_atom_context(atom)
             if ctx:
-                return f"{sentence} {ctx}"
-        elab = _maybe_elaboration(atom, probability=0.45)
-        return (sentence + " " + elab).strip() if elab else sentence
+                parts.append(ctx)
+        elab_prob = 0.75 if elaborate else 0.45
+        elab = _maybe_elaboration(atom, probability=elab_prob)
+        if elab:
+            parts.append(elab)
+        return " ".join(parts).strip()
 
     result = _compose_multiple(relevant, focus)
+    if elaborate and result and len(relevant) >= 2:
+        extra = _maybe_elaboration(relevant[0], probability=0.6)
+        if extra:
+            result = result + " " + extra
     return result if result else _generate_sentence(relevant[0])

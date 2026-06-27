@@ -47,7 +47,7 @@ def chat(req: ChatRequest):
 
     return ChatResponse(
         text=text,
-        corrections=[],
+        corrections=spell_result.get("corrections", []),
         web_searched=_ws._last_searched,
         project_files=project_files,
     )

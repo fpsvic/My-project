@@ -75,6 +75,23 @@ _SECTION_LABELS = [
 
 
 def forge_greeting(mode: str) -> str:
+    if mode == "forge_instant":
+        return random.choice([
+            "Hey — **ForgeAI** here. Ask me anything or tell me what to build.",
+            "**ForgeAI** ready. What do you need?",
+            "Quick mode on — ask a question or request a build.",
+        ])
+
+    if mode == "forge_thinking":
+        intro = random.choice(_GREETING_INTROS)
+        caps = random.choice(_CAPABILITY_SETS)
+        return (
+            f"{intro}\n\n"
+            f"**Thinking mode active** — I'll show my reasoning process and give thorough answers.\n\n"
+            f"**What I can do:**\n" + "\n".join(caps) + "\n\n"
+            f"{random.choice(_CLOSERS)}"
+        )
+
     intro = random.choice(_GREETING_INTROS)
     caps = random.choice(_CAPABILITY_SETS)
     closer = random.choice(_CLOSERS)

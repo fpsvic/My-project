@@ -776,6 +776,129 @@ render();
 # HTML GENERATOR — TOOL / CALCULATOR
 # ══════════════════════════════════════════════════════════════
 
+def _detect_tool_type(q: str) -> str:
+    """Detect the kind of calculator/converter from the query."""
+    if any(w in q for w in ("bmi", "body mass", "body weight index")):
+        return "bmi"
+    if any(w in q for w in ("tip", "gratuity", "restaurant bill")):
+        return "tip"
+    if any(w in q for w in ("percent", "percentage", "discount", "% off")):
+        return "percent"
+    if any(w in q for w in ("celsius", "fahrenheit", "kelvin", "temperature", "temp convert")):
+        return "temperature"
+    if any(w in q for w in ("compound interest", "interest rate", "savings", "investment")):
+        return "compound"
+    if any(w in q for w in ("mortgage", "loan", "monthly payment", "amortization")):
+        return "loan"
+    if any(w in q for w in ("gpa", "grade point", "grades")):
+        return "gpa"
+    if any(w in q for w in ("age", "birthday", "born", "how old")):
+        return "age"
+    if any(w in q for w in ("calorie", "calories", "bmr", "metabolic")):
+        return "calorie"
+    if "converter" in q or "convert" in q:
+        return "converter"
+    if "calculator" in q or "calc" in q:
+        return "arithmetic"
+    return "generic"
+
+
+def _build_tool_calc_js(q: str, tool_fields: list[dict]) -> tuple[str, str, str, str]:
+    """
+    Return (read_inputs_js, result_lines_js, total_expr_js, result_label) for the
+    calculate() function. Uses real formulas when the tool type is recognised.
+    """
+    tool_type = _detect_tool_type(q)
+    ids = [f["id"] for f in tool_fields]
+    read = "\n    ".join(
+        f'const val_{fid} = parseFloat(document.getElementById("tinput_{fid}").value) || 0;'
+        for fid in ids
+    )
+
+    if tool_type == "bmi" and len(ids) >= 2:
+        return read, (
+            'lines.push({ label: "Weight (kg)", value: val_' + ids[0] + '.toFixed(1) });\n'
+            '  lines.push({ label: "Height (cm)", value: val_' + ids[1] + '.toFixed(1) });\n'
+            '  const heightM = val_' + ids[1] + ' / 100;\n'
+            '  const bmi = heightM > 0 ? val_' + ids[0] + ' / (heightM * heightM) : 0;\n'
+            '  const category = bmi < 18.5 ? "Underweight" : bmi < 25 ? "Normal" : bmi < 30 ? "Overweight" : "Obese";\n'
+            '  lines.push({ label: "BMI Category", value: category });'
+        ), "bmi", "BMI"
+
+    if tool_type == "tip" and len(ids) >= 2:
+        return read, (
+            'lines.push({ label: "Bill Amount", value: "$" + val_' + ids[0] + '.toFixed(2) });\n'
+            '  lines.push({ label: "Tip Rate", value: val_' + ids[1] + '.toFixed(1) + "%" });\n'
+            '  const tip = val_' + ids[0] + ' * (val_' + ids[1] + ' / 100);\n'
+            '  lines.push({ label: "Tip Amount", value: "$" + tip.toFixed(2) });\n'
+            '  const total = val_' + ids[0] + ' + tip;\n'
+            '  lines.push({ label: "Total Bill", value: "$" + total.toFixed(2) });'
+        ), "val_" + ids[0] + " + val_" + ids[0] + " * (val_" + ids[1] + " / 100)", "Total with Tip"
+
+    if tool_type == "percent" and len(ids) >= 2:
+        return read, (
+            'lines.push({ label: "Original Value", value: val_' + ids[0] + '.toLocaleString() });\n'
+            '  lines.push({ label: "Percentage", value: val_' + ids[1] + '.toFixed(1) + "%" });\n'
+            '  const result = val_' + ids[0] + ' * (val_' + ids[1] + ' / 100);\n'
+            '  lines.push({ label: "Result", value: result.toLocaleString(undefined, {maximumFractionDigits:4}) });'
+        ), "val_" + ids[0] + " * (val_" + ids[1] + " / 100)", "Percentage Result"
+
+    if tool_type == "temperature" and len(ids) >= 1:
+        return read, (
+            'const celsius = val_' + ids[0] + ';\n'
+            '  const fahrenheit = celsius * 9/5 + 32;\n'
+            '  const kelvin = celsius + 273.15;\n'
+            '  lines.push({ label: "Celsius", value: celsius.toFixed(2) + " °C" });\n'
+            '  lines.push({ label: "Fahrenheit", value: fahrenheit.toFixed(2) + " °F" });\n'
+            '  lines.push({ label: "Kelvin", value: kelvin.toFixed(2) + " K" });'
+        ), "val_" + ids[0] + " * 9/5 + 32", "Fahrenheit"
+
+    if tool_type == "compound" and len(ids) >= 3:
+        return read, (
+            'lines.push({ label: "Principal", value: "$" + val_' + ids[0] + '.toLocaleString() });\n'
+            '  lines.push({ label: "Annual Rate", value: val_' + ids[1] + '.toFixed(2) + "%" });\n'
+            '  lines.push({ label: "Years", value: val_' + ids[2] + '.toFixed(0) });\n'
+            '  const r = val_' + ids[1] + ' / 100;\n'
+            '  const amount = val_' + ids[0] + ' * Math.pow(1 + r, val_' + ids[2] + ');\n'
+            '  const interest = amount - val_' + ids[0] + ';\n'
+            '  lines.push({ label: "Interest Earned", value: "$" + interest.toFixed(2) });\n'
+            '  lines.push({ label: "Final Amount", value: "$" + amount.toFixed(2) });'
+        ), "val_" + ids[0] + " * Math.pow(1 + val_" + ids[1] + "/100, val_" + ids[2] + ")", "Final Amount"
+
+    if tool_type == "loan" and len(ids) >= 3:
+        return read, (
+            'lines.push({ label: "Loan Amount", value: "$" + val_' + ids[0] + '.toLocaleString() });\n'
+            '  lines.push({ label: "Annual Rate", value: val_' + ids[1] + '.toFixed(2) + "%" });\n'
+            '  lines.push({ label: "Term (years)", value: val_' + ids[2] + '.toFixed(0) });\n'
+            '  const r = val_' + ids[1] + ' / 100 / 12;\n'
+            '  const n = val_' + ids[2] + ' * 12;\n'
+            '  const p = val_' + ids[0] + ';\n'
+            '  const monthly = r > 0 ? p * r * Math.pow(1+r,n) / (Math.pow(1+r,n)-1) : p/n;\n'
+            '  lines.push({ label: "Monthly Payment", value: "$" + monthly.toFixed(2) });\n'
+            '  lines.push({ label: "Total Paid", value: "$" + (monthly*n).toFixed(2) });'
+        ), (
+            "(function(){ const r=val_" + ids[1] + "/100/12, n=val_" + ids[2] +
+            "*12, p=val_" + ids[0] + "; return r>0?p*r*Math.pow(1+r,n)/(Math.pow(1+r,n)-1):p/n; })()"
+        ), "Monthly Payment"
+
+    if tool_type == "arithmetic" and len(ids) >= 2:
+        return read, (
+            'lines.push({ label: "' + tool_fields[0]["label"] + '", value: val_' + ids[0] + '.toLocaleString() });\n'
+            '  lines.push({ label: "' + tool_fields[1]["label"] + '", value: val_' + ids[1] + '.toLocaleString() });\n'
+            '  lines.push({ label: "Sum", value: (val_' + ids[0] + ' + val_' + ids[1] + ').toLocaleString() });\n'
+            '  lines.push({ label: "Product", value: (val_' + ids[0] + ' * val_' + ids[1] + ').toLocaleString() });\n'
+            '  if (val_' + ids[1] + ' !== 0) lines.push({ label: "Quotient", value: (val_' + ids[0] + ' / val_' + ids[1] + ').toFixed(4) });'
+        ), "val_" + ids[0] + " + val_" + ids[1], "Sum"
+
+    # Generic fallback: show each field + sum
+    result_lines = "\n    ".join(
+        f'lines.push({{ label: "{f["label"]}", value: val_{f["id"]}.toLocaleString() }});'
+        for f in tool_fields
+    )
+    sum_expr = " + ".join(f"val_{f['id']}" for f in tool_fields) or "0"
+    return read, result_lines, sum_expr, "Total / Result"
+
+
 def generate_tool_app(query: str) -> str:
     """Build a professional single-panel tool/calculator app from a description."""
     q = query.lower()
@@ -846,20 +969,9 @@ def generate_tool_app(query: str) -> str:
         for f in tool_fields
     )
 
-    # JS to read inputs and build result
-    read_inputs_js = "\n    ".join(
-        f'const val_{f["id"]} = parseFloat(document.getElementById("tinput_{f["id"]}").value) || 0;'
-        for f in tool_fields
-    )
+    # JS to read inputs and build result — use real formulas when detected
+    read_inputs_js, result_lines_js, total_expr, result_label = _build_tool_calc_js(q, tool_fields)
 
-    # Build a result lines array
-    result_lines_js = "\n    ".join(
-        f'lines.push({{ label: "{f["label"]}", value: val_{f["id"]}.toLocaleString() }});'
-        for f in tool_fields
-    )
-
-    # Sum of numeric fields as a "Total" result
-    sum_expr = " + ".join(f'val_{f["id"]}' for f in tool_fields)
     storage_key = f'forgeai_tool_{re.sub(r"[^a-z0-9]", "_", title.lower())}'
 
     html = f"""<!DOCTYPE html>
@@ -966,7 +1078,7 @@ function calculate() {{
 
   const lines = [];
   {result_lines_js}
-  const total = {sum_expr};
+  const total = {total_expr};
 
   // Show results
   const rowsEl = document.getElementById('resultRows');
@@ -975,7 +1087,7 @@ function calculate() {{
   rowsEl.style.display = 'block';
   rowsEl.innerHTML = lines.map(l =>
     `<div class="result-row"><span class="result-label">${{l.label}}</span><span class="result-value">${{l.value}}</span></div>`
-  ).join('') + `<div class="result-total"><span class="result-total-label">Total / Result</span><span class="result-total-value">${{total.toLocaleString(undefined,{{maximumFractionDigits:4}})}}</span></div>`;
+  ).join('') + `<div class="result-total"><span class="result-total-label">{result_label}</span><span class="result-total-value">${{typeof total === 'number' ? total.toLocaleString(undefined,{{maximumFractionDigits:4}}) : total}}</span></div>`;
 
   // Save to history
   const summary = lines.map(l => `${{l.label}}: ${{l.value}}`).join(' | ');

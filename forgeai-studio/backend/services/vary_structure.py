@@ -586,7 +586,24 @@ def vary_structure(content: str, query: str) -> str:
 # SECTION 9 — CONVENIENCE: drop-in replacement shim for brain.forge()
 # ---------------------------------------------------------------------------
 
-def forge(content: str, query: str, intent: str = "knowledge", depth: int = 0) -> str:
+def _mode_depth(mode: str, depth: int) -> int:
+    """Map frontend mode + thread depth to NLG depth."""
+    if mode == "forge_thinking":
+        return max(depth, 2)
+    if mode == "forge_instant":
+        return 0
+    return max(depth, 1)
+
+
+def _mode_max_atoms(mode: str, depth: int) -> int:
+    if mode == "forge_thinking":
+        return 7 if depth >= 2 else 5
+    if mode == "forge_instant":
+        return 2
+    return 5 if depth >= 1 else 4
+
+
+def forge(content: str, query: str, intent: str = "knowledge", depth: int = 0, mode: str = "forge_code") -> str:
     """
     Drop-in replacement for brain.forge().
 
@@ -598,29 +615,73 @@ def forge(content: str, query: str, intent: str = "knowledge", depth: int = 0) -
          (different sentence construction each time, not just different order).
       2. vary_structure() — applies structural layout variation on top.
 
-    depth controls how comprehensive the output is:
-      0  — standard response (default)
-      1+ — broader atom selection, more facts included
+    mode controls response depth:
+      forge_instant  — concise, 1-2 facts, skip elaboration
+      forge_code     — balanced, 3-4 facts (default)
+      forge_thinking — thorough, 5-7 facts with elaboration
     """
-    if intent in ("build_game", "build_app", "build_any", "math", "programming"):
+    if intent in ("build_game", "build_app", "build_any", "math"):
         return content
 
     # Pass-through for code-heavy content
     if _should_pass_through(content):
         return content
 
+    effective_depth = _mode_depth(mode, depth)
+    max_atoms = _mode_max_atoms(mode, effective_depth)
+
+    # Instant mode: extract the most relevant fact directly, skip NLG rewrite
+    if mode == "forge_instant" and intent in ("knowledge", "space", "earth", "science", "history", "animals"):
+        first_para = content.split("\n\n")[0].strip()
+        first_para = re.sub(r'^#{1,4}\s+', '', first_para)
+        if len(first_para) >= 20:
+            return first_para
+
     # NLG atom-level rewrite for factual intents
-    if intent in ("knowledge", "space", "earth", "science", "history", "animals"):
+    if intent in ("knowledge", "space", "earth", "science", "history", "animals", "programming"):
         try:
             from services.nlg_engine import generate_from_content
-            max_atoms = 5 if depth >= 1 else 3
-            nlg_output = generate_from_content(content, query, max_atoms=max_atoms)
+            elaborate = mode == "forge_thinking"
+            nlg_output = generate_from_content(
+                content, query,
+                max_atoms=max_atoms,
+                elaborate=elaborate,
+            )
             if nlg_output and len(nlg_output) >= 20:
-                return vary_structure(nlg_output, query)
+                structured = vary_structure(nlg_output, query)
+                if mode == "forge_thinking" and intent != "programming":
+                    thinking = _build_thinking_header(query, intent)
+                    return f"{thinking}\n\n---\n\n{structured}"
+                return structured
         except Exception:
             pass
 
-    return vary_structure(content, query)
+    structured = vary_structure(content, query)
+    if mode == "forge_thinking" and intent not in ("build_game", "build_app"):
+        thinking = _build_thinking_header(query, intent)
+        return f"{thinking}\n\n---\n\n{structured}"
+    return structured
+
+
+def _build_thinking_header(query: str, intent: str) -> str:
+    """Generate a brief thinking-process header for forge_thinking mode."""
+    intent_labels = {
+        "knowledge": "General knowledge lookup",
+        "space": "Space & astronomy analysis",
+        "earth": "Earth science evaluation",
+        "science": "Scientific concept breakdown",
+        "history": "Historical context review",
+        "animals": "Biological fact retrieval",
+        "programming": "Programming concept analysis",
+    }
+    label = intent_labels.get(intent, "Query analysis")
+    q_short = query[:80] + ("…" if len(query) > 80 else "")
+    return (
+        f"### Thinking Process\n"
+        f"- **Intent:** {label}\n"
+        f"- **Query:** \"{q_short}\"\n"
+        f"- **Approach:** Extract key facts, prioritise query-relevant details, compose structured response"
+    )
 
 
 # ---------------------------------------------------------------------------
