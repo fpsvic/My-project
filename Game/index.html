@@ -122,14 +122,27 @@ function canPlace(bx,by,bw,bh){
   return true;
 }
 const BTYPE=['Inn','Shop','Blacksmith','Chapel','Cottage'];
+// flatten the ground under and around a house footprint to clean grass
+function flattenGround(bx,by,bw,bh){
+  for(let dy=-2;dy<bh+2;dy++)
+    for(let dx=-2;dx<bw+2;dx++){
+      const tx=bx+dx, ty=by+dy;
+      if(tx<1||tx>=WW-1||ty<1||ty>=WH-1)continue;
+      const t=tiles[ty*WW+tx];
+      // only smooth over rough/odd terrain, leave existing paths/water alone
+      if(t===T.SAND||t===T.DARK_GRASS||t===T.FOREST||t===T.MOUNTAIN||t===T.SNOW)
+        tiles[ty*WW+tx]=T.GRASS;
+    }
+}
 function placeBuildings(seed){
   let s=seed^0x12345;
   function rnd(n){s=((s*1664525+1013904223)>>>0); return (s>>>16)%n;}
   for(const vc of CENTRES){
-    const count=2+rnd(4);
-    for(let k=0;k<count;k++){
-      const w=5+rnd(3)*2, h=5+rnd(3)*2;
-      const bx=vc[0]+rnd(16)-8, by=vc[1]+rnd(16)-8;
+    const want=3+rnd(3);          // aim for 3-5 houses per village
+    let made=0;
+    for(let attempt=0;attempt<40&&made<want;attempt++){
+      const w=5+rnd(2)*2, h=5+rnd(2)*2;      // 5 or 7 wide/tall
+      const bx=vc[0]+rnd(20)-10, by=vc[1]+rnd(20)-10;
       if(!canPlace(bx,by,w,h))continue;
       const b={x:bx,y:by,w,h,type:BTYPE[rnd(5)],interior:[]};
       for(let ly=0;ly<h;ly++){
@@ -139,8 +152,40 @@ function placeBuildings(seed){
           b.interior[ly][lx]=edge?T.WALL:T.FLOOR;
         }
       }
-      b.interior[h-1][Math.floor(w/2)]=T.DOOR;
+      const doorCol=Math.floor(w/2);
+      b.interior[h-1][doorCol]=T.DOOR;
+      flattenGround(bx,by,w,h);
+      // tidy path tile just in front of the door
+      const dpx=bx+doorCol, dpy=by+h;
+      for(let i=0;i<2;i++){
+        const ty=dpy+i;
+        if(ty<WH-1){const t=tiles[ty*WW+dpx]; if(TWALK[t]&&t!==T.SHALLOW_WATER&&t!==T.DEEP_WATER)tiles[ty*WW+dpx]=T.PATH;}
+      }
       buildings.push(b);
+      made++;
+    }
+  }
+  // guarantee at least a few houses exist — scan the whole map if villages came up short
+  if(buildings.length<4){
+    for(let gy=3;gy<WH-8&&buildings.length<6;gy+=3){
+      for(let gx=3;gx<WW-8&&buildings.length<6;gx+=3){
+        const w=5,h=5;
+        if(!canPlace(gx,gy,w,h))continue;
+        const b={x:gx,y:gy,w,h,type:BTYPE[rnd(5)],interior:[]};
+        for(let ly=0;ly<h;ly++){
+          b.interior[ly]=[];
+          for(let lx=0;lx<w;lx++){
+            const edge=(lx===0||lx===w-1||ly===0||ly===h-1);
+            b.interior[ly][lx]=edge?T.WALL:T.FLOOR;
+          }
+        }
+        const doorCol=Math.floor(w/2);
+        b.interior[h-1][doorCol]=T.DOOR;
+        flattenGround(gx,gy,w,h);
+        const dpx=gx+doorCol, dpy=gy+h;
+        if(dpy<WH-1){const t=tiles[dpy*WW+dpx]; if(TWALK[t]&&t!==T.SHALLOW_WATER&&t!==T.DEEP_WATER)tiles[dpy*WW+dpx]=T.PATH;}
+        buildings.push(b);
+      }
     }
   }
 }
@@ -530,15 +575,10 @@ function doGenerate(){
   spawnInitialEnemies(worldSeed);
   spawnInitialItems(worldSeed);
 
-  // find a valid spawn tile near the centre
-  const vc=CENTRES[CENTRES.length>>1];
-  player.x=vc[0]*TILE+TILE/2;
-  player.y=vc[1]*TILE+TILE/2;
-  // nudge until walkable
-  for(let r=0;r<20;r++){
-    if(walkable(player.x,player.y)&&!isWading(player.x,player.y))break;
-    player.x+=TILE; player.y+=TILE;
-  }
+  // find a valid spawn tile — prefer next to a house, else solid land near a village
+  const sp=findSpawnTile();
+  player.x=sp[0]*TILE+TILE/2;
+  player.y=sp[1]*TILE+TILE/2;
   // adventure mode: scale enemies per level (only reset player on level 1)
   if(gameMode!=='adventure'||adventureLevel===1){
     player.hp=100; player.maxHp=100; player.atk=10; player.def=0;
@@ -565,6 +605,43 @@ function doGenerate(){
   waterTime=0; spawnTimer=5; gameOver=false;
   updateCamera();
   gameState='playing';
+}
+
+// ── Spawn finder ───────────────────────────────────────────────────────────
+// A good spawn tile: solid land (grass/path/sand/dock-free), not water/forest,
+// and walkable at pixel level. Prefer a tile just outside a house door.
+function isSolidLandTile(tx,ty){
+  if(tx<2||tx>=WW-2||ty<2||ty>=WH-2)return false;
+  const t=worldTerrain(tx,ty);
+  // only safe walkable ground — no water, no forest, no mountains
+  if(t!==T.GRASS&&t!==T.DARK_GRASS&&t!==T.SAND&&t!==T.PATH&&t!==T.SNOW)return false;
+  const cx=tx*TILE+TILE/2, cy=ty*TILE+TILE/2;
+  return walkable(cx,cy)&&!isWading(cx,cy);
+}
+function findSpawnTile(){
+  // 1) try just below each building's door (in front of a house)
+  for(const b of buildings){
+    const doorX=b.x+Math.floor(b.w/2), doorY=b.y+b.h; // tile just outside door
+    if(isSolidLandTile(doorX,doorY))return [doorX,doorY];
+    if(isSolidLandTile(doorX,doorY+1))return [doorX,doorY+1];
+  }
+  // 2) spiral search outward from each village centre for solid land
+  for(const vc of CENTRES){
+    for(let r=0;r<40;r++){
+      for(let dy=-r;dy<=r;dy++){
+        for(let dx=-r;dx<=r;dx++){
+          if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue; // ring only
+          const tx=vc[0]+dx, ty=vc[1]+dy;
+          if(isSolidLandTile(tx,ty))return [tx,ty];
+        }
+      }
+    }
+  }
+  // 3) absolute fallback — scan whole map for any solid land
+  for(let ty=2;ty<WH-2;ty++)
+    for(let tx=2;tx<WW-2;tx++)
+      if(isSolidLandTile(tx,ty))return [tx,ty];
+  return [WW>>1,WH>>1];
 }
 
 // ── Walkable ───────────────────────────────────────────────────────────────
