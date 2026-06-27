@@ -3,11 +3,12 @@ class JungleScanner {
         const lines = code.split('\n');
         const issues = [
             ...this.scanDelimiters(lines),
-            ...this.scanLanguagePatterns(lang, lines)
+            ...this.scanLanguagePatterns(lang, lines),
+            ...this.scanUniversal(lang, lines)
         ];
-        if (lang === 'HTML') issues.push(...this.scanHtmlTags(lines));
+        if (lang === 'HTML') issues.push(...this.scanHtmlTags(lines), ...this.scanHtmlPatterns(lines));
         if (lang === 'Python') issues.push(...this.scanPythonIndentation(lines));
-        if (lang === 'CSS') issues.push(...this.scanCssPatterns(lines));
+        if (lang === 'CSS') issues.push(...this.scanCssPatterns(lines), ...this.scanCssAdvanced(lines));
         const order = { error: 0, warning: 1, info: 2 };
         issues.sort((a, b) => (order[a.severity] ?? 1) - (order[b.severity] ?? 1) || a.line - b.line);
         return issues;
@@ -225,6 +226,22 @@ class JungleScanner {
                 if (/\btype\s*\(\s*\w+\s*\)\s*==/.test(trimmed)) {
                     e(lineNum, "Comparing types with type() == is fragile.", "Use isinstance(obj, Type) for type checking.", "Python style", "info");
                 }
+                // Mutable default arguments
+                if (/\bdef\s+\w+\s*\([^)]*=\s*[\[{]/.test(trimmed)) {
+                    e(lineNum, "Mutable default argument (list or dict) in function definition.", "Use `None` as the default and initialize inside the function body.", "Python bug", "warning");
+                }
+                // Bare except:
+                if (/^except\s*:/.test(trimmed)) {
+                    e(lineNum, "Bare `except:` catches all exceptions including KeyboardInterrupt and SystemExit.", "Specify an exception type: `except Exception as e:`.", "Python error handling", "warning");
+                }
+                // == None instead of is None
+                if (/==\s*None\b/.test(trimmed)) {
+                    e(lineNum, "Using `== None` is not idiomatic Python.", "Use `is None` to check for None values.", "Python style", "warning");
+                }
+                // == True / == False
+                if (/==\s*(True|False)\b/.test(trimmed)) {
+                    e(lineNum, "Comparing to True/False with `==` is unnecessary.", "Use the value directly: `if x:` instead of `if x == True:`.", "Python style", "info");
+                }
             } else if (lang === 'Javascript' || lang === 'TypeScript') {
                 const condMatch = trimmed.match(/\b(if|while)\s*\((.*)\)/);
                 if (condMatch && /(^|[^=!<>])=([^=>]|$)/.test(condMatch[2])) {
@@ -242,11 +259,34 @@ class JungleScanner {
                 if (/\bawait\b/.test(trimmed) && !/\basync\b/.test(fullCode.slice(0, fullCode.indexOf(trimmed)).slice(-600))) {
                     e(lineNum, "'await' used outside an async function.", "Mark the enclosing function with 'async'.", "JavaScript async", "warning");
                 }
-                if (/(?<![=!<>])={1}(?![=>])/.test(trimmed.replace(/"[^"]*"|'[^']*'|`[^`]*`/g, '')) && /==[^=]/.test(trimmed)) {
-                    e(lineNum, "Loose equality '==' can cause unexpected type coercion.", "Prefer '===' for strict comparison.", "JavaScript logic", "warning");
+                // Loose equality == (warn, not already caught by assignment-in-condition)
+                if (/[^=!<>]==[^=]/.test(trimmed.replace(/"[^"]*"|'[^']*'|`[^`]*`/g, '')) && !/===/.test(trimmed)) {
+                    e(lineNum, "Loose equality '==' found — use '===' for strict equality.", "Replace '==' with '===' to avoid unexpected type coercion.", "JavaScript logic", "warning");
                 }
                 if (/\bvar\b/.test(trimmed)) {
                     e(lineNum, "'var' is function-scoped and hoisted — can cause subtle bugs.", "Use 'const' or 'let' instead.", "JavaScript style", "warning");
+                }
+                // console.log left in code
+                if (/\bconsole\.log\s*\(/.test(trimmed)) {
+                    e(lineNum, "console.log() debug statement left in code.", "Remove or replace with a proper logging solution before shipping.", "JavaScript debug", "info");
+                }
+                // typeof x == "undefined"
+                if (/\btypeof\s+\w[\w.]*\s*==\s*["']undefined["']/.test(trimmed)) {
+                    e(lineNum, "typeof x == \"undefined\" is unnecessary.", "Use `x === undefined` for a cleaner check.", "JavaScript style", "info");
+                }
+                // Empty catch block
+                if (/\bcatch\s*\(\s*\w+\s*\)\s*\{\s*\}/.test(trimmed)) {
+                    e(lineNum, "Empty catch block silently swallows errors.", "Log or handle the error inside the catch block.", "JavaScript error handling", "warning");
+                }
+                // Unreachable code after return/throw/break on same block level (simple heuristic)
+                if (/^\s*(return|throw|break)\b/.test(line)) {
+                    const nextLine = lines[idx + 1];
+                    if (nextLine) {
+                        const nextTrimmed = nextLine.trim();
+                        if (nextTrimmed && !nextTrimmed.startsWith('}') && !nextTrimmed.startsWith('//') && !nextTrimmed.startsWith('/*') && !nextTrimmed.startsWith('case ') && !nextTrimmed.startsWith('default:') && nextLine.match(/^(\s*)/)[1].length >= line.match(/^(\s*)/)[1].length) {
+                            e(lineNum + 1, "Unreachable code after return/throw/break statement.", "Remove or relocate this code — it will never be executed.", "JavaScript logic", "warning");
+                        }
+                    }
                 }
                 if (/\bdocument\.write\s*\(/.test(trimmed)) {
                     e(lineNum, "document.write() can erase the whole page when called after load.", "Use DOM methods like appendChild or innerHTML instead.", "JavaScript security", "warning");
@@ -385,6 +425,127 @@ class JungleScanner {
                 }
             }
         });
+        return issues;
+    }
+    // Universal checks that apply to all languages
+    static scanUniversal(lang, lines) {
+        const issues = [];
+        const e = (ln, msg, hint, kind, col, sev) => issues.push(this.makeIssue(ln, msg, hint, kind, col ?? null, sev ?? "info"));
+        const hasTabs = lines.some(l => /^\t/.test(l));
+        const hasSpaces = lines.some(l => /^ /.test(l));
+        let mixedTabsReported = false;
+        const commentRe = lang === 'Python' || lang === 'Ruby' || lang === 'Bash'
+            ? /#+\s*(TODO|FIXME|HACK|XXX)\b/i
+            : /(?:\/\/|\/\*|#)\s*(TODO|FIXME|HACK|XXX)\b/i;
+        lines.forEach((line, idx) => {
+            const lineNum = idx + 1;
+            // Lines over 120 characters
+            if (line.length > 120) {
+                e(lineNum, `Line is ${line.length} characters long (limit: 120).`, "Break this line into shorter segments for readability.", "Line length", 121);
+            }
+            // Trailing whitespace
+            if (/[ \t]+$/.test(line)) {
+                e(lineNum, "Line has trailing whitespace.", "Remove the trailing spaces or tabs.", "Style");
+            }
+            // TODO/FIXME/HACK/XXX comments
+            const todoMatch = commentRe.exec(line);
+            if (todoMatch) {
+                e(lineNum, `${todoMatch[1].toUpperCase()} comment left in code.`, "Resolve or track this item before shipping.", "Code quality", todoMatch.index + 1);
+            }
+            // Mixed tabs and spaces (file-level, reported once per line that has both)
+            if (!mixedTabsReported && hasTabs && hasSpaces && /^\t/.test(line) && lines.some(l => /^ /.test(l))) {
+                e(lineNum, "File mixes tab and space indentation.", "Choose one indentation style consistently throughout the file.", "Style");
+                mixedTabsReported = true;
+            }
+        });
+        return issues;
+    }
+    // Advanced HTML checks
+    static scanHtmlPatterns(lines) {
+        const issues = [];
+        const e = (ln, msg, hint, kind, col, sev) => issues.push(this.makeIssue(ln, msg, hint, kind, col ?? null, sev ?? "warning"));
+        const fullCode = lines.join('\n');
+        // Missing <!DOCTYPE html>
+        if (!/<!DOCTYPE\s+html>/i.test(fullCode)) {
+            e(1, "Missing <!DOCTYPE html> declaration.", "Add <!DOCTYPE html> as the very first line of the document.", "HTML best practice", null, "warning");
+        }
+        const deprecatedTags = ['center', 'font', 'marquee', 'blink'];
+        lines.forEach((line, idx) => {
+            const lineNum = idx + 1;
+            const lowerLine = line.toLowerCase();
+            // Missing alt on <img>
+            const imgMatches = [...line.matchAll(/<img\b([^>]*)>/gi)];
+            for (const m of imgMatches) {
+                if (!/\balt\s*=/i.test(m[1])) {
+                    e(lineNum, "<img> tag is missing an `alt` attribute.", "Add alt=\"description\" for accessibility.", "HTML accessibility", m.index + 1, "warning");
+                }
+            }
+            // Deprecated tags
+            for (const tag of deprecatedTags) {
+                const re = new RegExp(`<${tag}[\\s>]`, 'i');
+                if (re.test(line)) {
+                    e(lineNum, `<${tag}> is a deprecated HTML tag.`, `Remove <${tag}> and use CSS or modern HTML equivalents instead.`, "HTML deprecated", null, "warning");
+                }
+            }
+            // Inline style attribute (info)
+            if (/\bstyle\s*=\s*["'][^"']+["']/i.test(line)) {
+                e(lineNum, "Inline `style` attribute found.", "Move styles to a CSS class or stylesheet for maintainability.", "HTML style", null, "info");
+            }
+            // Empty <script> without src or type
+            if (/<script\s*>\s*<\/script>/i.test(line) || /<script>\s*<\/script>/i.test(line)) {
+                e(lineNum, "Empty <script> block with no src or content.", "Add a src attribute or add script content, or remove the tag.", "HTML quality", null, "info");
+            }
+        });
+        return issues;
+    }
+    // Advanced CSS checks
+    static scanCssAdvanced(lines) {
+        const issues = [];
+        const e = (ln, msg, hint, kind, col, sev) => issues.push(this.makeIssue(ln, msg, hint, kind, col ?? null, sev ?? "warning"));
+        let importantCount = 0;
+        let importantFirstLine = -1;
+        let hasColor = false;
+        let hasBgColor = false;
+        const vendorPrefixProps = {};
+        lines.forEach((line, idx) => {
+            const lineNum = idx + 1;
+            const trimmed = line.trim();
+            // !important overuse
+            if (/!important/i.test(trimmed)) {
+                importantCount++;
+                if (importantFirstLine === -1) importantFirstLine = lineNum;
+            }
+            // color without background-color (track both)
+            if (/^\s*color\s*:/i.test(trimmed)) hasColor = true;
+            if (/^\s*background-color\s*:/i.test(trimmed)) hasBgColor = true;
+            // Vendor prefixes: track which vendor-prefixed props exist and whether standard follows
+            const vendorMatch = trimmed.match(/^(-webkit-|-moz-|-ms-|-o-)([a-z-]+)\s*:/i);
+            if (vendorMatch) {
+                const prop = vendorMatch[2];
+                if (!vendorPrefixProps[prop]) vendorPrefixProps[prop] = { lines: [], hasStandard: false };
+                vendorPrefixProps[prop].lines.push(lineNum);
+            }
+            // Check if standard property exists on same/nearby lines
+            const standardMatch = trimmed.match(/^([a-z][a-z-]+)\s*:/i);
+            if (standardMatch && !/^-/.test(trimmed)) {
+                const prop = standardMatch[1];
+                if (vendorPrefixProps[prop]) vendorPrefixProps[prop].hasStandard = true;
+            }
+        });
+        // Report !important overuse (more than 3)
+        if (importantCount > 3) {
+            e(importantFirstLine > 0 ? importantFirstLine : 1, `!important used ${importantCount} times in this file.`, "Avoid overusing !important; restructure selectors for proper specificity instead.", "CSS quality", null, "warning");
+        }
+        // Report color without background-color
+        if (hasColor && !hasBgColor) {
+            e(1, "`color` is set but `background-color` is not defined in this file.", "Set both `color` and `background-color` to ensure readable contrast.", "CSS accessibility", null, "info");
+        }
+        // Report vendor prefixes without standard property
+        for (const [prop, info] of Object.entries(vendorPrefixProps)) {
+            if (!info.hasStandard) {
+                e(info.lines[0], `Vendor-prefixed property '-*-${prop}' has no standard '${prop}' fallback.`, `Add the standard \`${prop}\` property after the vendor-prefixed versions.`, "CSS compatibility", null, "warning");
+            }
+        }
         return issues;
     }
     // Instant recognition from a single unmistakable token — runs before full scoring
