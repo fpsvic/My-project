@@ -20,7 +20,7 @@ canvas.width=CW; canvas.height=CH;
 const ctx=canvas.getContext('2d');
 
 // ── Game state machine ─────────────────────────────────────────────────────
-// 'title' | 'generating' | 'playing'
+// 'title' | 'generating' | 'playing' | 'levelcomplete' | 'victory'
 let gameState='title';
 let titleTime=0;
 let genProgress=0;         // 0-1 shown on generation screen
@@ -369,6 +369,13 @@ function makeItem(kind,x,y,bob){
 }
 
 // ── Runtime state ──────────────────────────────────────────────────────────
+// ── Adventure mode state ───────────────────────────────────────────────────
+let gameMode='endless';       // 'endless' | 'adventure'
+let adventureLevel=1;         // 1–10
+let levelKills=0;
+let levelTarget=0;
+let levelCompleteTimer=0;
+
 let waterTime=0, spawnTimer=5, gameOver=false;
 const player={
   x:0, y:0,
@@ -387,39 +394,60 @@ document.addEventListener('keydown',e=>{keys[e.code]=true; onKey(e.code);});
 document.addEventListener('keyup',e=>{keys[e.code]=false;});
 
 // Title screen button bounds (set in drawTitle)
-let playBtn={x:0,y:0,w:0,h:0};
+let playBtnE={x:0,y:0,w:0,h:0}, playBtnA={x:0,y:0,w:0,h:0};
+function inBtn(mx,my,b){return mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h;}
 canvas.addEventListener('click',e=>{
   const rect=canvas.getBoundingClientRect();
   const mx=e.clientX-rect.left, my=e.clientY-rect.top;
   if(gameState==='title'){
-    if(mx>=playBtn.x&&mx<=playBtn.x+playBtn.w&&my>=playBtn.y&&my<=playBtn.y+playBtn.h)
-      beginNewGame();
+    if(inBtn(mx,my,playBtnE)) beginNewGame('endless');
+    else if(inBtn(mx,my,playBtnA)) beginNewGame('adventure');
   } else if(gameState==='playing'&&gameOver){
-    // check if click near "play again"
     const cx=HALF_CW, cy=HALF_CH+100;
-    if(Math.abs(mx-cx)<100&&Math.abs(my-cy)<20) beginNewGame();
+    if(Math.abs(mx-cx)<100&&Math.abs(my-cy)<20) beginNewGame(gameMode);
+  } else if(gameState==='levelcomplete'){
+    advanceLevel();
+  } else if(gameState==='victory'){
+    gameState='title';
   }
 });
 canvas.addEventListener('mousemove',e=>{
   const rect=canvas.getBoundingClientRect();
   const mx=e.clientX-rect.left, my=e.clientY-rect.top;
   if(gameState==='title'){
-    const over=mx>=playBtn.x&&mx<=playBtn.x+playBtn.w&&my>=playBtn.y&&my<=playBtn.y+playBtn.h;
+    const over=inBtn(mx,my,playBtnE)||inBtn(mx,my,playBtnA);
     canvas.style.cursor=over?'pointer':'default';
   } else { canvas.style.cursor='default'; }
 });
 
 function onKey(code){
-  if(gameState==='title'){if(code==='Enter'||code==='Space')beginNewGame(); return;}
+  if(gameState==='title'){
+    if(code==='Enter'||code==='Space') beginNewGame('endless');
+    if(code==='KeyA') beginNewGame('adventure');
+    return;
+  }
+  if(gameState==='levelcomplete'){if(code==='Enter'||code==='Space')advanceLevel(); return;}
+  if(gameState==='victory'){if(code==='Enter'||code==='Space'||code==='KeyR')gameState='title'; return;}
   if(gameState!=='playing')return;
-  if(gameOver){if(code==='KeyR')beginNewGame(); return;}
+  if(gameOver){if(code==='KeyR')beginNewGame(gameMode); return;}
   if(code==='KeyF')playerAttack();
   if(code==='KeyE')talkNearby();
   for(let i=0;i<8;i++)if(code===`Digit${i+1}`)player.equip=player.inv[i]?i:-1;
 }
 
 // ── Start a new game ───────────────────────────────────────────────────────
-function beginNewGame(){
+function beginNewGame(mode='endless'){
+  gameMode=mode;
+  adventureLevel=1;
+  levelKills=0;
+  gameState='generating';
+  genProgress=0;
+  genFrames=0;
+  worldSeed=Math.random()*99999|0;
+}
+function advanceLevel(){
+  adventureLevel++;
+  levelKills=0;
   gameState='generating';
   genProgress=0;
   genFrames=0;
@@ -451,10 +479,28 @@ function doGenerate(){
     if(walkable(player.x,player.y)&&!isWading(player.x,player.y))break;
     player.x+=TILE; player.y+=TILE;
   }
-  player.hp=100; player.maxHp=100; player.atk=10; player.def=0;
-  player.xp=0; player.level=1; player.dead=false;
-  player.atkCd=0; player.atkMaxCd=0.35; player.iFrames=0; player.equip=-1; player.wading=false;
-  player.inv.fill(null); player.invCount=0;
+  // adventure mode: scale enemies per level (only reset player on level 1)
+  if(gameMode!=='adventure'||adventureLevel===1){
+    player.hp=100; player.maxHp=100; player.atk=10; player.def=0;
+    player.xp=0; player.level=1;
+    player.inv.fill(null); player.invCount=0; player.equip=-1;
+  } else {
+    player.hp=Math.min(player.hp,player.maxHp); // carry HP into next level
+  }
+  player.dead=false;
+  player.atkCd=0; player.atkMaxCd=0.35; player.iFrames=0; player.wading=false;
+  // adventure: scale enemy stats with level; endless uses base stats
+  if(gameMode==='adventure'){
+    const scale=1+0.25*(adventureLevel-1);
+    for(const e of enemies){
+      const d=ENEMY_DEF[e.kind];
+      e.hp=Math.round(d.hp*scale); e.maxHp=e.hp;
+    }
+    levelTarget=8+adventureLevel*4;   // kills needed: 12, 16, 20 … 48
+  } else {
+    levelTarget=0;
+  }
+  levelKills=0;
   waterTime=0; spawnTimer=5; gameOver=false;
   updateCamera();
   gameState='playing';
@@ -621,6 +667,13 @@ function damageEnemy(e,dmg){
     checkLevelUp();
     if(Math.random()<0.3)
       items.push(makeItem(ITEM_KINDS[Math.random()*ITEM_KINDS.length|0],e.x,e.y));
+    if(gameMode==='adventure'){
+      levelKills++;
+      if(levelKills>=levelTarget){
+        if(adventureLevel>=10) gameState='victory';
+        else { gameState='levelcomplete'; levelCompleteTimer=0; }
+      }
+    }
   }
 }
 function checkLevelUp(){
@@ -648,7 +701,20 @@ function update(ts){
   if(gameState==='generating'){
     genFrames++;
     drawGenerating();
-    if(genFrames>=3) doGenerate(); // show screen for 2 frames then generate
+    if(genFrames>=3) doGenerate();
+    requestAnimationFrame(update);
+    return;
+  }
+  if(gameState==='levelcomplete'){
+    levelCompleteTimer+=dt;
+    render();
+    drawLevelComplete();
+    requestAnimationFrame(update);
+    return;
+  }
+  if(gameState==='victory'){
+    render();
+    drawVictory();
     requestAnimationFrame(update);
     return;
   }
@@ -1008,32 +1074,36 @@ function drawTitle(){
   ctx.strokeStyle=lg; ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(HALF_CW-220,lineY); ctx.lineTo(HALF_CW+220,lineY); ctx.stroke();
 
-  // ── PLAY BUTTON ─────────────────────────────────────────────────────────────
-  const btnW=224, btnH=54, btnX=HALF_CW-btnW/2, btnY=222;
-  playBtn={x:btnX,y:btnY,w:btnW,h:btnH};
-  // shadow
-  ctx.fillStyle='rgba(0,0,0,0.5)';
-  ctx.beginPath(); ctx.roundRect(btnX+4,btnY+5,btnW,btnH,12); ctx.fill();
-  // gradient body
+  // ── MODE BUTTONS ─────────────────────────────────────────────────────────────
+  const btnW=200, btnH=58, btnGap=18;
+  const btnTotalW=btnW*2+btnGap, btnX0=HALF_CW-btnTotalW/2, btnY=218;
   const pulseBg=Math.sin(titleTime*2)*0.06;
-  const bg=ctx.createLinearGradient(btnX,btnY,btnX,btnY+btnH);
-  bg.addColorStop(0,`hsl(140,${70+pulseBg*100|0}%,45%)`);
-  bg.addColorStop(1,`hsl(140,${60+pulseBg*100|0}%,28%)`);
-  ctx.fillStyle=bg;
-  ctx.beginPath(); ctx.roundRect(btnX,btnY,btnW,btnH,12); ctx.fill();
-  // inner highlight
-  ctx.fillStyle='rgba(255,255,255,0.15)';
-  ctx.beginPath(); ctx.roundRect(btnX+2,btnY+2,btnW-4,btnH/2-2,10); ctx.fill();
-  // border glow
-  ctx.shadowColor='#55ff88'; ctx.shadowBlur=10+pulse;
-  ctx.strokeStyle='rgba(136,255,170,0.8)'; ctx.lineWidth=1.5;
-  ctx.beginPath(); ctx.roundRect(btnX,btnY,btnW,btnH,12); ctx.stroke();
-  ctx.shadowBlur=0;
-  // label
-  ctx.font='bold 22px monospace'; ctx.fillStyle='#ffffff';
-  ctx.fillText('▶   NEW GAME',HALF_CW,btnY+35);
-  ctx.font='10px monospace'; ctx.fillStyle='rgba(180,255,200,0.6)';
-  ctx.fillText('ENTER  or  click',HALF_CW,btnY+btnH+16);
+  // Endless button
+  playBtnE={x:btnX0,y:btnY,w:btnW,h:btnH};
+  ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.roundRect(btnX0+3,btnY+5,btnW,btnH,12); ctx.fill();
+  const bg1=ctx.createLinearGradient(btnX0,btnY,btnX0,btnY+btnH);
+  bg1.addColorStop(0,`hsl(140,${70+pulseBg*100|0}%,42%)`); bg1.addColorStop(1,`hsl(140,${58+pulseBg*100|0}%,26%)`);
+  ctx.fillStyle=bg1; ctx.beginPath(); ctx.roundRect(btnX0,btnY,btnW,btnH,12); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.14)'; ctx.beginPath(); ctx.roundRect(btnX0+2,btnY+2,btnW-4,btnH/2-2,10); ctx.fill();
+  ctx.shadowColor='#55ff88'; ctx.shadowBlur=10+pulse; ctx.strokeStyle='rgba(120,255,160,0.75)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.roundRect(btnX0,btnY,btnW,btnH,12); ctx.stroke(); ctx.shadowBlur=0;
+  ctx.font='bold 19px monospace'; ctx.fillStyle='#fff'; ctx.fillText('♾  ENDLESS',btnX0+btnW/2,btnY+28);
+  ctx.font='10px monospace'; ctx.fillStyle='rgba(160,255,200,0.7)'; ctx.fillText('Survive forever',btnX0+btnW/2,btnY+46);
+  ctx.font='9px monospace'; ctx.fillStyle='rgba(140,200,160,0.5)'; ctx.fillText('ENTER or click',btnX0+btnW/2,btnY+btnH+14);
+
+  // Adventure button
+  const btnX1=btnX0+btnW+btnGap;
+  playBtnA={x:btnX1,y:btnY,w:btnW,h:btnH};
+  ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.roundRect(btnX1+3,btnY+5,btnW,btnH,12); ctx.fill();
+  const bg2=ctx.createLinearGradient(btnX1,btnY,btnX1,btnY+btnH);
+  bg2.addColorStop(0,`hsl(38,${75+pulseBg*100|0}%,48%)`); bg2.addColorStop(1,`hsl(28,${65+pulseBg*100|0}%,28%)`);
+  ctx.fillStyle=bg2; ctx.beginPath(); ctx.roundRect(btnX1,btnY,btnW,btnH,12); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.14)'; ctx.beginPath(); ctx.roundRect(btnX1+2,btnY+2,btnW-4,btnH/2-2,10); ctx.fill();
+  ctx.shadowColor='#ffaa33'; ctx.shadowBlur=10+pulse; ctx.strokeStyle='rgba(255,190,80,0.75)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.roundRect(btnX1,btnY,btnW,btnH,12); ctx.stroke(); ctx.shadowBlur=0;
+  ctx.font='bold 19px monospace'; ctx.fillStyle='#fff'; ctx.fillText('⚔  ADVENTURE',btnX1+btnW/2,btnY+28);
+  ctx.font='10px monospace'; ctx.fillStyle='rgba(255,220,140,0.8)'; ctx.fillText('10 Worlds to conquer',btnX1+btnW/2,btnY+46);
+  ctx.font='9px monospace'; ctx.fillStyle='rgba(200,160,100,0.5)'; ctx.fillText('A key or click',btnX1+btnW/2,btnY+btnH+14);
 
   // ── CONTROLS PANEL ──────────────────────────────────────────────────────────
   const panX=HALF_CW-310, panY=302, panW=620, panH=198;
@@ -1082,7 +1152,7 @@ function drawTitle(){
   ctx.beginPath(); ctx.moveTo(col2,tipY+3); ctx.lineTo(col2+120,tipY+3); ctx.stroke();
   const tips=[
     '🌊 Shallow water slows you',
-    '🌉 Bridges cross deep water',
+    '⚔  Adventure: 10 worlds to beat',
     '⚔  Find allies in villages',
     '💜 Higher rarity = stronger stats',
     '⭐ Defeat enemies to level up',
@@ -1621,6 +1691,21 @@ function drawHUD(){
   ctx.fillStyle='rgba(0,0,0,0.4)'; ctx.fillRect(10,CH-30,220,20);
   ctx.font='9px monospace'; ctx.fillStyle='#888';
   ctx.fillText('WASD:Move  F:Attack  E:Talk  1-8:Equip',14,CH-16);
+
+  if(gameMode==='adventure'){
+    // adventure progress bar (top-right, below minimap area)
+    const px=CW-174, py=144, pw=164, ph=14;
+    ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.beginPath(); ctx.roundRect(px-2,py-2,pw+4,ph+4,4); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.08)'; ctx.beginPath(); ctx.roundRect(px,py,pw,ph,3); ctx.fill();
+    const frac=Math.min(1,levelKills/levelTarget);
+    const barG=ctx.createLinearGradient(px,py,px+pw,py);
+    barG.addColorStop(0,'#cc4400'); barG.addColorStop(1,'#ffaa22');
+    ctx.fillStyle=barG; ctx.beginPath(); ctx.roundRect(px,py,pw*frac,ph,3); ctx.fill();
+    ctx.strokeStyle='rgba(255,160,50,0.5)'; ctx.lineWidth=1; ctx.beginPath(); ctx.roundRect(px,py,pw,ph,3); ctx.stroke();
+    ctx.font='bold 9px monospace'; ctx.fillStyle='#fff'; ctx.textAlign='center';
+    ctx.fillText(`World ${adventureLevel}/10 — ${levelKills}/${levelTarget} kills`,px+pw/2,py+10);
+    ctx.textAlign='left';
+  }
 }
 
 function drawInventoryBar(){
@@ -1676,10 +1761,82 @@ function drawGameOver(){
   ctx.beginPath(); ctx.roundRect(HALF_CW-100,HALF_CH+80,200,40,8); ctx.fill();
   ctx.strokeStyle='#888'; ctx.lineWidth=1; ctx.stroke();
   ctx.font='16px monospace'; ctx.fillStyle='#ffdd22';
-  ctx.fillText('▶ Play Again  (R)',HALF_CW,HALF_CH+106);
+  const modeLabel=gameMode==='adventure'?`Adventure (World ${adventureLevel})`:'Endless';
+  ctx.fillText(`▶ Play Again — ${modeLabel}  (R)`,HALF_CW,HALF_CH+106);
   ctx.font='11px monospace'; ctx.fillStyle='rgba(150,180,220,0.6)';
   ctx.fillText('New game = new world',HALF_CW,HALF_CH+140);
   ctx.textAlign='left';
+}
+
+// ── Level Complete screen ──────────────────────────────────────────────────
+function drawLevelComplete(){
+  const t=levelCompleteTimer;
+  const alpha=Math.min(1,t*2);
+  ctx.fillStyle=`rgba(0,0,0,${0.7*alpha})`; ctx.fillRect(0,0,CW,CH);
+  ctx.textAlign='center';
+  // big title
+  ctx.save();
+  ctx.shadowColor='#aaff88'; ctx.shadowBlur=30;
+  ctx.font='bold 58px monospace';
+  const grad=ctx.createLinearGradient(0,HALF_CH-90,0,HALF_CH-30);
+  grad.addColorStop(0,'#ffffff'); grad.addColorStop(0.5,'#aaff88'); grad.addColorStop(1,'#55cc44');
+  ctx.fillStyle=grad; ctx.globalAlpha=alpha;
+  ctx.fillText('LEVEL COMPLETE!',HALF_CW,HALF_CH-50);
+  ctx.restore();
+  ctx.globalAlpha=alpha;
+  // level badge
+  ctx.font='bold 22px monospace'; ctx.fillStyle='#ffdd44';
+  ctx.fillText(`World ${adventureLevel} of 10 cleared`,HALF_CW,HALF_CH);
+  // stats
+  ctx.font='16px monospace'; ctx.fillStyle='#aaddff';
+  ctx.fillText(`Kills: ${levelKills}   Level: ${player.level}   HP: ${player.hp}/${player.maxHp}`,HALF_CW,HALF_CH+36);
+  // next level hint
+  const pulse=Math.sin(t*4)*0.15+0.85;
+  ctx.font='bold 18px monospace'; ctx.fillStyle=`rgba(255,220,80,${pulse*alpha})`;
+  if(adventureLevel<10){
+    ctx.fillText(`▶  Enter World ${adventureLevel+1}  (ENTER / click)`,HALF_CW,HALF_CH+90);
+    ctx.font='12px monospace'; ctx.fillStyle=`rgba(160,200,140,${0.7*alpha})`;
+    ctx.fillText('Enemies grow stronger each world',HALF_CW,HALF_CH+116);
+  }
+  ctx.globalAlpha=1; ctx.textAlign='left';
+}
+
+// ── Victory screen ─────────────────────────────────────────────────────────
+function drawVictory(){
+  ctx.fillStyle='rgba(0,0,0,0.8)'; ctx.fillRect(0,0,CW,CH);
+  ctx.textAlign='center';
+  // stars
+  for(let i=0;i<80;i++){
+    const sx=hash(i,5,1)*CW, sy=hash(i,5,2)*CH;
+    const tw=0.4+Math.sin(titleTime*3+i)*0.4;
+    ctx.globalAlpha=tw*0.8; ctx.fillStyle='#ffff88';
+    ctx.beginPath(); ctx.arc(sx,sy,hash(i,5,3)<0.7?0.8:1.8,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  // glow ring
+  const rg=ctx.createRadialGradient(HALF_CW,HALF_CH-60,10,HALF_CW,HALF_CH-60,200);
+  rg.addColorStop(0,'rgba(255,200,50,0.18)'); rg.addColorStop(1,'rgba(255,200,50,0)');
+  ctx.fillStyle=rg; ctx.fillRect(0,0,CW,CH);
+  // title
+  ctx.save();
+  ctx.shadowColor='#ffcc00'; ctx.shadowBlur=40;
+  ctx.font='bold 62px monospace';
+  const vg=ctx.createLinearGradient(0,HALF_CH-130,0,HALF_CH-60);
+  vg.addColorStop(0,'#ffffff'); vg.addColorStop(0.4,'#ffe566'); vg.addColorStop(1,'#ff9900');
+  ctx.fillStyle=vg;
+  ctx.fillText('VICTORY!',HALF_CW,HALF_CH-70);
+  ctx.restore();
+  ctx.font='bold 20px monospace'; ctx.fillStyle='#aaff88';
+  ctx.fillText('You conquered all 10 worlds!',HALF_CW,HALF_CH-20);
+  ctx.font='16px monospace'; ctx.fillStyle='#aaddff';
+  ctx.fillText(`Final Level: ${player.level}   Total XP: ${player.xp+player.level*100}`,HALF_CW,HALF_CH+20);
+  ctx.font='14px monospace'; ctx.fillStyle='#ffcc88';
+  ctx.fillText('You are a legend of this world.',HALF_CW,HALF_CH+52);
+  // return to title
+  const p2=Math.sin(titleTime*3)*0.15+0.85;
+  ctx.font='bold 16px monospace'; ctx.fillStyle=`rgba(255,220,80,${p2})`;
+  ctx.fillText('▶  Return to Title  (ENTER)',HALF_CW,HALF_CH+110);
+  ctx.globalAlpha=1; ctx.textAlign='left';
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
