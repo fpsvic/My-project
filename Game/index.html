@@ -868,15 +868,15 @@ function checkLevelUp(){
 
 // ── Update ─────────────────────────────────────────────────────────────────
 let lastTime=0;
-// FPS tracking (smoothed)
-let fps=0, fpsAccum=0, fpsFrames=0, fpsTimer=0;
+// FPS / performance tracking — real measured values, exponentially smoothed
+let fps=60;        // actual frames per second (from real frame deltas)
+let frameMs=0;     // actual time spent computing+rendering one frame (ms)
 function update(ts){
   const dt=Math.min((ts-lastTime)/1000,0.05);
   const rawDt=(ts-lastTime)/1000;
   lastTime=ts;
-  // smooth the FPS over ~0.25s windows
-  if(rawDt>0){ fpsFrames++; fpsTimer+=rawDt;
-    if(fpsTimer>=0.25){ fps=Math.round(fpsFrames/fpsTimer); fpsFrames=0; fpsTimer=0; } }
+  // measure real frame rate from the actual time between frames
+  if(rawDt>0) fps+=((1/rawDt)-fps)*0.1;
 
   if(gameState==='title'){
     titleTime+=dt;
@@ -1085,7 +1085,10 @@ function update(ts){
   for(const f of floats){f.y-=40*dt; f.life-=dt;}
   spawnTimer-=dt; if(spawnTimer<=0){spawnTimer=8; trySpawnEnemy();}
   updateCamera();
+  const t0=performance.now();
   render();
+  // measure the real time this frame's work took
+  frameMs+=((performance.now()-t0)-frameMs)*0.1;
   requestAnimationFrame(update);
 }
 
@@ -1406,15 +1409,17 @@ function render(){
   if(gameOver) drawGameOver();
 }
 
-// FPS counter — top-right, just below the minimap (and the adventure kill-bar)
+// FPS counter — top-right, just below the minimap (and the adventure kill-bar).
+// Shows the real measured frame rate plus the actual per-frame render time.
 function drawFPS(){
-  const txt=fps+' FPS';
+  const f=Math.round(fps);
+  const txt=f+' FPS  '+frameMs.toFixed(1)+'ms';
   ctx.font='bold 11px monospace';
   const w=ctx.measureText(txt).width;
   const y=(gameMode==='adventure')?178:158;
   const x=CW-10-w;
-  ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(x-5,y-11,w+10,15);
-  ctx.fillStyle=fps>=50?'#66ff66':fps>=30?'#ffdd44':'#ff5555';
+  ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(x-5,y-11,w+10,15);
+  ctx.fillStyle=f>=50?'#66ff66':f>=30?'#ffdd44':'#ff5555';
   ctx.textAlign='left'; ctx.fillText(txt,x,y);
 }
 
