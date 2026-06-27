@@ -1126,6 +1126,15 @@ def _select_atoms(atoms: list[FactAtom], query: str, focus: str | None, max_atom
         return atoms
     scored = sorted(atoms, key=lambda a: -_score_atom_for_query(a, query, focus))
 
+    # Shuffle near-tied atoms so different facts surface on repeat questions
+    if len(scored) > 1:
+        top_score = _score_atom_for_query(scored[0], query, focus)
+        near_ties = [a for a in scored if _score_atom_for_query(a, query, focus) >= top_score * 0.82]
+        if len(near_ties) > 1:
+            random.shuffle(near_ties)
+            rest = [a for a in scored if a not in near_ties]
+            scored = near_ties + rest
+
     selected: list[FactAtom] = []
     seen_types: set[str] = set()
 
@@ -1171,9 +1180,19 @@ def _extract_direct_answer(query: str, content: str, atoms: list[FactAtom], focu
         top = max(atoms, key=lambda a: _score_atom_for_query(a, query, focus))
         if top.value and top.unit:
             label = top.subject.replace("_", " ") if top.subject else "this"
-            return f"**{top.value} {top.unit}** is the headline figure for {label}."
+            templates = [
+                f"**{top.value} {top.unit}** is the headline figure for {label}.",
+                f"The number to know: **{top.value} {top.unit}** for {label}.",
+                f"**{top.value} {top.unit}** — that's the key measurement for {label}.",
+            ]
+            return random.choice(templates)
         if top.value:
-            return f"**{top.value}** is the central number here."
+            templates = [
+                f"**{top.value}** is the central number here.",
+                f"The figure that matters most: **{top.value}**.",
+                f"**{top.value}** stands out as the headline stat.",
+            ]
+            return random.choice(templates)
 
     for para in content.split("\n\n"):
         p = re.sub(r"^#{1,4}\s+", "", para.strip())
@@ -1913,23 +1932,49 @@ def forge(
     max_atoms = _mode_max_atoms(mode, effective_depth)
     qn = _normalize(query)
 
-    # Specific questions: extract and return the exact answer — skip NLG paraphrasing
+    # Specific questions: extract the core fact, then rewrite with NLG variation
     if _is_specific_question(qn) and intent in (
         "knowledge", "space", "earth", "science", "history", "animals", "programming",
     ):
         exact = _extract_exact_answer(query, content)
         if exact and len(exact) >= 8:
-            return _format_exact_response(query, exact, mode, memory, content)
+            if mode == "forge_instant":
+                return _vary_exact_response(query, exact, mode, memory, content)
+            try:
+                support = _one_support_line(content, query, exact) if content else None
+                mini = exact if not support else f"{exact}\n\n{support}"
+                if content and len(content) > len(mini):
+                    mini = f"{mini}\n\n{content[:600]}"
+                nlg_output = generate_from_content(
+                    mini,
+                    query,
+                    max_atoms=2 if mode == "forge_code" else 3,
+                    elaborate=mode == "forge_thinking",
+                    memory=memory,
+                )
+                if nlg_output and len(nlg_output) >= 20:
+                    structured = vary_structure(nlg_output, query)
+                    if mode == "forge_thinking" and intent != "programming":
+                        thinking = _build_thinking_header(query, intent, memory, max_atoms)
+                        return f"{thinking}\n\n---\n\n{structured}"
+                    if mode == "forge_code" and effective_depth >= 1 and intent != "programming":
+                        brief = _brief_reasoning_line(query, intent, memory)
+                        if brief and random.random() < 0.55:
+                            return f"{brief}\n\n{structured}"
+                    return structured
+            except Exception:
+                pass
+            return _vary_exact_response(query, exact, mode, memory, content)
 
-    # Instant mode: extract the most relevant fact directly, skip NLG rewrite
+    # Instant mode: extract the most relevant fact directly, still vary phrasing
     if mode == "forge_instant" and intent in ("knowledge", "space", "earth", "science", "history", "animals"):
         exact = _extract_exact_answer(query, content)
         if exact:
-            return _format_exact_response(query, exact, mode, memory, content)
+            return _vary_exact_response(query, exact, mode, memory, content)
         first_para = content.split("\n\n")[0].strip()
         first_para = re.sub(r'^#{1,4}\s+', '', first_para)
         if len(first_para) >= 20:
-            return first_para
+            return _vary_exact_response(query, first_para, mode, memory, content)
 
     # NLG atom-level rewrite for factual intents
     if intent in ("knowledge", "space", "earth", "science", "history", "animals", "programming"):
@@ -1966,14 +2011,39 @@ def _brief_reasoning_line(query: str, intent: str, memory: dict | None) -> str:
     focus = _infer_focus(query) or "the core facts"
     q_short = query[:70] + ("…" if len(query) > 70 else "")
     if memory and memory.get("continuing_thread"):
-        return (
-            f"*Approach:* continuing our thread — prioritising **{focus}** "
-            f"to answer \"{q_short}\" comprehensively."
-        )
-    return (
-        f"*Approach:* pulling **{focus}** from the knowledge base to give a "
-        f"complete answer to \"{q_short}\"."
-    )
+        options = [
+            (
+                f"*Approach:* continuing our thread — prioritising **{focus}** "
+                f"to answer \"{q_short}\" comprehensively."
+            ),
+            (
+                f"*Working from context:* building on what we discussed — "
+                f"focusing on **{focus}** for \"{q_short}\"."
+            ),
+            (
+                f"*Thread carry-over:* still on this topic — pulling **{focus}** "
+                f"to address \"{q_short}\"."
+            ),
+        ]
+        return random.choice(options)
+    options = [
+        (
+            f"*Approach:* pulling **{focus}** from the knowledge base to give a "
+            f"complete answer to \"{q_short}\"."
+        ),
+        (
+            f"*How I'm answering:* scanning for **{focus}** to respond to "
+            f"\"{q_short}\"."
+        ),
+        (
+            f"*Strategy:* matching your question to **{focus}** in the knowledge base."
+        ),
+        (
+            f"*Reading your question as:* a request about **{focus}** — "
+            f"here's what I found."
+        ),
+    ]
+    return random.choice(options)
 
 
 def _build_thinking_header(
@@ -2669,7 +2739,6 @@ _ASPECT_INTROS = {
     "inventor":    ["", "As for who made it — ", "Credit-wise, "],
 }
 
-import random
 
 def _is_heading_line(s: str) -> bool:
     if re.match(r'^#{1,4}\s', s):
@@ -2692,9 +2761,14 @@ def _extract_aspect(answer: str, aspect: str, *, exact: bool = False) -> str | N
     if not matches:
         return None
     if exact:
-        return matches[0] if len(matches) == 1 else "  ".join(matches[:2])
+        pick = random.choice(matches) if len(matches) > 1 else matches[0]
+        if len(matches) > 1 and random.random() < 0.3:
+            second = random.choice([m for m in matches if m != pick] or matches)
+            return f"{pick}  {second}"
+        return pick
     intro = random.choice(_ASPECT_INTROS.get(aspect, [""]))
-    return intro + "  ".join(matches[:2])
+    chosen = random.sample(matches, min(2, len(matches)))
+    return intro + "  ".join(chosen)
 
 _SPECIFIC_PATTERNS = [
     (r"how (fast|quick|speedy)", "speed"),
@@ -2894,8 +2968,15 @@ def _extract_exact_answer(query: str, content: str) -> str | None:
                 scored.append((sc, sent))
         if scored:
             scored.sort(key=lambda x: -x[0])
+            top_score = scored[0][0]
+            pool = [s for sc, s in scored if sc >= top_score * 0.72]
+            if len(pool) > 1:
+                if random.random() < 0.35:
+                    a, b = random.sample(pool, min(2, len(pool)))
+                    return f"{a}  {b}"
+                return random.choice(pool)
             top = scored[0][1]
-            if scored[0][0] >= 8.0 and len(scored) > 1 and scored[1][0] >= 6.0:
+            if scored[0][0] >= 8.0 and len(scored) > 1 and scored[1][0] >= 6.0 and random.random() < 0.45:
                 return f"{top}  {scored[1][1]}"
             return top
 
@@ -2930,17 +3011,31 @@ def _one_support_line(content: str, query: str, exact: str) -> str | None:
     return None
 
 
-def _format_exact_response(
+def _vary_exact_response(
     query: str,
     exact: str,
     mode: str,
     memory: dict | None = None,
     content: str = "",
 ) -> str:
-    """Format a precise answer — exact fact first, optional brief context."""
-    exact = exact.strip()
+    """Format a precise answer with randomized phrasing and structure each call."""
+    exact = re.sub(r"\s+", " ", exact.strip())
     if not exact:
         return exact
+
+    q = _normalize(query)
+    aspect = _detect_aspect(q)
+    plain = re.sub(r"\*\*([^*]+)\*\*", r"\1", exact)
+    core = _maybe_rephrase(plain)
+
+    if mode == "forge_instant":
+        instant_styles = [
+            lambda: core,
+            lambda: random.choice(_ASPECT_INTROS.get(aspect, [""])) + core,
+            lambda: random.choice(_EMPHASIS_PREFIXES) + (core[0].lower() + core[1:] if core else core),
+            lambda: f"**{core}**",
+        ]
+        return random.choice(instant_styles)()
 
     parts: list[str] = []
 
@@ -2948,29 +3043,76 @@ def _format_exact_response(
         parts.append(
             "### Thinking Process\n"
             f"- **Understood:** {_interpret_question(query)}\n"
-            f"- **Answer type:** exact fact (no paraphrasing)\n"
+            f"- **Answer type:** precise fact (rewritten for clarity)\n"
             f"- **Result:**\n"
         )
         parts.append("---")
     elif memory and memory.get("continuing_thread") and memory.get("thread_confidence", 0) >= 55:
-        topic = (memory.get("active_topic") or "")[:60]
-        parts.append(f"*Re: {topic}*")
+        preamble = _thread_preamble(memory)
+        if preamble and random.random() < 0.65:
+            parts.append(preamble)
 
-    # Lead with the exact answer — bold if not already
-    if "**" not in exact[:30]:
-        parts.append(f"**{exact}**")
+    style = random.choice(["bold_lead", "prose", "opener", "woven", "qa_hook"])
+
+    if style == "bold_lead":
+        lead_templates = [
+            f"**{core}**",
+            f"The direct answer: **{core}**",
+            f"**{random.choice(_ASPECT_INTROS.get(aspect, ['']))}{core}**",
+            f"Short answer — **{core}**",
+        ]
+        parts.append(random.choice(lead_templates).replace("****", "**"))
+    elif style == "prose":
+        intro = random.choice(_ASPECT_INTROS.get(aspect, [""]))
+        sentence = f"{intro}{core[0].upper()}{core[1:]}" if intro and core else core
+        parts.append(sentence)
+    elif style == "opener":
+        opener = _pick_opener(query)
+        if opener:
+            parts.append(opener)
+        parts.append(core if random.random() < 0.4 else f"**{core}**")
+    elif style == "woven":
+        parts.append(_pick_opener(query) if random.random() < 0.7 else "")
+        parts.append(core)
+        if random.random() < 0.5:
+            parts.append(_pick_closer())
     else:
-        parts.append(exact)
+        hooks = [
+            f"On that specific point: **{core}**",
+            f"To answer your question directly — {core}",
+            f"Here's the key fact: **{core}**",
+            f"**{core}**",
+        ]
+        parts.append(random.choice(hooks))
 
-    if mode == "forge_thinking" and content:
+    if style not in ("woven",) and content and random.random() < 0.42:
         support = _one_support_line(content, query, exact)
         if support:
-            parts.append(f"*Context:* {support}")
+            wrappers = [
+                f"*Also worth noting:* {support}",
+                f"For context — {support}",
+                f"That sits alongside this: {support}",
+                support,
+            ]
+            parts.append(random.choice(wrappers))
 
-    if mode == "forge_instant":
-        return parts[-1]
+    if style != "woven" and random.random() < 0.38:
+        closer = _pick_closer()
+        if closer:
+            parts.append(closer)
 
-    return "\n\n".join(parts)
+    return "\n\n".join(p.strip() for p in parts if p and p.strip())
+
+
+def _format_exact_response(
+    query: str,
+    exact: str,
+    mode: str,
+    memory: dict | None = None,
+    content: str = "",
+) -> str:
+    """Backward-compatible alias — always varies the presentation."""
+    return _vary_exact_response(query, exact, mode, memory, content)
 
 
 def _try_extract_fact(answer: str, q: str) -> str | None:
@@ -3803,14 +3945,7 @@ def _forge_or_exact(
     mode: str = "forge_code",
     memory: dict | None = None,
 ) -> str:
-    """Return exact answer for specific questions; otherwise run full forge pipeline."""
-    if _is_specific_question(q):
-        exact = _extract_exact_answer(query, content)
-        if exact:
-            return _format_exact_response(query, exact, mode, memory, content)
-        fact = _try_extract_fact(content, q)
-        if fact:
-            return _format_exact_response(query, fact, mode, memory, content)
+    """Run the full forge pipeline — facts stay accurate, wording varies every call."""
     return forge(content, query, intent, depth=depth, mode=mode, memory=memory)
 
 
