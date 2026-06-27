@@ -1,1 +1,7 @@
 node_modules/
+frontend/dist/
+frontend/src/**/*.js
+shared/*.js
+shared/knowledgebase.json
+backend/data/forgeai.db
+**/__pycache__/

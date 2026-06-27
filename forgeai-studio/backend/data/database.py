@@ -11,7 +11,7 @@ Schema
   lang_hello_world — hello-world examples per language
 
 All tables are created automatically on first import.
-Data is seeded from shared/knowledgebase.json once on startup if the DB is empty.
+Data is seeded from knowledge_seed.py (generated from knowledgebase.ts) on first run if the DB is empty.
 
 Public API
 ----------
@@ -82,7 +82,7 @@ def _init_schema() -> None:
         """)
 
 
-# ── Seed from knowledgebase.json (runs once if tables are empty) ──────────────
+# ── Seed from knowledge_seed.py (runs once if tables are empty) ───────────────
 
 def _seed_if_empty() -> None:
     with _connect() as conn:

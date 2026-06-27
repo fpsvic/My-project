@@ -3093,6 +3093,122 @@ _PRONOUN_RE = re.compile(
     r"\b(it|its|it's|they|them|their|that|this|those|these|he|she|him|her)\b"
 )
 
+_TOPIC_SHIFT_MARKERS = (
+    "anyway", "actually", "never mind", "nevermind", "forget that", "forget it",
+    "new question", "different question", "change topic", "switching to", "switch to",
+    "instead", "on another note", "by the way", "btw", "separately",
+    "something else", "another thing", "moving on", "let me ask about",
+    "unrelated", "off topic", "different subject",
+)
+
+_SHORT_FOLLOWUP_RE = re.compile(
+    r"^(why|how|when|where|who|what|really|ok|okay|and|so|then|right|true|yes|no)\??$",
+    re.I,
+)
+
+
+def _token_overlap(a: str, b: str) -> float:
+    """Share of meaningful tokens between two strings (0–1)."""
+    ta = set(re.findall(r"[a-z0-9]{3,}", a)) - _STOP_WORDS
+    tb = set(re.findall(r"[a-z0-9]{3,}", b)) - _STOP_WORDS
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / min(len(ta), len(tb))
+
+
+def _infer_topic_intent(q: str) -> str | None:
+    """Best-guess intent for a topic anchor query."""
+    scores = {
+        "programming": _score_programming(q),
+        "math": _score_math(q),
+        "space": _score_space(q),
+        "earth": _score_earth(q),
+        "science": _score_science(q),
+        "history": _score_history(q),
+        "animals": _score_animals(q),
+        "build_game": _score_build_game(q),
+        "build_app": _score_build_app(q),
+        "knowledge": _score_knowledge(q),
+    }
+    best = max(scores, key=scores.get)
+    return best if scores[best] >= 35 else None
+
+
+def scan_chat_context(history: list, query: str) -> dict:
+    """
+    Quick full-history scan before responding — is the user still on the last topic?
+    """
+    user_msgs = _get_all_user_msgs(history)
+    ai_texts: list[str] = []
+    for msg in history:
+        if msg.get("role") == "assistant":
+            text = (msg.get("text") or msg.get("content") or "").strip()
+            if text:
+                ai_texts.append(text)
+
+    q = _normalize(query)
+    result: dict = {
+        "continuing_thread": False,
+        "thread_confidence": 0,
+        "topic_shift": False,
+        "last_user_query": None,
+        "last_assistant_text": ai_texts[-1] if ai_texts else None,
+        "thread_intent": None,
+    }
+
+    if len(user_msgs) < 2:
+        return result
+
+    # Current message is usually last in history when the API receives it
+    prev_msgs = user_msgs[:-1] if user_msgs[-1].strip() == query.strip() else user_msgs
+    if not prev_msgs:
+        return result
+
+    last_user = prev_msgs[-1]
+    last_ai = ai_texts[-1] if ai_texts else ""
+    result["last_user_query"] = last_user
+
+    if any(marker in q for marker in _TOPIC_SHIFT_MARKERS):
+        result["topic_shift"] = True
+        return result
+
+    overlap_user = _token_overlap(q, last_user)
+    overlap_ai = _token_overlap(q, last_ai)
+    overlap_thread = _token_overlap(q, _normalize(last_user + " " + last_ai[:500]))
+    best_overlap = max(overlap_user, overlap_ai, overlap_thread)
+
+    is_followup = _is_followup_query(q)
+    content_words = [w for w in q.split() if w not in _STOP_WORDS]
+
+    if is_followup:
+        result["continuing_thread"] = True
+        result["thread_confidence"] = 92
+    elif _SHORT_FOLLOWUP_RE.match(q.strip()):
+        result["continuing_thread"] = True
+        result["thread_confidence"] = 88
+    elif len(content_words) <= 5 and _PRONOUN_RE.search(q):
+        result["continuing_thread"] = True
+        result["thread_confidence"] = 80
+    elif _detect_aspect(q) and best_overlap >= 0.12:
+        result["continuing_thread"] = True
+        result["thread_confidence"] = 72
+    elif best_overlap >= 0.4:
+        result["continuing_thread"] = True
+        result["thread_confidence"] = int(55 + best_overlap * 45)
+    elif len(content_words) <= 3 and best_overlap >= 0.15:
+        result["continuing_thread"] = True
+        result["thread_confidence"] = 65
+
+    if result["continuing_thread"]:
+        anchor = _normalize(last_user)
+        for msg in reversed(prev_msgs):
+            if not _is_followup_query(_normalize(msg)):
+                anchor = _normalize(msg)
+                break
+        result["thread_intent"] = _infer_topic_intent(anchor)
+
+    return result
+
 
 def _is_followup_query(q: str) -> bool:
     """Return True if q is clearly a follow-up with no new subject."""
@@ -3100,9 +3216,17 @@ def _is_followup_query(q: str) -> bool:
         return True
     if any(q.startswith(p) for p in _FOLLOWUP_STARTS):
         return True
+    if _SHORT_FOLLOWUP_RE.match(q.strip()):
+        return True
+    if re.match(r"^(why|how|when|where|who)\s+(is|are|was|were|do|does|did)\s+(that|it|this|they)\b", q):
+        return True
+    if re.match(r"^(what|how)\s+about\s+(that|it|this|them)\b", q):
+        return True
     # Short pronoun-heavy queries
     words = [w for w in q.split() if w not in _STOP_WORDS]
     if len(words) <= 3 and _PRONOUN_RE.search(q):
+        return True
+    if len(words) <= 2 and q.endswith("?"):
         return True
     return False
 
@@ -3187,24 +3311,35 @@ def build_conversation_memory(history: list) -> dict:
         "covered_aspects": covered_aspects,
         "all_topics": all_topics,
         "prev_ai_texts": ai_texts,
+        "thread_intent": _infer_topic_intent(_normalize(active_topic)),
     }
 
 
-def _resolve_context(query: str, q: str, history: list) -> tuple[str, str, dict]:
+def _resolve_context(query: str, q: str, history: list, scan: dict | None = None) -> tuple[str, str, dict]:
     """
     Rewrite a follow-up query using full conversation memory.
     Returns (resolved_query, normalized_q, memory_dict).
     """
+    scan = scan or scan_chat_context(history, query)
     mem = build_conversation_memory(history)
+    mem.update(scan)
     active_topic = mem.get("active_topic")
+
+    if scan.get("topic_shift"):
+        return query, q, mem
 
     if not active_topic:
         return query, q, mem
 
     entity = mem.get("active_entity") or ""
+    last_ai = scan.get("last_assistant_text") or ""
+    if not entity and last_ai:
+        entity = _extract_entity(last_ai[:300]) or entity
+
+    continuing = scan.get("continuing_thread") and scan.get("thread_confidence", 0) >= 60
 
     # 1. Pure follow-up → expand into full topic question
-    if q in _FOLLOWUP_EXACT:
+    if q in _FOLLOWUP_EXACT or (continuing and _is_followup_query(q)):
         covered = mem.get("covered_aspects", [])
         # Pick an uncovered aspect to go deeper on
         all_aspects = ["speed", "size", "diet", "habitat", "behavior",
@@ -3228,11 +3363,16 @@ def _resolve_context(query: str, q: str, history: list) -> tuple[str, str, dict]
 
     # 3. Short pronoun-heavy query — replace pronouns with entity
     words = [w for w in q.split() if w not in _STOP_WORDS]
-    if len(words) <= 4 and _PRONOUN_RE.search(q) and entity:
+    if len(words) <= 5 and _PRONOUN_RE.search(q) and entity:
         resolved = _PRONOUN_RE.sub(entity, query)
         return resolved, _normalize(resolved), mem
 
-    # 4. New question on the same entity but different angle — preserve as-is
+    # 4. Continuing thread: short aspect question without explicit subject
+    if continuing and _detect_aspect(q) and entity and entity not in q:
+        combined = f"{query.strip()} {entity}"
+        return combined, _normalize(combined), mem
+
+    # 5. New question on the same entity but different angle — preserve as-is
     return query, q, mem
 
 
@@ -3329,8 +3469,9 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     q = _normalize(query)
     if quick_mode:
         return _quick_response(query, q)
-    # Resolve follow-up references using full conversation memory
-    query, q, memory = _resolve_context(query, q, history)
+    # Scan full chat history, then resolve follow-up references
+    context_scan = scan_chat_context(history, query)
+    query, q, memory = _resolve_context(query, q, history, context_scan)
     thread_depth = memory.get("thread_depth", 0)
     active_entity = memory.get("active_entity") or ""
 
@@ -3369,6 +3510,16 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     }
     best_intent = max(scores, key=lambda k: scores[k])
     best_score = scores[best_intent]
+
+    # Boost intent when chat scan shows we're still on the same topic
+    if memory.get("continuing_thread") and not memory.get("topic_shift"):
+        hint = memory.get("thread_intent")
+        conf = memory.get("thread_confidence", 0)
+        if hint and hint in scores and conf >= 60:
+            scores[hint] = min(100, scores[hint] + conf // 5)
+            best_intent = max(scores, key=lambda k: scores[k])
+            best_score = scores[best_intent]
+
     if best_score < (20 if code_mode else 30):
         if _has_build_verb(q) or code_mode:
             return _dispatch_project(query, mode=mode)
