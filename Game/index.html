@@ -12,7 +12,7 @@ canvas { display:block; cursor:default; }
 <body>
 <canvas id="c"></canvas>
 <script>
-const TILE=32, WW=160, WH=120, CW=800, CH=600;
+const TILE=32, WW=190, WH=144, CW=800, CH=600;
 const HALF_CW=CW/2, HALF_CH=CH/2;
 
 const canvas=document.getElementById('c');
@@ -49,10 +49,10 @@ function smoothN(x,y,s){
 const T={
   DEEP_WATER:0,SHALLOW_WATER:1,SAND:2,GRASS:3,DARK_GRASS:4,
   FOREST:5,MOUNTAIN:6,SNOW:7,PATH:8,WALL:9,FLOOR:10,DOOR:11,
-  BRIDGE:12,DOCK:13
+  BRIDGE:12,DOCK:13,JUNK:14,FENCE:15
 };
-const TCOLOR=['#1a6b9a','#2e8fc0','#d2b48c','#5a9e3a','#3d7a28','#1f5c1a','#8c8c8c','#e8e8f0','#8c7355','#5c4a3a','#b08050','#7a5530','#8B6914','#7a5a20'];
-const TWALK=[false,true,true,true,true,false,false,true,true,false,true,true,true,true];
+const TCOLOR=['#1a6b9a','#2e8fc0','#d2b48c','#5a9e3a','#3d7a28','#1f5c1a','#8c8c8c','#e8e8f0','#8c7355','#5c4a3a','#b08050','#7a5530','#8B6914','#7a5a20','#5a5048','#888888'];
+const TWALK=[false,true,true,true,true,false,false,true,true,false,true,true,true,true,true,false];
 
 // ── World data (reset each new game) ──────────────────────────────────────
 let tiles=new Uint8Array(WW*WH);
@@ -108,13 +108,50 @@ function generateWorld(seed){
       tiles[y*WW+x]=classify(smoothN(x,y,seed)-falloff);
     }
   }
+  carveJunkyard(seed);
+}
+// The centre of every map is a fenced junkyard — flat scrap ground ringed by
+// a fence with a couple of gate openings. Scrap piles are stored separately.
+let junkPiles=[];
+let junkyard={x:0,y:0,w:0,h:0};
+function carveJunkyard(seed){
+  junkPiles=[];
+  let s=seed^0x5c5a;
+  function rnd(n){s=((s*1664525+1013904223)>>>0); return (s>>>16)%n;}
+  const jw=26+rnd(8), jh=20+rnd(6);
+  const jx=(WW>>1)-(jw>>1), jy=(WH>>1)-(jh>>1);
+  junkyard={x:jx,y:jy,w:jw,h:jh};
+  // flatten interior to junk ground
+  for(let y=jy;y<jy+jh;y++)
+    for(let x=jx;x<jx+jw;x++)
+      if(x>0&&x<WW&&y>0&&y<WH) tiles[y*WW+x]=T.JUNK;
+  // fence ring with gate gaps on each side
+  const gapT=jx+(jw>>1), gapB=jx+(jw>>1), gapL=jy+(jh>>1), gapR=jy+(jh>>1);
+  for(let x=jx-1;x<=jx+jw;x++){
+    if(x>0&&x<WW){
+      if(Math.abs(x-gapT)>1&&jy-1>0) tiles[(jy-1)*WW+x]=T.FENCE;
+      if(Math.abs(x-gapB)>1&&jy+jh<WH) tiles[(jy+jh)*WW+x]=T.FENCE;
+    }
+  }
+  for(let y=jy-1;y<=jy+jh;y++){
+    if(y>0&&y<WH){
+      if(Math.abs(y-gapL)>1&&jx-1>0) tiles[y*WW+(jx-1)]=T.FENCE;
+      if(Math.abs(y-gapR)>1&&jx+jw<WW) tiles[y*WW+(jx+jw)]=T.FENCE;
+    }
+  }
+  // scrap piles scattered inside (visual props, drawn over junk ground)
+  const piles=14+rnd(10);
+  for(let i=0;i<piles;i++){
+    const px=jx+2+rnd(jw-4), py=jy+2+rnd(jh-4);
+    junkPiles.push({x:px*TILE+TILE/2, y:py*TILE+TILE/2, kind:rnd(4), r:8+rnd(10)});
+  }
 }
 function canPlace(bx,by,bw,bh){
   if(bx<2||by<2||bx+bw>=WW-2||by+bh>=WH-2)return false;
   for(let dy=-1;dy<=bh;dy++)
     for(let dx=-1;dx<=bw;dx++){
       const t=tiles[(by+dy)*WW+(bx+dx)];
-      if(!TWALK[t]||t===T.FOREST||t===T.SHALLOW_WATER)return false;
+      if(!TWALK[t]||t===T.FOREST||t===T.SHALLOW_WATER||t===T.JUNK||t===T.FENCE)return false;
     }
   for(const b of buildings)
     if(bx<b.x+b.w+2&&bx+bw>b.x-2&&by<b.y+b.h+2&&by+bh>b.y-2)return false;
@@ -253,7 +290,7 @@ function placeDocks(seed){
 }
 
 // ── Minimap ────────────────────────────────────────────────────────────────
-const MM_W=160, MM_H=120;
+const MM_W=WW, MM_H=WH;
 const mmCanvas=document.createElement('canvas');
 mmCanvas.width=MM_W; mmCanvas.height=MM_H;
 const mmCtx=mmCanvas.getContext('2d');
@@ -383,8 +420,13 @@ const ITEM_DEF={
   Breastplate:{cat:'ARMOUR', def:12, color:'#aaaacc', icon:'🛡'},
   Cape:       {cat:'ARMOUR', def:4,  color:'#8844aa', icon:'🧥'},
   Ring:       {cat:'ARMOUR', def:2, atk:5, color:'#ffdd44', icon:'💍'},
+  // ── Ally healing orb — equip it, then press E near an ally to heal them ─────
+  HealOrb:    {cat:'ALLYHEAL', heal:30, color:'#55ffcc', icon:'🔮'},
 };
 const ITEM_KINDS=Object.keys(ITEM_DEF);
+// item kinds that can spawn on the ground (exclude HealOrb from generic random
+// rolls so it stays special, then add it back at a low rate separately)
+const SPAWN_ITEM_KINDS=ITEM_KINDS.filter(k=>k!=='HealOrb');
 
 // ── Procedural NPC dialogue ────────────────────────────────────────────────
 const WB={
@@ -446,6 +488,7 @@ function makeItem(kind,x,y,bob){
     atk:base.atk?Math.round(base.atk*rar.mult):0,
     def:base.def?Math.round(base.def*rar.mult):0,
     hp:base.hp?Math.round(base.hp*rar.mult):0,
+    heal:base.heal?Math.round(base.heal*rar.mult):0,
   };
 }
 
@@ -533,7 +576,11 @@ function onKey(code){
   if(gameOver){if(code==='KeyR')beginNewGame(gameMode); return;}
   if(code==='KeyI'||code==='Tab'){player.showInventory=!player.showInventory; return;}
   if(code==='KeyF')playerAttack();
-  if(code==='KeyE'){if(!tryPickupNearby())talkNearby(); return;}
+  if(code==='KeyE'){
+    if(tryHealAlly())return;        // holding a heal orb near a hurt ally
+    if(!tryPickupNearby())talkNearby();
+    return;
+  }
   if(code==='KeyQ')dropEquipped();
   for(let i=0;i<8;i++)if(code===`Digit${i+1}`)player.equip=player.inv[i]?i:-1;
 }
@@ -688,16 +735,18 @@ function spawnNPCs(seed){
         placed=true;
       }
     }
-    // spawn one ally per village
-    for(let attempt=0;attempt<30;attempt++){
-      const tx=vc[0]+rnd(16)-8, ty=vc[1]+rnd(16)-8;
-      if(tx<1||tx>=WW-1||ty<1||ty>=WH-1)continue;
-      const t=worldGet(tx,ty);
-      if(!TWALK[t]||t===T.SHALLOW_WATER||t===T.WALL||t===T.FLOOR||t===T.DOOR)continue;
-      npcs.push(makeNPC(tx*TILE+TILE/2,ty*TILE+TILE/2,'Ally',
-        NPC_NAMES[rnd(NPC_NAMES.length)],rnd(10000),
-        {ally:true,speed:120,idleTimer:999}));
-      break;
+    // allies are rare — only ~1 in 3 villages has one
+    if(rnd(3)===0){
+      for(let attempt=0;attempt<30;attempt++){
+        const tx=vc[0]+rnd(16)-8, ty=vc[1]+rnd(16)-8;
+        if(tx<1||tx>=WW-1||ty<1||ty>=WH-1)continue;
+        const t=worldGet(tx,ty);
+        if(!TWALK[t]||t===T.SHALLOW_WATER||t===T.WALL||t===T.FLOOR||t===T.DOOR)continue;
+        npcs.push(makeNPC(tx*TILE+TILE/2,ty*TILE+TILE/2,'Ally',
+          NPC_NAMES[rnd(NPC_NAMES.length)],rnd(10000),
+          {ally:true,speed:120,idleTimer:999,hp:50,maxHp:50}));
+        break;
+      }
     }
   }
 
@@ -726,11 +775,13 @@ function spawnInitialEnemies(seed){
 function spawnInitialItems(seed){
   let s=seed^0x54321;
   function rnd(n){s=((s*1664525+1013904223)>>>0); return (s>>>16)%n;}
-  for(let i=0;i<60;i++){
+  for(let i=0;i<70;i++){
     const tx=rnd(WW), ty=rnd(WH);
     const t=worldTerrain(tx,ty);
     if(!TWALK[t]||t===T.FOREST||t===T.SHALLOW_WATER)continue;
-    items.push(makeItem(ITEM_KINDS[rnd(ITEM_KINDS.length)],tx*TILE+TILE/2,ty*TILE+TILE/2,rnd(628)/100));
+    // ~1 in 12 ground items is an ally heal orb, the rest are normal loot
+    const kind=rnd(12)===0?'HealOrb':SPAWN_ITEM_KINDS[rnd(SPAWN_ITEM_KINDS.length)];
+    items.push(makeItem(kind,tx*TILE+TILE/2,ty*TILE+TILE/2,rnd(628)/100));
   }
 }
 
@@ -762,6 +813,29 @@ function talkNearby(){
       return;
     }
   }
+}
+// If the equipped item is a heal orb and a hurt ally is nearby, heal them and
+// consume the orb. Returns true if it did something.
+function tryHealAlly(){
+  if(player.equip<0)return false;
+  const orb=player.inv[player.equip];
+  if(!orb||ITEM_DEF[orb.kind].cat!=='ALLYHEAL')return false;
+  const R=(2.6*TILE)**2;
+  let target=null, best=Infinity;
+  for(const n of npcs){
+    if(n.dead||!n.ally)continue;
+    if(n.hp>=n.maxHp)continue;             // already full
+    const dx=n.x-player.x, dy=n.y-player.y, d=dx*dx+dy*dy;
+    if(d<R&&d<best){best=d; target=n;}
+  }
+  if(!target)return false;
+  const amt=orb.heal||30;
+  target.hp=Math.min(target.maxHp,target.hp+amt);
+  target.speech='Thank you!'; target.speechTimer=2;
+  floats.push({text:'+'+amt+' Ally',x:target.x,y:target.y-30,color:'#55ffcc',life:1.2});
+  // consume the orb
+  player.inv[player.equip]=null; player.invCount--; player.equip=-1;
+  return true;
 }
 function tryPickupNearby(){
   const R=(1.8*TILE)**2;
@@ -846,7 +920,7 @@ function damageEnemy(e,dmg){
     floats.push({text:'+'+xp+' XP',x:e.x,y:e.y-36,color:'#ffdd00',life:1.2});
     checkLevelUp();
     if(Math.random()<0.3)
-      items.push(makeItem(ITEM_KINDS[Math.random()*ITEM_KINDS.length|0],e.x,e.y));
+      items.push(makeItem(SPAWN_ITEM_KINDS[Math.random()*SPAWN_ITEM_KINDS.length|0],e.x,e.y));
     if(gameMode==='adventure'){
       levelKills++;
       if(levelKills>=levelTarget){
@@ -1107,8 +1181,11 @@ function trySpawnEnemy(){
   }
 }
 function updateCamera(){
-  camX=Math.max(0,Math.min(WW*TILE-CW, player.x-HALF_CW));
-  camY=Math.max(0,Math.min(WH*TILE-CH, player.y-HALF_CH));
+  // round to whole pixels so the world and all entities scroll together
+  // smoothly — a fractional camera makes the integer-snapped tiles jitter
+  // against the centred player.
+  camX=Math.round(Math.max(0,Math.min(WW*TILE-CW, player.x-HALF_CW)));
+  camY=Math.round(Math.max(0,Math.min(WH*TILE-CH, player.y-HALF_CH)));
 }
 
 // ── Title screen ───────────────────────────────────────────────────────────
@@ -1455,6 +1532,25 @@ function drawWorld(){
       if(t===T.DEEP_WATER||t===T.SHALLOW_WATER)
         drawTile(t,tx,ty,(tx*TILE-camX)|0,(ty*TILE-camY)|0,ctx);
     }
+  // scrap piles in the junkyard
+  for(const p of junkPiles){
+    const sx=p.x-camX, sy=p.y-camY;
+    if(sx<-40||sx>CW+40||sy<-40||sy>CH+40)continue;
+    ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(sx,sy+p.r*0.6,p.r,p.r*0.35,0,0,Math.PI*2); ctx.fill();
+    if(p.kind===0){ // rust heap
+      ctx.fillStyle='#7a4a2a'; ctx.beginPath(); ctx.arc(sx,sy,p.r,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#9a6a3a'; ctx.beginPath(); ctx.arc(sx-p.r*0.3,sy-p.r*0.3,p.r*0.5,0,Math.PI*2); ctx.fill();
+    } else if(p.kind===1){ // metal scrap
+      ctx.fillStyle='#888'; ctx.fillRect(sx-p.r,sy-p.r*0.5,p.r*2,p.r);
+      ctx.fillStyle='#aaa'; ctx.fillRect(sx-p.r*0.6,sy-p.r,p.r*1.2,p.r*0.6);
+    } else if(p.kind===2){ // tires
+      ctx.fillStyle='#222'; ctx.beginPath(); ctx.arc(sx,sy,p.r,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#444'; ctx.beginPath(); ctx.arc(sx,sy,p.r*0.5,0,Math.PI*2); ctx.fill();
+    } else { // barrel
+      ctx.fillStyle='#3a5a3a'; ctx.fillRect(sx-p.r*0.6,sy-p.r,p.r*1.2,p.r*2);
+      ctx.fillStyle='#4a7a4a'; ctx.fillRect(sx-p.r*0.6,sy-p.r*0.4,p.r*1.2,3);
+    }
+  }
   for(const b of buildings){
     const bsx=(b.x+b.w/2)*TILE-camX, bsy=(b.y-1)*TILE-camY;
     if(bsx<-60||bsx>CW+60||bsy<-20||bsy>CH+20)continue;
@@ -1462,6 +1558,15 @@ function drawWorld(){
     const tw=ctx.measureText(b.type).width;
     ctx.fillRect(bsx-tw/2-3,bsy-11,tw+6,14);
     ctx.fillStyle='#ffeeaa'; ctx.fillText(b.type,bsx-tw/2,bsy);
+  }
+  // junkyard label
+  if(junkyard.w){
+    const jsx=(junkyard.x+junkyard.w/2)*TILE-camX, jsy=(junkyard.y-1)*TILE-camY;
+    if(jsx>-80&&jsx<CW+80&&jsy>-20&&jsy<CH+20){
+      ctx.font='bold 12px monospace'; const lw=ctx.measureText('JUNKYARD').width;
+      ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(jsx-lw/2-4,jsy-12,lw+8,16);
+      ctx.fillStyle='#d8c060'; ctx.fillText('JUNKYARD',jsx-lw/2,jsy);
+    }
   }
 }
 
@@ -1491,6 +1596,23 @@ function drawTile(t,tx,ty,px,py,c=ctx){const ctx=c;
     ctx.beginPath();ctx.moveTo(px+1,py+TILE*2/3);ctx.lineTo(px+TILE-1,py+TILE*2/3);ctx.stroke();
     ctx.beginPath();ctx.moveTo(px+TILE/3,py+1);ctx.lineTo(px+TILE/3,py+TILE-1);ctx.stroke();
     ctx.beginPath();ctx.moveTo(px+TILE*2/3,py+1);ctx.lineTo(px+TILE*2/3,py+TILE-1);ctx.stroke();
+    return;
+  }
+  if(t===T.JUNK){
+    // dirt/scrap ground with darker grime patches and bits of metal
+    ctx.fillStyle='#4a4138'; if(hash(tx,ty,11)<0.5) ctx.fillRect(px+hash(tx,ty,12)*20|0,py+hash(tx,ty,13)*20|0,8,6);
+    ctx.fillStyle='#7a7066'; if(hash(tx,ty,14)<0.4){ctx.fillRect(px+6+hash(tx,ty,15)*14|0,py+10,3,3); ctx.fillRect(px+14,py+18,2,4);}
+    return;
+  }
+  if(t===T.FENCE){
+    // chain-link / metal fence post
+    ctx.fillStyle='#3a3a3a'; ctx.fillRect(px,py,TILE,TILE);
+    ctx.strokeStyle='#9a9a9a'; ctx.lineWidth=2;
+    ctx.strokeRect(px+3,py+2,TILE-6,TILE-4);
+    ctx.lineWidth=1; ctx.strokeStyle='#777';
+    ctx.beginPath();ctx.moveTo(px+3,py+2);ctx.lineTo(px+TILE-3,py+TILE-2);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(px+TILE-3,py+2);ctx.lineTo(px+3,py+TILE-2);ctx.stroke();
+    ctx.fillStyle='#b0b0b0'; ctx.fillRect(px+TILE/2-2,py,4,TILE);
     return;
   }
   if(t===T.GRASS&&hash(tx,ty,1)<0.2){
@@ -1663,6 +1785,17 @@ function drawNPC(n){
     const fy=ly+Math.sin(n.fishT)*3;
     ctx.fillStyle='#ff3333'; ctx.beginPath();ctx.arc(lx,fy,3,0,Math.PI*2);ctx.fill();
     ctx.fillStyle='#ffffff'; ctx.beginPath();ctx.arc(lx,fy,1.5,0,Math.PI*2);ctx.fill();
+  }
+  // ally health bar (allies have 50 max HP — half the player's)
+  if(n.ally){
+    const bw=26, bh=4, bx=sx-bw/2, by=sy-44+bob;
+    ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(bx-1,by-1,bw+2,bh+2);
+    ctx.fillStyle='#552222'; ctx.fillRect(bx,by,bw,bh);
+    const frac=Math.max(0,n.hp)/n.maxHp;
+    ctx.fillStyle=frac>0.5?'#44dd55':frac>0.25?'#ddcc33':'#dd4433';
+    ctx.fillRect(bx,by,bw*frac,bh);
+    ctx.font='7px monospace'; ctx.fillStyle='#cfe'; ctx.textAlign='center';
+    ctx.fillText(Math.max(0,n.hp|0)+'/'+n.maxHp,sx,by-3);
   }
   ctx.textAlign='center'; ctx.font='10px monospace'; ctx.fillStyle='#ffffcc';
   ctx.fillText(n.name,sx,sy-32+bob);
