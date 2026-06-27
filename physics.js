@@ -1,16 +1,16 @@
 // physics.js — ball movement, collisions, field boundaries
 
-const FIELD  = { x: 60, y: 40, w: 680, h: 440 };
-const GOAL_W = 110;
-const GOAL_D = 20;
-const BALL_R = 9;
+const FIELD    = { x: 60, y: 40, w: 680, h: 440 };
+const GOAL_W   = 120;
+const GOAL_D   = 22;
+const BALL_R   = 9;
 const PLAYER_R = 15;
 
-const BALL_FRICTION   = 0.955;   // per-frame speed decay (higher = more slide)
-const BALL_MIN_SPEED  = 0.08;    // stop completely below this
-const BALL_MAX_SPEED  = 14;
-const WALL_BOUNCE     = 0.55;    // energy kept on wall bounce
-const KICK_COOLDOWN   = 0.18;    // seconds between kicks per player
+const BALL_FRICTION  = 0.962;   // per-frame speed decay
+const BALL_MIN_SPEED = 0.06;
+const BALL_MAX_SPEED = 16;
+const WALL_BOUNCE    = 0.52;
+const KICK_COOLDOWN  = 0.20;    // seconds between kicks
 
 function dist(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
@@ -28,33 +28,26 @@ function clampField(obj, r) {
 
 function capSpeed(obj, max) {
   const spd = Math.hypot(obj.vx, obj.vy);
-  if (spd > max) {
-    obj.vx = (obj.vx / spd) * max;
-    obj.vy = (obj.vy / spd) * max;
-  }
+  if (spd > max) { obj.vx = (obj.vx / spd) * max; obj.vy = (obj.vy / spd) * max; }
 }
 
-// Attempt a kick — returns true if successful (respects cooldown)
+// Returns true if kick landed
 function tryKick(kicker, ball, power, dt) {
   if ((kicker.kickCooldown || 0) > 0) return false;
-  const d = dist(kicker, ball);
-  if (d > PLAYER_R + BALL_R + 2) return false;
+  if (dist(kicker, ball) > PLAYER_R + BALL_R + 3) return false;
 
-  // Only kick if player is facing toward the ball
-  const toBallX = ball.x - kicker.x;
-  const toBallY = ball.y - kicker.y;
-  const speed = Math.hypot(kicker.vx, kicker.vy);
-
+  const spd = Math.hypot(kicker.vx, kicker.vy);
   let kickDx, kickDy;
-  if (speed > 0.3) {
-    // Directed kick: blend player direction with ball direction
+
+  if (spd > 0.4) {
+    // Directed: blend player facing with ball-away direction
     const [pvx, pvy] = norm(kicker.vx, kicker.vy);
-    const [bx, by]   = norm(toBallX, toBallY);
-    kickDx = pvx * 0.7 + bx * 0.3;
-    kickDy = pvy * 0.7 + by * 0.3;
+    const [bx, by]   = norm(ball.x - kicker.x, ball.y - kicker.y);
+    kickDx = pvx * 0.75 + bx * 0.25;
+    kickDy = pvy * 0.75 + by * 0.25;
     [kickDx, kickDy] = norm(kickDx, kickDy);
   } else {
-    [kickDx, kickDy] = norm(toBallX, toBallY);
+    [kickDx, kickDy] = norm(ball.x - kicker.x, ball.y - kicker.y);
   }
 
   ball.vx = kickDx * power;
@@ -63,22 +56,20 @@ function tryKick(kicker, ball, power, dt) {
   return true;
 }
 
-// Simple push-out for player-player collisions (no velocity transfer needed)
+// Push overlapping players apart
 function separateCircles(a, b) {
   const d = dist(a, b);
   const minD = PLAYER_R * 2;
   if (d < minD && d > 0.01) {
-    const overlap = (minD - d) / 2 + 0.5;
+    const push = (minD - d) / 2 + 0.5;
     const [nx, ny] = norm(b.x - a.x, b.y - a.y);
-    a.x -= nx * overlap;
-    a.y -= ny * overlap;
-    b.x += nx * overlap;
-    b.y += ny * overlap;
+    a.x -= nx * push; a.y -= ny * push;
+    b.x += nx * push; b.y += ny * push;
   }
 }
 
-function moveBall(ball, state) {
-  // Apply friction
+// Returns 'player' (player team scored), 'ai' (ai scored), or null
+function moveBall(ball) {
   ball.vx *= BALL_FRICTION;
   ball.vy *= BALL_FRICTION;
   if (Math.abs(ball.vx) < BALL_MIN_SPEED) ball.vx = 0;
@@ -88,33 +79,20 @@ function moveBall(ball, state) {
   ball.x += ball.vx;
   ball.y += ball.vy;
 
-  const goalTop = 260 - GOAL_W / 2;   // canvas H/2 = 260
-  const goalBot = 260 + GOAL_W / 2;
+  const CY     = FIELD.y + FIELD.h / 2;
+  const goalTop = CY - GOAL_W / 2;
+  const goalBot = CY + GOAL_W / 2;
 
-  // Top / bottom walls
-  if (ball.y - BALL_R < FIELD.y) {
-    ball.y = FIELD.y + BALL_R;
-    ball.vy = Math.abs(ball.vy) * WALL_BOUNCE;
-  }
-  if (ball.y + BALL_R > FIELD.y + FIELD.h) {
-    ball.y = FIELD.y + FIELD.h - BALL_R;
-    ball.vy = -Math.abs(ball.vy) * WALL_BOUNCE;
-  }
+  if (ball.y - BALL_R < FIELD.y)            { ball.y = FIELD.y + BALL_R;            ball.vy =  Math.abs(ball.vy) * WALL_BOUNCE; }
+  if (ball.y + BALL_R > FIELD.y + FIELD.h)  { ball.y = FIELD.y + FIELD.h - BALL_R;  ball.vy = -Math.abs(ball.vy) * WALL_BOUNCE; }
 
-  // Left wall / goal
   if (ball.x - BALL_R < FIELD.x) {
-    if (ball.y > goalTop && ball.y < goalBot) {
-      return 'ai';   // AI scored
-    }
+    if (ball.y > goalTop && ball.y < goalBot) return 'ai';
     ball.x = FIELD.x + BALL_R;
     ball.vx = Math.abs(ball.vx) * WALL_BOUNCE;
   }
-
-  // Right wall / goal
   if (ball.x + BALL_R > FIELD.x + FIELD.w) {
-    if (ball.y > goalTop && ball.y < goalBot) {
-      return 'player';  // Player scored
-    }
+    if (ball.y > goalTop && ball.y < goalBot) return 'player';
     ball.x = FIELD.x + FIELD.w - BALL_R;
     ball.vx = -Math.abs(ball.vx) * WALL_BOUNCE;
   }
@@ -123,7 +101,5 @@ function moveBall(ball, state) {
 }
 
 function updateCooldowns(entities, dt) {
-  for (const e of entities) {
-    if (e.kickCooldown > 0) e.kickCooldown -= dt;
-  }
+  for (const e of entities) if (e.kickCooldown > 0) e.kickCooldown -= dt;
 }
