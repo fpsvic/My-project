@@ -2,12 +2,63 @@ class JungleStorage {
     static getProjects() {
         const data = localStorage.getItem('jungle_sandbox_projects');
         if (data) {
-            try { return this.normalizeProjects(JSON.parse(data)); } catch(e) { return this.getDefaultProjects(); }
+            try { return this.normalizeProjects(JSON.parse(data)); } catch(e) {
+                // localStorage parse failed — try IDB synchronously is not possible,
+                // so return default and kick off an async IDB recovery
+                this.loadFromIDB().then(projects => {
+                    if (projects) localStorage.setItem('jungle_sandbox_projects', JSON.stringify(projects));
+                }).catch(() => {});
+                return this.getDefaultProjects();
+            }
         }
         return this.getDefaultProjects();
     }
-    static saveProjects(list) { localStorage.setItem('jungle_sandbox_projects', JSON.stringify(list)); }
+    static saveProjects(list) {
+        localStorage.setItem('jungle_sandbox_projects', JSON.stringify(list));
+        this.saveToIDB(list);
+        this.updateStorageBadge();
+    }
     static getDefaultProjects() { return []; }
+
+    // --- Storage size ---
+    static getStorageSize() {
+        const data = localStorage.getItem('jungle_sandbox_projects') || '';
+        const bytes = new TextEncoder().encode(data).length;
+        let formatted;
+        if (bytes >= 1073741824) formatted = (bytes / 1073741824).toFixed(2) + ' GB';
+        else if (bytes >= 1048576) formatted = (bytes / 1048576).toFixed(2) + ' MB';
+        else if (bytes >= 1024) formatted = (bytes / 1024).toFixed(2) + ' KB';
+        else formatted = bytes + ' Bytes';
+        return { formatted, bytes };
+    }
+    static updateStorageBadge() {
+        const badge = document.getElementById('storage-size-badge');
+        if (badge) badge.textContent = this.getStorageSize().formatted;
+    }
+
+    // --- IndexedDB backup ---
+    static _openIDB() {
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open('JungleEditorDB', 1);
+            req.onupgradeneeded = e => e.target.result.createObjectStore('projects');
+            req.onsuccess = e => resolve(e.target.result);
+            req.onerror = e => reject(e.target.error);
+        });
+    }
+    static saveToIDB(projects) {
+        this._openIDB().then(db => {
+            const tx = db.transaction('projects', 'readwrite');
+            tx.objectStore('projects').put(projects, 'all');
+        }).catch(() => {});
+    }
+    static loadFromIDB() {
+        return this._openIDB().then(db => new Promise((resolve, reject) => {
+            const tx = db.transaction('projects', 'readonly');
+            const req = tx.objectStore('projects').get('all');
+            req.onsuccess = e => resolve(e.target.result || null);
+            req.onerror = e => reject(e.target.error);
+        }));
+    }
     static normalizeProjects(list) {
         if (!Array.isArray(list)) return [];
         return list.map((project, index) => {
