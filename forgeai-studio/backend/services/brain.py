@@ -18,12 +18,7 @@ from data.knowledge_base import (
     ADVANCED_SCIENCE_KEYWORDS,
     POLITICAL_KEYWORDS,
 )
-from data.database import (
-    load_knowledge as _load_knowledge,
-    load_lang_history as _load_lang_history,
-    load_lang_hello_world as _load_lang_hello_world,
-    load_code_examples as _load_code_examples,
-)
+from data.database import load_knowledge as _load_knowledge
 from services.math_engine import generate_math_response
 from services.space_engine import generate_space_response
 from services.earth_engine import generate_earth_response
@@ -39,15 +34,13 @@ from services.code_generater import (
     build_dynamic_app,
     web_lookup,
     _last_searched,
+    dispatch_programming,
+    score_programming,
 )
 from services.update_handler import is_update_request, apply_update
 
 # Load DB-backed dicts (cached in memory after first access)
 GENERAL_KNOWLEDGE = _load_knowledge()
-CODING_HELP       = _load_knowledge(categories=["coding"])
-LANG_HISTORY      = _load_lang_history()
-LANG_HELLO_WORLD  = _load_lang_hello_world()
-LANG_EXAMPLES     = _load_code_examples()
 
 
 # =============================================================================
@@ -2513,104 +2506,6 @@ def _score_history(q: str) -> int:
             score += 10
     return score
 
-# --- INTENT: PROGRAMMING ---
-
-_PROG_LANGS = set(LANG_HISTORY.keys()) | {
-    "python", "javascript", "typescript", "java", "golang", "go",
-    "cpp", "c++", "csharp", "c#", "rust", "swift", "kotlin", "lua",
-    "luau", "ruby", "php", "sql", "html", "css", "haskell", "scala",
-    "elixir", "matlab", "r lang", "dart", "js", "ts",
-}
-
-_PROG_CONCEPTS_MAP: dict[str, str] = {
-    "function": "function", "functions": "function", "method": "function", "def": "function",
-    "class": "class", "classes": "class", "object": "class", "oop": "class",
-    "loop": "loop", "loops": "loop", "for loop": "loop", "while loop": "loop", "iterate": "loop",
-    "error": "error_handling", "exception": "error_handling", "try catch": "error_handling",
-    "error handling": "error_handling",
-    "async": "async", "await": "async", "asynchronous": "async", "concurrency": "async",
-    "list": "list_ops", "array": "list_ops", "slice": "list_ops", "vector": "list_ops",
-    "closure": "closures", "closures": "closures", "lambda": "closures",
-    "arrow function": "closures",
-    "file": "file_io", "read file": "file_io", "write file": "file_io", "io": "file_io",
-}
-
-_PROG_CONCEPTS = {
-    "variable", "function", "loop", "recursion", "algorithm",
-    "data structure", "array", "linked list", "binary tree", "hash map",
-    "sorting", "binary search", "big o", "complexity", "api",
-    "rest api", "graphql", "async", "await", "thread", "concurrency",
-    "object oriented", "oop", "class", "inheritance", "polymorphism",
-    "git", "github", "docker", "kubernetes", "database", "sql",
-    "hello world", "syntax", "compiler", "interpreter", "runtime",
-    "framework", "library", "package", "module", "import",
-    "debugging", "stack trace", "error handling", "exception",
-    "regex", "regular expression", "json", "xml", "yaml",
-}
-_PROG_QUESTION_WORDS = {
-    "how do i", "how to", "what is a", "what is an", "what are",
-    "explain", "what does", "how does", "when to use", "difference between",
-    "history of", "who created", "who made", "when was",
-}
-
-
-def _detect_lang_and_concept(q: str) -> tuple[str, str]:
-    _LANG_ALIASES: dict[str, str] = {
-        "c++": "cpp", "c#": "csharp", "go ": "golang",
-        "golang": "golang", "js": "javascript", "ts": "typescript",
-    }
-    detected_lang = ""
-    for alias, canonical in _LANG_ALIASES.items():
-        if alias.rstrip() in q:
-            detected_lang = canonical
-            break
-    if not detected_lang:
-        for lang in _PROG_LANGS:
-            if lang in q:
-                detected_lang = _LANG_ALIASES.get(lang, lang)
-                break
-    detected_concept = ""
-    for keyword in sorted(_PROG_CONCEPTS_MAP, key=len, reverse=True):
-        if keyword in q:
-            detected_concept = _PROG_CONCEPTS_MAP[keyword]
-            break
-    if detected_lang and detected_concept:
-        return detected_lang, detected_concept
-    return "", ""
-
-
-def _score_programming(q: str) -> int:
-    score = 0
-    lang_match = _match(q, *_PROG_LANGS)
-    concept_match = _match(q, *_PROG_CONCEPTS)
-    concept_map_match = _match(q, *_PROG_CONCEPTS_MAP)
-    question_match = any(q.startswith(w) or w in q for w in _PROG_QUESTION_WORDS)
-    if lang_match and _match(q, "history", "origin", "created", "hello world", "syntax", "example"):
-        score += 95
-    detected_lang, detected_concept = _detect_lang_and_concept(q)
-    if detected_lang and detected_concept:
-        if "show me" in q:
-            score += 85
-        elif re.search(r"how do you", q) and "in" in q:
-            score += 80
-        elif re.search(r"\bin\b", q):
-            score += 70
-        else:
-            score += 60
-    if lang_match and concept_match:
-        score += 75
-    if concept_match and question_match:
-        score += 70
-    if lang_match:
-        score += 30
-    if concept_match or concept_map_match:
-        score += 25
-    for key in CODING_HELP:
-        if key in q:
-            score += 60
-            break
-    return min(score, 100)
-
 # --- INTENT: ANIMALS ---
 
 _ANIMAL_NAMES = {
@@ -3264,316 +3159,6 @@ def _dispatch_update(query: str, history: list, mode: str) -> str | dict:
     )
     return intro + f"\n\n```html\n{code}\n```"
 
-def _dispatch_programming(query: str, mode: str) -> str:
-    q = query.lower()
-    lang, concept = _detect_lang_and_concept(q)
-    if lang and concept:
-        lang_examples = LANG_EXAMPLES.get(lang, {})
-        if concept in lang_examples:
-            snippet = lang_examples[concept]
-            display_lang = lang.replace("golang", "Go").replace("cpp", "C++").replace("csharp", "C#")
-            display_lang = display_lang.capitalize() if display_lang == lang else display_lang
-            heading = f"### {display_lang} — {concept.replace('_', ' ').title()}"
-            body = f"```{lang}\n{snippet}\n```"
-            if mode == "forge_thinking":
-                return (
-                    f"### Thinking Process\n"
-                    f"- **Intent:** Programming concept — {concept.replace('_', ' ')} in {display_lang}\n"
-                    f"- **Approach:** Retrieve canonical example with inline explanation\n\n"
-                    f"---\n\n{heading}\n\n{body}"
-                )
-            return f"{heading}\n\n{body}"
-    for lang_key, hw in LANG_HELLO_WORLD.items():
-        if lang_key in q and _match(q, "hello world", "syntax", "example", "how to write", "sample", "print"):
-            history = LANG_HISTORY.get(lang_key, "")
-            body = f"```{lang_key}\n{hw}\n```\n\n{history}" if history else f"```{lang_key}\n{hw}\n```"
-            if mode == "forge_thinking" and history:
-                return (
-                    f"### Thinking Process\n"
-                    f"- **Intent:** {lang_key.capitalize()} syntax example + language history\n\n"
-                    f"---\n\n### {lang_key.capitalize()} — Hello World\n\n{body}"
-                )
-            return f"### {lang_key.capitalize()} — Hello World\n\n{body}"
-    for lang_key, history in LANG_HISTORY.items():
-        if lang_key in q and _match(q, "history", "origin", "created", "designed", "who made",
-                                     "when", "invented", "by whom", "who built", "who wrote"):
-            hw = LANG_HELLO_WORLD.get(lang_key, "")
-            block = f"\n\n```{lang_key}\n{hw}\n```" if hw else ""
-            raw = f"### {lang_key.capitalize()} Language Origin\n\n{history}{block}"
-            if mode != "forge_instant":
-                return forge(history, query, "programming", mode=mode)
-            return raw
-    for key, answer in CODING_HELP.items():
-        if key in q:
-            if "```" in answer:
-                return answer
-            return forge(answer, query, "programming", mode=mode)
-    return _synthesize_programming_response(query, q, mode)
-
-# --- SYNTHESIZED PROGRAMMING RESPONSES ---
-
-_CONCEPT_RESPONSES: dict[str, str] = {
-    "game loop": (
-        "### Game Loop Pattern\n\n"
-        "A game loop runs continuously, updating state and rendering every frame.\n\n"
-        "```javascript\nlet lastTime = 0;\n\nfunction gameLoop(timestamp) {\n"
-        "  const dt = (timestamp - lastTime) / 1000; // delta in seconds\n"
-        "  lastTime = timestamp;\n\n"
-        "  update(dt);  // move entities, check physics\n"
-        "  render();    // draw to canvas\n\n"
-        "  requestAnimationFrame(gameLoop);\n}\n\nrequestAnimationFrame(gameLoop);\n```\n\n"
-        "**`requestAnimationFrame`** syncs to the display refresh rate (~60fps) and pauses when the tab is hidden, saving CPU."
-    ),
-    "collision detection": (
-        "### Collision Detection\n\n"
-        "**AABB (Axis-Aligned Bounding Box)** — fastest, works for rectangles:\n\n"
-        "```javascript\nfunction collides(a, b) {\n"
-        "  return a.x < b.x + b.w &&\n"
-        "         a.x + a.w > b.x &&\n"
-        "         a.y < b.y + b.h &&\n"
-        "         a.y + a.h > b.y;\n}\n```\n\n"
-        "**Circle collision** — for round objects:\n\n"
-        "```javascript\nfunction circlesCollide(a, b) {\n"
-        "  const dx = a.x - b.x, dy = a.y - b.y;\n"
-        "  return Math.hypot(dx, dy) < a.r + b.r;\n}\n```"
-    ),
-    "canvas": (
-        "### HTML5 Canvas Basics\n\n"
-        "```javascript\nconst canvas = document.getElementById('c');\n"
-        "const ctx = canvas.getContext('2d');\n\n"
-        "// Clear\nctx.clearRect(0, 0, canvas.width, canvas.height);\n\n"
-        "// Rectangle\nctx.fillStyle = '#6366f1';\nctx.fillRect(x, y, width, height);\n\n"
-        "// Circle\nctx.beginPath();\nctx.arc(cx, cy, radius, 0, Math.PI * 2);\nctx.fill();\n\n"
-        "// Text\nctx.font = '16px monospace';\nctx.fillText('Score: 0', 10, 20);\n```"
-    ),
-    "localStorage": (
-        "### localStorage Persistence\n\n"
-        "Stores key-value strings in the browser — survives page refresh.\n\n"
-        "```javascript\n// Save\nlocalStorage.setItem('score', JSON.stringify(data));\n\n"
-        "// Load\nconst raw = localStorage.getItem('score');\nconst data = raw ? JSON.parse(raw) : defaultValue;\n\n"
-        "// Delete\nlocalStorage.removeItem('score');\n```\n\n"
-        "**Tip:** Always wrap in `try/catch` — storage can throw if the browser is in private mode with a full quota."
-    ),
-    "event listener": (
-        "### Event Listeners in JS\n\n"
-        "```javascript\n// Keyboard\ndocument.addEventListener('keydown', (e) => {\n"
-        "  if (e.key === 'ArrowLeft') moveLeft();\n"
-        "  if (e.key === ' ') jump();\n  e.preventDefault();\n});\n\n"
-        "// Mouse\ncanvas.addEventListener('click', (e) => {\n"
-        "  const rect = canvas.getBoundingClientRect();\n"
-        "  const x = e.clientX - rect.left;\n  const y = e.clientY - rect.top;\n"
-        "  handleClick(x, y);\n});\n\n"
-        "// Remove when done\nconst handler = (e) => { ... };\nwindow.addEventListener('resize', handler);\n// later:\nwindow.removeEventListener('resize', handler);\n```"
-    ),
-    "promise": (
-        "### Promises & Async/Await\n\n"
-        "```javascript\n// Promise\nfetch('/api/data')\n  .then(res => res.json())\n"
-        "  .then(data => console.log(data))\n  .catch(err => console.error(err));\n\n"
-        "// Async/await — same thing, cleaner syntax\nasync function getData() {\n"
-        "  try {\n    const res = await fetch('/api/data');\n"
-        "    const data = await res.json();\n    return data;\n"
-        "  } catch (err) {\n    console.error(err);\n  }\n}\n```\n\n"
-        "**Rule:** `await` only works inside `async` functions. At the top level of a module, it works directly."
-    ),
-    "closure": (
-        "### Closures in JavaScript\n\n"
-        "A closure is a function that remembers variables from its outer scope even after that scope exits.\n\n"
-        "```javascript\nfunction makeCounter(start = 0) {\n  let count = start; // captured by closure\n"
-        "  return {\n    increment: () => ++count,\n    decrement: () => --count,\n"
-        "    value: () => count,\n  };\n}\n\nconst counter = makeCounter(10);\ncounter.increment(); // 11\ncounter.value();     // 11\n```\n\n"
-        "This is how React hooks, module patterns, and factory functions work internally."
-    ),
-    "recursion": (
-        "### Recursion\n\n"
-        "A function calling itself until a base case is reached.\n\n"
-        "```javascript\n// Factorial\nfunction factorial(n) {\n"
-        "  if (n <= 1) return 1;       // base case\n"
-        "  return n * factorial(n - 1); // recursive step\n}\n\n"
-        "// Fibonacci (with memoization)\nconst memo = {};\nfunction fib(n) {\n"
-        "  if (n <= 1) return n;\n  if (memo[n]) return memo[n];\n"
-        "  return memo[n] = fib(n - 1) + fib(n - 2);\n}\n```\n\n"
-        "**Stack depth**: browsers typically allow ~10,000 recursive calls before a stack overflow. Use iteration for deep recursion."
-    ),
-    "sort": (
-        "### Sorting in JavaScript\n\n"
-        "```javascript\n// Numbers (default sort is lexicographic — always pass comparator!)\n"
-        "const nums = [10, 2, 8, 1];\nnums.sort((a, b) => a - b);  // ascending: [1, 2, 8, 10]\nnums.sort((a, b) => b - a);  // descending\n\n"
-        "// Objects by field\nconst users = [{name: 'Bob', age: 30}, {name: 'Ana', age: 25}];\nusers.sort((a, b) => a.age - b.age);\n"
-        "users.sort((a, b) => a.name.localeCompare(b.name));\n\n"
-        "// Stable sort (guaranteed since ES2019)\n```"
-    ),
-    "debounce": (
-        "### Debounce & Throttle\n\n"
-        "**Debounce** — wait until the user stops typing:\n\n"
-        "```javascript\nfunction debounce(fn, delay) {\n  let timer;\n"
-        "  return (...args) => {\n    clearTimeout(timer);\n"
-        "    timer = setTimeout(() => fn(...args), delay);\n  };\n}\n\n"
-        "const onSearch = debounce((q) => fetchResults(q), 300);\ninput.addEventListener('input', (e) => onSearch(e.target.value));\n```\n\n"
-        "**Throttle** — limit to once per interval:\n\n"
-        "```javascript\nfunction throttle(fn, limit) {\n  let last = 0;\n"
-        "  return (...args) => {\n    const now = Date.now();\n"
-        "    if (now - last >= limit) { last = now; fn(...args); }\n  };\n}\n```"
-    ),
-    "regex": (
-        "### Regular Expressions\n\n"
-        "```javascript\n// Test a pattern\n/^\\d{3}-\\d{4}$/.test('555-1234'); // true\n\n"
-        "// Extract matches\nconst email = 'Send to bob@example.com please';\nconst m = email.match(/[\\w.+-]+@[\\w-]+\\.[a-z]{2,}/i);\nconsole.log(m?.[0]); // 'bob@example.com'\n\n"
-        "// Replace all\nconst slug = 'Hello World!'.toLowerCase().replace(/[^a-z0-9]+/g, '-'); // 'hello-world-'\n\n"
-        "// Named groups\nconst { year, month } = '2024-07'.match(/(?<year>\\d{4})-(?<month>\\d{2})/).groups;\n```"
-    ),
-    "api": (
-        "### REST API Calls\n\n"
-        "```javascript\n// GET\nconst data = await fetch('https://api.example.com/items').then(r => r.json());\n\n"
-        "// POST with JSON body\nconst res = await fetch('/api/items', {\n  method: 'POST',\n"
-        "  headers: { 'Content-Type': 'application/json' },\n"
-        "  body: JSON.stringify({ name: 'Widget', price: 9.99 }),\n});\nconst created = await res.json();\n\n"
-        "// Error handling\nif (!res.ok) throw new Error(`HTTP ${res.status}`);\n```"
-    ),
-    "class": (
-        "### Classes in JavaScript\n\n"
-        "```javascript\nclass Entity {\n  #health; // private field\n\n"
-        "  constructor(x, y, health = 100) {\n    this.x = x;\n    this.y = y;\n    this.#health = health;\n  }\n\n"
-        "  move(dx, dy) {\n    this.x += dx;\n    this.y += dy;\n  }\n\n"
-        "  takeDamage(amount) {\n    this.#health = Math.max(0, this.#health - amount);\n  }\n\n"
-        "  get isAlive() { return this.#health > 0; }\n}\n\n"
-        "class Player extends Entity {\n  shoot() { return new Bullet(this.x, this.y); }\n}\n```"
-    ),
-    "array": (
-        "### Array Methods — The Essential Ones\n\n"
-        "```javascript\nconst nums = [1, 2, 3, 4, 5];\n\n"
-        "nums.map(n => n * 2)       // [2, 4, 6, 8, 10] — transform each\n"
-        "nums.filter(n => n > 2)    // [3, 4, 5] — keep matching\n"
-        "nums.reduce((s, n) => s+n) // 15 — collapse to one value\n"
-        "nums.find(n => n > 3)      // 4 — first match\n"
-        "nums.some(n => n > 4)      // true — any match?\n"
-        "nums.every(n => n > 0)     // true — all match?\n"
-        "nums.flat(Infinity)        // flatten nested arrays\n"
-        "nums.flatMap(n => [n, n*2])// map + flatten one level\n\n"
-        "// Chaining\nconst result = items\n  .filter(i => i.active)\n"
-        "  .map(i => i.name)\n  .sort();\n```"
-    ),
-    "state management": (
-        "### State Management Pattern\n\n"
-        "Simple reactive state without a framework:\n\n"
-        "```javascript\nconst state = {\n  items: [],\n  filter: 'all',\n  _listeners: new Set(),\n\n"
-        "  on(fn) { this._listeners.add(fn); },\n"
-        "  emit() { this._listeners.forEach(fn => fn(this)); },\n\n"
-        "  addItem(item) {\n    this.items.push(item);\n    this.emit();\n  },\n"
-        "  setFilter(f) {\n    this.filter = f;\n    this.emit();\n  },\n};\n\n"
-        "// Subscribe to changes\nstate.on((s) => renderList(s.items.filter(filterFn(s.filter))));\n```"
-    ),
-    "dark mode": (
-        "### Dark Mode Toggle\n\n"
-        "```javascript\n// Toggle and persist\nfunction toggleDarkMode() {\n"
-        "  const isDark = document.documentElement.classList.toggle('dark');\n"
-        "  localStorage.setItem('theme', isDark ? 'dark' : 'light');\n}\n\n"
-        "// Restore on load\nconst saved = localStorage.getItem('theme') ??\n"
-        "  (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');\n"
-        "if (saved === 'dark') document.documentElement.classList.add('dark');\n```\n\n"
-        "```css\n:root { --bg: #fff; --text: #0f172a; }\n.dark { --bg: #0f172a; --text: #f1f5f9; }\nbody { background: var(--bg); color: var(--text); }\n```"
-    ),
-    "binary search": (
-        "### Binary Search\n\n"
-        "Requires a **sorted array**. Halves the search space each step — O(log n):\n\n"
-        "```javascript\nfunction binarySearch(arr, target) {\n"
-        "  let lo = 0, hi = arr.length - 1;\n"
-        "  while (lo <= hi) {\n"
-        "    const mid = (lo + hi) >> 1;\n"
-        "    if (arr[mid] === target) return mid;\n"
-        "    if (arr[mid] < target) lo = mid + 1;\n"
-        "    else hi = mid - 1;\n"
-        "  }\n  return -1;\n}\n```"
-    ),
-    "linked list": (
-        "### Linked List\n\n"
-        "```javascript\nclass Node {\n  constructor(val) { this.val = val; this.next = null; }\n}\n"
-        "class LinkedList {\n  constructor() { this.head = null; }\n"
-        "  append(val) {\n"
-        "    const node = new Node(val);\n"
-        "    if (!this.head) { this.head = node; return; }\n"
-        "    let cur = this.head;\n"
-        "    while (cur.next) cur = cur.next;\n"
-        "    cur.next = node;\n  }\n}\n```"
-    ),
-    "stack": (
-        "### Stack (LIFO)\n\n"
-        "```javascript\nclass Stack {\n"
-        "  constructor() { this.items = []; }\n"
-        "  push(val) { this.items.push(val); }\n"
-        "  pop() { return this.items.pop(); }\n"
-        "  peek() { return this.items[this.items.length - 1]; }\n"
-        "  isEmpty() { return this.items.length === 0; }\n}\n```"
-    ),
-    "hash map": (
-        "### Hash Map / Dictionary\n\n"
-        "```javascript\nconst map = new Map();\n"
-        "map.set('user:1', { name: 'Alice', score: 42 });\n"
-        "console.log(map.get('user:1'));  // { name: 'Alice', score: 42 }\n"
-        "for (const [key, val] of map) console.log(key, val);\n```"
-    ),
-    "error handling": (
-        "### Error Handling\n\n"
-        "```javascript\nclass ValidationError extends Error {\n"
-        "  constructor(msg) { super(msg); this.name = 'ValidationError'; }\n}\n"
-        "function parseAge(input) {\n"
-        "  const age = Number(input);\n"
-        "  if (isNaN(age) || age < 0) throw new ValidationError(`Invalid age: ${input}`);\n"
-        "  return age;\n}\n"
-        "try { console.log(parseAge('25')); }\n"
-        "catch (e) { console.error(e.message); }\n```"
-    ),
-    "module": (
-        "### ES Modules\n\n"
-        "```javascript\n// math.js\nexport const add = (a, b) => a + b;\n"
-        "export default class Calculator {}\n\n"
-        "// app.js\nimport Calculator, { add } from './math.js';\n"
-        "console.log(add(2, 3)); // 5\n```\n\n"
-        "Use `type=\"module\"` on your `<script>` tag for browser ES modules."
-    ),
-}
-
-_CONCEPT_KEYWORDS: list[tuple[list[str], str]] = [
-    (["game loop", "game loop", "requestanimationframe", "animation frame", "update render", "game tick"], "game loop"),
-    (["collision", "collide", "hit detection", "overlap", "aabb", "bounding box"], "collision detection"),
-    (["canvas", "ctx", "context", "drawimage", "fillrect", "arc", "html5 canvas"], "canvas"),
-    (["localstorage", "local storage", "persist", "save data", "browser storage"], "localStorage"),
-    (["event listener", "addeventlistener", "keydown", "keyup", "mousemove", "onclick"], "event listener"),
-    (["promise", "async", "await", "then", "fetch", "asynchronous"], "promise"),
-    (["closure", "closures", "lexical scope", "captured variable"], "closure"),
-    (["recursion", "recursive", "base case", "call itself"], "recursion"),
-    (["sort", "sorting", "order", "compare", "localecompare"], "sort"),
-    (["debounce", "throttle", "rate limit", "delay input"], "debounce"),
-    (["regex", "regular expression", "regexp", "pattern match"], "regex"),
-    (["api", "fetch", "rest", "endpoint", "http request", "post request", "get request"], "api"),
-    (["class", "oop", "object oriented", "inheritance", "extends", "constructor"], "class"),
-    (["array", "map filter reduce", "flatmap", "array method", "iterate array"], "array"),
-    (["state", "state management", "reactive", "subscribe", "observer"], "state management"),
-    (["dark mode", "night mode", "theme toggle", "color scheme", "prefers-color-scheme"], "dark mode"),
-    (["binary search", "bisect", "log n search", "sorted search"], "binary search"),
-    (["linked list", "linkedlist", "singly linked", "doubly linked"], "linked list"),
-    (["stack", "lifo", "push pop", "call stack"], "stack"),
-    (["hash map", "hashmap", "dictionary", "hash table", "key value store"], "hash map"),
-    (["error handling", "try catch", "exception", "throw error", "error handling"], "error handling"),
-    (["module", "import export", "es module", "esm", "require import"], "module"),
-]
-
-
-def _synthesize_programming_response(query: str, q: str, mode: str = "forge_code") -> str:
-    """Give a real answer for programming questions that don't match the KB."""
-    for keywords, concept_key in _CONCEPT_KEYWORDS:
-        if any(kw in q for kw in keywords):
-            response = _CONCEPT_RESPONSES[concept_key]
-            if mode == "forge_thinking":
-                return (
-                    f"### Thinking Process\n"
-                    f"- **Intent:** Programming concept — {concept_key}\n"
-                    f"- **Approach:** Canonical pattern with working code example\n\n"
-                    f"---\n\n{response}"
-                )
-            return response
-
-    return _web_lookup_summarized(query, mode)
-
 # --- QUICK MODE ---
 
 def _quick_response(query: str, q: str) -> str:
@@ -3654,7 +3239,7 @@ def _token_overlap(a: str, b: str) -> float:
 def _infer_topic_intent(q: str) -> str | None:
     """Best-guess intent for a topic anchor query."""
     scores = {
-        "programming": _score_programming(q),
+        "programming": score_programming(q),
         "math": _score_math(q),
         "space": _score_space(q),
         "earth": _score_earth(q),
@@ -4324,7 +3909,7 @@ def _plan_information_source(
         "science": _score_science(q),
         "history": _score_history(q),
         "animals": _score_animals(q),
-        "programming": _score_programming(q),
+        "programming": score_programming(q),
     }
     top_engine = max(engine_scores, key=engine_scores.get)
     top_score = engine_scores[top_engine]
@@ -4937,7 +4522,7 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
         "earth":       _score_earth(q),
         "science":     _score_science(q),
         "history":     _score_history(q),
-        "programming": _score_programming(q),
+        "programming": score_programming(q),
         "animals":     _score_animals(q),
         "knowledge":   _score_knowledge(q),
     }
@@ -4993,7 +4578,7 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
         full = generate_history_response(query, mode)
         return _finish(_forge_or_exact(full, query, q, "history", depth=thread_depth, mode=mode, memory=memory))
     if best_intent == "programming":
-        return _finish(_dispatch_programming(query, mode))
+        return _finish(dispatch_programming(query, mode))
     if best_intent == "animals":
         raw = _dispatch_animals(query, q)
         return _finish(_forge_or_exact(raw, query, q, "animals", depth=thread_depth, mode=mode, memory=memory))

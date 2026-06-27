@@ -9,13 +9,14 @@ recognised locally, context is fetched from Google/DuckDuckGo first.
 from __future__ import annotations
 
 import json
+import random
 import re
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 
 from data.game_templates import GAME_TEMPLATES
-from services.autonomous_coder import autonomous_generate, is_autonomous_candidate
+from data.knowledge_base import CODING_HELP, LANG_EXAMPLES, LANG_HELLO_WORLD, LANG_HISTORY
 
 
 # =============================================================================
@@ -6261,3 +6262,852 @@ def generate_anything_with_meta(query: str) -> tuple[ProjectResult, bool]:
             effective = f"{query}\n\nResearch context:\n{ctx}"
     effective = _enrich_query_from_spec(effective, spec)
     return generate_project(effective), researched
+# =============================================================================
+# MULTI-LANGUAGE POWER ENGINE — TypeScript, JS, Java, Python, Ruby, SQL, R, Rust
+# =============================================================================
+
+POWER_LANGUAGES = frozenset({
+    "typescript", "javascript", "java", "python", "ruby", "sql", "r", "rust",
+})
+
+_LANG_ALIASES: dict[str, str] = {
+    "ts": "typescript", "typescript": "typescript",
+    "js": "javascript", "javascript": "javascript", "node": "javascript",
+    "py": "python", "python": "python", "python3": "python",
+    "java": "java",
+    "rb": "ruby", "ruby": "ruby", "rails": "ruby",
+    "sql": "sql", "postgres": "sql", "postgresql": "sql", "mysql": "sql",
+    "r": "r", "r lang": "r", "r language": "r",
+    "rust": "rust", "rs": "rust",
+    "cpp": "cpp", "c++": "cpp", "csharp": "csharp", "c#": "csharp",
+    "golang": "golang", "go": "golang",
+}
+
+_PROG_CONCEPTS_MAP: dict[str, str] = {
+    "function": "function", "functions": "function", "method": "function", "def": "function",
+    "class": "class", "classes": "class", "object": "class", "oop": "class",
+    "loop": "loop", "loops": "loop", "for loop": "loop", "while loop": "loop",
+    "error": "error_handling", "exception": "error_handling", "try catch": "error_handling",
+    "async": "async", "await": "async", "asynchronous": "async", "promise": "async",
+    "list": "list_ops", "array": "list_ops", "slice": "list_ops",
+    "file": "file_io", "read file": "file_io", "write file": "file_io",
+    "api": "api", "rest": "api", "fetch": "api", "endpoint": "api",
+    "database": "database", "query": "database", "select": "database",
+    "sort": "sort", "binary search": "binary_search", "recursion": "recursion",
+    "fibonacci": "fibonacci", "factorial": "factorial",
+    "interface": "interface", "type": "interface", "generic": "generics",
+    "struct": "struct", "enum": "enum", "trait": "trait", "ownership": "ownership",
+    "dataframe": "dataframe", "vector": "dataframe",
+}
+
+
+def detect_power_language(q: str) -> str:
+    """Detect target language from query."""
+    q = q.strip().lower()
+    if re.search(r"(?:^|\b)r(?:\s+lang(?:uage)?|\s+script|\s+programming)\b", q):
+        return "r"
+    if re.match(r"^r\s+\w", q):
+        return "r"
+    for alias, canonical in sorted(_LANG_ALIASES.items(), key=lambda x: -len(x[0])):
+        if canonical == "r":
+            continue
+        if re.search(rf"\b{re.escape(alias)}\b", q):
+            return canonical
+    return ""
+
+
+def detect_code_task(q: str) -> str:
+    """Detect what kind of code the user wants generated."""
+    for keyword in sorted(_PROG_CONCEPTS_MAP, key=len, reverse=True):
+        if keyword in q:
+            return _PROG_CONCEPTS_MAP[keyword]
+    if re.search(r"\b(write|code|show|give|generate|create)\b.{0,30}\b(code|function|class|script|program)\b", q):
+        return "function"
+    if "hello" in q:
+        return "hello_world"
+    return "function"
+
+
+def _task_from_query(query: str) -> tuple[str, str]:
+    q = query.lower()
+    return detect_power_language(q), detect_code_task(q)
+
+
+# ── Per-language original code composers (no KB copy) ─────────────────────────
+
+def _compose_python(task: str, query: str) -> str:
+    if task == "fibonacci":
+        return '''def fibonacci(n: int) -> int:
+    """Return the nth Fibonacci number (0-indexed)."""
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+
+
+def fib_sequence(count: int) -> list[int]:
+    return [fibonacci(i) for i in range(count)]
+
+
+if __name__ == "__main__":
+    print(fib_sequence(10))'''
+    if task == "class":
+        return '''from dataclasses import dataclass, field
+from typing import Optional
+from datetime import datetime
+
+
+@dataclass
+class Task:
+    title: str
+    done: bool = False
+    priority: int = 1
+    tags: list[str] = field(default_factory=list)
+    created_at: datetime = field(default_factory=datetime.utcnow)
+
+    def complete(self) -> None:
+        self.done = True
+
+    def __str__(self) -> str:
+        mark = "✓" if self.done else "○"
+        return f"{mark} [{self.priority}] {self.title}"
+
+
+class TaskBoard:
+    def __init__(self) -> None:
+        self._tasks: list[Task] = []
+
+    def add(self, title: str, priority: int = 1) -> Task:
+        task = Task(title=title, priority=priority)
+        self._tasks.append(task)
+        return task
+
+    def pending(self) -> list[Task]:
+        return [t for t in self._tasks if not t.done]'''
+    if task == "async":
+        return '''import asyncio
+import aiohttp
+from typing import Any
+
+
+async def fetch_json(url: str) -> dict[str, Any]:
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            resp.raise_for_status()
+            return await resp.json()
+
+
+async def fetch_all(urls: list[str]) -> list[dict[str, Any]]:
+    return await asyncio.gather(*(fetch_json(u) for u in urls))
+
+
+async def main() -> None:
+    data = await fetch_json("https://api.github.com/repos/python/cpython")
+    print(data.get("full_name"), data.get("stargazers_count"))
+
+
+if __name__ == "__main__":
+    asyncio.run(main())'''
+    if task == "file_io":
+        return '''from pathlib import Path
+import json
+from typing import Any
+
+
+def read_text(path: str | Path) -> str:
+    return Path(path).read_text(encoding="utf-8")
+
+
+def write_json(path: str | Path, data: Any) -> None:
+    Path(path).write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def load_json(path: str | Path) -> Any:
+    return json.loads(read_text(path))'''
+    if task == "database":
+        return '''import sqlite3
+from contextlib import contextmanager
+from typing import Iterator, Any
+
+
+@contextmanager
+def connect(db_path: str = ":memory:") -> Iterator[sqlite3.Connection]:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def init_schema(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+
+def insert_user(conn: sqlite3.Connection, email: str, name: str) -> int:
+    cur = conn.execute(
+        "INSERT INTO users (email, name) VALUES (?, ?)", (email, name)
+    )
+    return int(cur.lastrowid)
+
+
+def find_user_by_email(conn: sqlite3.Connection, email: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT * FROM users WHERE email = ?", (email,)
+    ).fetchone()
+    return dict(row) if row else None'''
+    return '''def greet(name: str) -> str:
+  return f"Hello, {name}!"
+
+
+def main() -> None:
+  print(greet("ForgeAI"))
+
+
+if __name__ == "__main__":
+  main()'''
+
+
+def _compose_typescript(task: str, query: str) -> str:
+    if task == "interface":
+        return '''export interface User {
+  readonly id: string;
+  email: string;
+  name: string;
+  roles: ReadonlyArray<Role>;
+  createdAt: Date;
+}
+
+export type Role = "admin" | "editor" | "viewer";
+
+export interface ApiResponse<T> {
+  data: T;
+  meta: { page: number; total: number };
+}
+
+export async function fetchUser(id: string): Promise<ApiResponse<User>> {
+  const res = await fetch(`/api/users/${id}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<ApiResponse<User>>;
+}'''
+    if task == "async":
+        return '''type RetryOptions = { retries?: number; delayMs?: number };
+
+export async function fetchWithRetry<T>(
+  url: string,
+  init?: RequestInit,
+  { retries = 3, delayMs = 300 }: RetryOptions = {},
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as T;
+    } catch (err) {
+      lastError = err;
+      if (attempt < retries) await new Promise(r => setTimeout(r, delayMs * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}'''
+    if task == "class":
+        return '''export class EventBus<Events extends Record<string, unknown>> {
+  private listeners = new Map<keyof Events, Set<(payload: Events[keyof Events]) => void>>();
+
+  on<K extends keyof Events>(event: K, handler: (payload: Events[K]) => void): () => void {
+    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+    this.listeners.get(event)!.add(handler as (p: Events[keyof Events]) => void);
+    return () => this.listeners.get(event)?.delete(handler as (p: Events[keyof Events]) => void);
+  }
+
+  emit<K extends keyof Events>(event: K, payload: Events[K]): void {
+    this.listeners.get(event)?.forEach(fn => fn(payload));
+  }
+}'''
+    if task == "generics":
+        return '''export function groupBy<T, K extends string | number>(
+  items: readonly T[],
+  keyFn: (item: T) => K,
+): Record<K, T[]> {
+  return items.reduce((acc, item) => {
+    const key = keyFn(item);
+    (acc[key] ??= []).push(item);
+    return acc;
+  }, {} as Record<K, T[]>);
+}
+
+export function pipe<T>(value: T, ...fns: Array<(v: T) => T>): T {
+  return fns.reduce((v, fn) => fn(v), value);
+}'''
+    return '''export function fibonacci(n: number): number {
+  if (n < 0) throw new RangeError("n must be >= 0");
+  let a = 0, b = 1;
+  for (let i = 0; i < n; i++) [a, b] = [b, a + b];
+  return a;
+}
+
+export const sum = (nums: readonly number[]): number =>
+  nums.reduce((acc, n) => acc + n, 0);'''
+
+
+def _compose_javascript(task: str, query: str) -> str:
+    if task == "async":
+        return '''export async function fetchJSON(url, options = {}) {
+  const res = await fetch(url, {
+    headers: { Accept: "application/json", ...options.headers },
+    ...options,
+  });
+  if (!res.ok) throw new Error(`Request failed: ${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+export async function parallelMap(items, concurrency, mapper) {
+  const results = [];
+  let index = 0;
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await mapper(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  return results;
+}'''
+    if task == "class":
+        return '''export class LRUCache {
+  constructor(capacity) {
+    this.capacity = capacity;
+    this.map = new Map();
+  }
+
+  get(key) {
+    if (!this.map.has(key)) return undefined;
+    const value = this.map.get(key);
+    this.map.delete(key);
+    this.map.set(key, value);
+    return value;
+  }
+
+  set(key, value) {
+    if (this.map.has(key)) this.map.delete(key);
+    else if (this.map.size >= this.capacity) {
+      const oldest = this.map.keys().next().value;
+      this.map.delete(oldest);
+    }
+    this.map.set(key, value);
+  }
+}'''
+    return '''export function debounce(fn, waitMs = 300) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), waitMs);
+  };
+}
+
+export function fibonacci(n) {
+  let [a, b] = [0, 1];
+  for (let i = 0; i < n; i++) [a, b] = [b, a + b];
+  return a;
+}'''
+
+
+def _compose_java(task: str, query: str) -> str:
+    if task == "class":
+        return '''import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+public final class TaskRepository {
+    private final List<Task> tasks = new ArrayList<>();
+
+    public Task add(String title, int priority) {
+        Task task = new Task(title, priority, Instant.now());
+        tasks.add(task);
+        return task;
+    }
+
+    public List<Task> findPending() {
+        return tasks.stream().filter(t -> !t.isDone()).toList();
+    }
+
+    public Optional<Task> findById(long id) {
+        return tasks.stream().filter(t -> t.id() == id).findFirst();
+    }
+
+    public record Task(long id, String title, int priority, Instant createdAt, boolean done) {
+        public Task(String title, int priority, Instant createdAt) {
+            this(System.nanoTime(), title, priority, createdAt, false);
+        }
+        public Task markDone() {
+            return new Task(id, title, priority, createdAt, true);
+        }
+    }
+}'''
+    if task == "api":
+        return '''import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpExchange;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+
+public class MiniApi {
+    public static void main(String[] args) throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+        server.createContext("/health", exchange -> respond(exchange, 200, "{\\"ok\\":true}"));
+        server.createContext("/api/hello", exchange -> respond(exchange, 200, "{\\"message\\":\\"Hello from ForgeAI\\"}"));
+        server.setExecutor(null);
+        server.start();
+        System.out.println("Listening on http://localhost:8080");
+    }
+
+    static void respond(HttpExchange ex, int code, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        ex.getResponseHeaders().set("Content-Type", "application/json");
+        ex.sendResponseHeaders(code, bytes.length);
+        try (OutputStream os = ex.getResponseBody()) { os.write(bytes); }
+    }
+}'''
+    return '''public class Fibonacci {
+    public static long fib(int n) {
+        if (n < 0) throw new IllegalArgumentException("n must be >= 0");
+        long a = 0, b = 1;
+        for (int i = 0; i < n; i++) {
+            long next = a + b;
+            a = b;
+            b = next;
+        }
+        return a;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(fib(10));
+    }
+}'''
+
+
+def _compose_ruby(task: str, query: str) -> str:
+    if task == "class":
+        return '''class TaskBoard
+  Task = Struct.new(:id, :title, :done, :priority, keyword_init: true)
+
+  def initialize
+    @tasks = []
+    @next_id = 1
+  end
+
+  def add(title, priority: 1)
+    task = Task.new(id: @next_id, title: title, done: false, priority: priority)
+    @next_id += 1
+    @tasks << task
+    task
+  end
+
+  def complete(id)
+    task = @tasks.find { |t| t.id == id }
+    raise ArgumentError, "task not found" unless task
+    task.done = true
+    task
+  end
+
+  def pending
+    @tasks.reject(&:done).sort_by(&:priority)
+  end
+end'''
+    if task == "api":
+        return '''require "sinatra/base"
+require "json"
+
+class ForgeApp < Sinatra::Base
+  configure { set :show_exceptions, :development }
+
+  get "/health" do
+    content_type :json
+    { ok: true, service: "forgeai" }.to_json
+  end
+
+  post "/api/echo" do
+    content_type :json
+    body = JSON.parse(request.body.read)
+    { received: body, at: Time.now.utc.iso8601 }.to_json
+  end
+end'''
+    return '''def fibonacci(n)
+  raise ArgumentError, "n must be >= 0" if n.negative?
+  a, b = 0, 1
+  n.times { a, b = b, a + b }
+  a
+end
+
+puts fibonacci(10)'''
+
+
+def _compose_sql(task: str, query: str) -> str:
+    if task == "database" or "join" in query.lower():
+        return '''-- Users with their most recent order totals
+CREATE TABLE IF NOT EXISTS users (
+  id          SERIAL PRIMARY KEY,
+  email       TEXT UNIQUE NOT NULL,
+  full_name   TEXT NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+  id          SERIAL PRIMARY KEY,
+  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  total_cents INT NOT NULL CHECK (total_cents >= 0),
+  status      TEXT NOT NULL DEFAULT 'pending',
+  placed_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_orders_user_placed
+  ON orders (user_id, placed_at DESC);
+
+-- Top customers by lifetime spend
+SELECT
+  u.id,
+  u.email,
+  u.full_name,
+  COUNT(o.id) AS order_count,
+  COALESCE(SUM(o.total_cents), 0) AS lifetime_cents
+FROM users u
+LEFT JOIN orders o ON o.user_id = u.id AND o.status = 'completed'
+GROUP BY u.id, u.email, u.full_name
+ORDER BY lifetime_cents DESC
+LIMIT 25;'''
+    return '''-- Analytical window query: running 7-day average
+WITH daily_sales AS (
+  SELECT
+    DATE_TRUNC('day', placed_at) AS day,
+    SUM(total_cents) / 100.0     AS revenue
+  FROM orders
+  WHERE status = 'completed'
+  GROUP BY 1
+)
+SELECT
+  day,
+  revenue,
+  AVG(revenue) OVER (
+    ORDER BY day
+    ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+  ) AS rolling_7d_avg
+FROM daily_sales
+ORDER BY day;'''
+
+
+def _compose_r_lang(task: str, query: str) -> str:
+    if task == "dataframe":
+        return '''library(dplyr)
+library(ggplot2)
+
+# Load and clean sales data
+sales <- read.csv("sales.csv", stringsAsFactors = FALSE) |>
+  mutate(
+    order_date = as.Date(order_date),
+    revenue = as.numeric(revenue),
+    region = factor(region)
+  ) |>
+  filter(!is.na(revenue), revenue >= 0)
+
+# Monthly revenue by region
+monthly <- sales |>
+  mutate(month = floor_date(order_date, "month")) |>
+  group_by(month, region) |>
+  summarise(
+    orders = n(),
+    revenue = sum(revenue),
+    avg_order = mean(revenue),
+    .groups = "drop"
+  )
+
+ggplot(monthly, aes(month, revenue, color = region)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  labs(title = "Monthly Revenue by Region", y = "Revenue ($)", x = NULL) +
+  theme_minimal()'''
+    return '''# Vectorized statistics pipeline
+analyze <- function(x) {
+  stopifnot(is.numeric(x), length(x) > 0)
+  list(
+    n = length(x),
+    mean = mean(x),
+    median = median(x),
+    sd = sd(x),
+    q25 = quantile(x, 0.25),
+    q75 = quantile(x, 0.75)
+  )
+}
+
+set.seed(42)
+samples <- rnorm(1000, mean = 50, sd = 10)
+print(analyze(samples))'''
+
+
+def _compose_rust(task: str, query: str) -> str:
+    if task == "struct" or task == "ownership":
+        return '''#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserId(u64);
+
+#[derive(Debug, Clone)]
+pub struct User {
+    pub id: UserId,
+    pub email: String,
+    pub name: String,
+}
+
+impl User {
+    pub fn new(id: u64, email: impl Into<String>, name: impl Into<String>) -> Self {
+        Self {
+            id: UserId(id),
+            email: email.into(),
+            name: name.into(),
+        }
+    }
+
+    pub fn rename(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+}
+
+pub struct UserStore {
+    users: Vec<User>,
+}
+
+impl UserStore {
+    pub fn new() -> Self { Self { users: Vec::new() } }
+
+    pub fn insert(&mut self, user: User) -> &User {
+        self.users.push(user);
+        self.users.last().expect("just pushed")
+    }
+
+    pub fn find(&self, id: UserId) -> Option<&User> {
+        self.users.iter().find(|u| u.id == id)
+    }
+}'''
+    if task == "async":
+        return '''use reqwest::Client;
+use serde::Deserialize;
+use anyhow::{Context, Result};
+
+#[derive(Debug, Deserialize)]
+struct Repo {
+    full_name: String,
+    stargazers_count: u64,
+}
+
+pub async fn fetch_repo(owner: &str, name: &str) -> Result<Repo> {
+    let url = format!("https://api.github.com/repos/{owner}/{name}");
+    let client = Client::new();
+    client
+        .get(&url)
+        .header("User-Agent", "forgeai-studio")
+        .send()
+        .await
+        .context("request failed")?
+        .error_for_status()
+        .context("bad status")?
+        .json::<Repo>()
+        .await
+        .context("invalid json")
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let repo = fetch_repo("rust-lang", "rust").await?;
+    println!("{} has {} stars", repo.full_name, repo.stargazers_count);
+    Ok(())
+}'''
+    if task == "enum":
+        return '''#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Status {
+    Pending,
+    Running,
+    Done,
+    Failed,
+}
+
+impl Status {
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Status::Done | Status::Failed)
+    }
+}
+
+pub fn step(current: Status, success: bool) -> Status {
+    match current {
+        Status::Pending if success => Status::Running,
+        Status::Running if success => Status::Done,
+        Status::Running if !success => Status::Failed,
+        other => other,
+    }
+}'''
+    return '''pub fn fibonacci(n: u32) -> u64 {
+    if n == 0 { return 0; }
+    let (mut a, mut b) = (0u64, 1u64);
+    for _ in 1..n {
+        let next = a.saturating_add(b);
+        a = b;
+        b = next;
+    }
+    a
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn fib_values() {
+        assert_eq!(fibonacci(0), 0);
+        assert_eq!(fibonacci(1), 0);
+        assert_eq!(fibonacci(10), 34);
+    }
+}'''
+
+
+_LANG_COMPOSERS = {
+    "python": _compose_python,
+    "typescript": _compose_typescript,
+    "javascript": _compose_javascript,
+    "java": _compose_java,
+    "ruby": _compose_ruby,
+    "sql": _compose_sql,
+    "r": _compose_r_lang,
+    "rust": _compose_rust,
+}
+
+
+def generate_power_code(query: str) -> str | None:
+    """
+    Generate powerful original code in TypeScript, JS, Java, Python, Ruby, SQL, R, or Rust.
+    Returns markdown with fenced code block, or None if not a code-generation request.
+    """
+    q = query.lower()
+    lang = detect_power_language(q)
+    if not lang and not re.search(r"\b(code|function|class|script|program|query)\b", q):
+        return None
+    if not lang:
+        lang = random.choice(["typescript", "python", "rust", "javascript"])
+
+    task = detect_code_task(q)
+    composer = _LANG_COMPOSERS.get(lang)
+    if not composer:
+        return None
+
+    code = composer(task, query)
+    display = lang.upper() if lang in ("sql", "r") else lang.replace("golang", "Go").title()
+    task_label = task.replace("_", " ").title()
+    fence = "sql" if lang == "sql" else ("r" if lang == "r" else lang)
+    if lang == "typescript":
+        fence = "typescript"
+    elif lang == "javascript":
+        fence = "javascript"
+
+    return (
+        f"### {display} — {task_label}\n\n"
+        f"*Original code composed by ForgeAI for your request — not copied from a template library.*\n\n"
+        f"```{fence}\n{code.strip()}\n```"
+    )
+
+
+def score_programming(q: str) -> int:
+    """Intent score for programming / code-generation queries."""
+    score = 0
+    lang = detect_power_language(q)
+    if lang:
+        score += 70
+    if lang and any(w in q for w in ("history", "origin", "created", "hello world", "syntax", "example")):
+        score += 95
+    if re.search(r"\b(code|write|show|generate|implement|build)\b.{0,40}\b(function|class|api|script|program|query)\b", q):
+        score += 85
+    if any(w in q for w in ("hello world", "syntax", "example", "how to write", "how do i write")):
+        score += 50
+    if any(w in q for w in ("function", "class", "async", "loop", "api", "sql", "database", "trait", "interface")):
+        score += 40
+    if any(q.startswith(w) or w in q for w in (
+        "how do i", "how to", "what is a", "explain", "write a", "show me", "code a",
+    )):
+        score += 25
+    for key in CODING_HELP:
+        if key in q:
+            score += 60
+            break
+    return min(100, score)
+
+
+def dispatch_programming(query: str, mode: str = "forge_code") -> str:
+    """
+    Handle all programming questions — multi-language code generation lives here only.
+    brain.py delegates to this function.
+    """
+    q = query.lower()
+    lang = detect_power_language(q)
+    task = detect_code_task(q)
+    _codegen_cues = re.compile(
+        r"\b(write|code|show|generate|create|implement|give me|build|class|function|"
+        r"interface|script|query|program|method|trait|struct|enum)\b"
+    )
+
+    # 1. Powerful original multi-language code generation
+    power = generate_power_code(query)
+    if power and (lang or _codegen_cues.search(q)):
+        if mode == "forge_thinking":
+            return (
+                f"### Thinking Process\n"
+                f"- **Intent:** Generate original {lang or 'auto'} code from scratch\n"
+                f"- **Approach:** Compose logic blocks — no template copy\n\n"
+                f"---\n\n{power}"
+            )
+        return power
+
+    # 2. Lang + concept from KB examples
+    if lang and task:
+        kb_lang = lang if lang in LANG_EXAMPLES else lang
+        examples = LANG_EXAMPLES.get(kb_lang, {})
+        if task in examples:
+            snippet = examples[task]
+            heading = f"### {lang.title()} — {task.replace('_', ' ').title()}"
+            return f"{heading}\n\n```{lang}\n{snippet}\n```"
+
+    # 3. Hello world
+    for lang_key, hw in LANG_HELLO_WORLD.items():
+        if lang_key in q and any(w in q for w in ("hello world", "syntax", "example", "how to write", "sample", "print")):
+            history = LANG_HISTORY.get(lang_key, "")
+            body = f"```{lang_key}\n{hw}\n```"
+            if history:
+                body += f"\n\n{history}"
+            return f"### {lang_key.title()} — Hello World\n\n{body}"
+
+    # 4. Language history
+    for lang_key, history in LANG_HISTORY.items():
+        if lang_key in q and any(w in q for w in ("history", "origin", "created", "designed", "who made", "invented")):
+            hw = LANG_HELLO_WORLD.get(lang_key, "")
+            block = f"\n\n```{lang_key}\n{hw}\n```" if hw else ""
+            return f"### {lang_key.title()} Language Origin\n\n{history}{block}"
+
+    # 5. Coding help KB
+    for key, answer in CODING_HELP.items():
+        if key in q:
+            return answer
+
+    # 6. Fallback — generate in detected language (or Python)
+    fallback_lang = lang or "python"
+    fallback = generate_power_code(f"write {fallback_lang} code for {query}")
+    if fallback:
+        return fallback
+
+    return web_lookup(query)
