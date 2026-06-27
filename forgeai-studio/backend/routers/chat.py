@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from services.ai_router import generate_response
+from services.brain import generate_response
 from services.spell_checker import spell_correct_query
 
 router = APIRouter()
