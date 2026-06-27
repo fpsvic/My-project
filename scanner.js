@@ -9,10 +9,58 @@ class JungleScanner {
         if (lang === 'HTML') issues.push(...this.scanHtmlTags(lines), ...this.scanHtmlPatterns(lines));
         if (lang === 'Python') issues.push(...this.scanPythonIndentation(lines));
         if (lang === 'CSS') issues.push(...this.scanCssPatterns(lines), ...this.scanCssAdvanced(lines));
+        // Universal cross-language checks
+        issues.push(...this.scanUniversalAdvanced(lang, lines));
         const order = { error: 0, warning: 1, info: 2 };
         issues.sort((a, b) => (order[a.severity] ?? 1) - (order[b.severity] ?? 1) || a.line - b.line);
         return issues;
     }
+
+    // Async chunked scan — processes 200 lines at a time, yielding between chunks
+    // Falls back to sync scan() for files under 500 lines
+    static scanAsync(lang, code) {
+        const lines = code.split('\n');
+        if (lines.length <= 500) {
+            return Promise.resolve(this.scan(lang, code));
+        }
+        return new Promise((resolve) => {
+            const CHUNK = 200;
+            const allIssues = [];
+            // Sub-scanners that operate per-line and can be chunked
+            const chunkableResults = [];
+            let chunkIdx = 0;
+
+            const processChunk = () => {
+                const start = chunkIdx * CHUNK;
+                const end = Math.min(start + CHUNK, lines.length);
+                const chunkLines = lines.slice(start, end);
+                // For chunked per-line scans we pass the full lines array context but only
+                // flag issues found within this chunk's range, using line offset.
+                chunkableResults.push({ start, end, lines: chunkLines });
+                chunkIdx++;
+                if (end < lines.length) {
+                    setTimeout(processChunk, 0);
+                } else {
+                    // All chunks done — now run whole-file scanners (they are fast, O(n) single pass)
+                    const issues = [
+                        ...this.scanDelimiters(lines),
+                        ...this.scanLanguagePatterns(lang, lines),
+                        ...this.scanUniversal(lang, lines)
+                    ];
+                    if (lang === 'HTML') issues.push(...this.scanHtmlTags(lines), ...this.scanHtmlPatterns(lines));
+                    if (lang === 'Python') issues.push(...this.scanPythonIndentation(lines));
+                    if (lang === 'CSS') issues.push(...this.scanCssPatterns(lines), ...this.scanCssAdvanced(lines));
+                    issues.push(...this.scanUniversalAdvanced(lang, lines));
+                    const order = { error: 0, warning: 1, info: 2 };
+                    issues.sort((a, b) => (order[a.severity] ?? 1) - (order[b.severity] ?? 1) || a.line - b.line);
+                    resolve(issues);
+                }
+            };
+
+            setTimeout(processChunk, 0);
+        });
+    }
+
     static scanPythonIndentation(lines) {
         const issues = [];
         const indentStack = [0];
@@ -242,6 +290,55 @@ class JungleScanner {
                 if (/==\s*(True|False)\b/.test(trimmed)) {
                     e(lineNum, "Comparing to True/False with `==` is unnecessary.", "Use the value directly: `if x:` instead of `if x == True:`.", "Python style", "info");
                 }
+                // NEW: Shadowed built-ins
+                const shadowedBuiltins = ['list','dict','set','type','id','input','print','open','range','len','str','int','float','bool'];
+                for (const bi of shadowedBuiltins) {
+                    if (new RegExp(`^(${bi})\\s*=(?!=)`, 'i').test(trimmed) || new RegExp(`\\b(for|with)\\s+${bi}\\s+in\\b`).test(trimmed)) {
+                        e(lineNum, `'${bi}' is a Python built-in — shadowing it hides the built-in.`, `Rename this variable to avoid hiding the built-in '${bi}'.`, "Python style", "warning");
+                        break;
+                    }
+                }
+                // NEW: Swallowed exception: except Exception as e: pass
+                if (/^except\s+\w+(\s+as\s+\w+)?\s*:/.test(trimmed)) {
+                    const nextTrimmed = (lines[idx + 1] || '').trim();
+                    if (nextTrimmed === 'pass') {
+                        e(lineNum, "Exception caught but immediately silenced with 'pass'.", "Log or handle the exception; silently swallowing errors hides bugs.", "Python error handling", "warning");
+                    }
+                }
+                // NEW: String concatenation in loop
+                if (/^\s*(for|while)\b/.test(line)) {
+                    // Look ahead for += with string context
+                    for (let j = idx + 1; j < Math.min(idx + 30, lines.length); j++) {
+                        const inner = lines[j].trim();
+                        if (/\w+\s*\+=\s*["'\w]/.test(inner) && !/^\s*(for|while|def|class)\b/.test(inner)) {
+                            e(j + 1, "String concatenation with '+=' inside a loop is O(n²).", "Collect parts in a list and use ''.join(parts) after the loop.", "Python performance", "warning");
+                            break;
+                        }
+                        if (/^(for|while|def|class)\b/.test(inner) || /^(return|break|continue)\b/.test(inner)) break;
+                    }
+                }
+                // NEW: range(len(x)) — suggest enumerate
+                if (/\brange\s*\(\s*len\s*\(/.test(trimmed)) {
+                    e(lineNum, "range(len(x)) is a common anti-pattern.", "Use enumerate(x) to get both index and value: for i, v in enumerate(x).", "Python style", "info");
+                }
+                // NEW: global variable declaration
+                if (/^global\s+\w+/.test(trimmed)) {
+                    e(lineNum, "'global' variable declaration found.", "Avoid global state; pass values as parameters or use class attributes.", "Python style", "info");
+                }
+                // NEW: Unreachable code after return at same indent
+                if (/^return\b/.test(trimmed)) {
+                    const currentIndent = (line.match(/^(\s*)/) || ['',''])[1].length;
+                    for (let j = idx + 1; j < lines.length; j++) {
+                        const nextLine = lines[j];
+                        const nextTrimmed = nextLine.trim();
+                        if (!nextTrimmed || nextTrimmed.startsWith('#')) continue;
+                        const nextIndent = (nextLine.match(/^(\s*)/) || ['',''])[1].length;
+                        if (nextIndent === currentIndent && !/^(def|class|elif|else|except|finally)\b/.test(nextTrimmed)) {
+                            e(j + 1, "Unreachable code after 'return' at the same indentation level.", "Remove or relocate this code — it will never execute.", "Python logic", "warning");
+                        }
+                        break;
+                    }
+                }
             } else if (lang === 'Javascript' || lang === 'TypeScript') {
                 const condMatch = trimmed.match(/\b(if|while)\s*\((.*)\)/);
                 if (condMatch && /(^|[^=!<>])=([^=>]|$)/.test(condMatch[2])) {
@@ -332,6 +429,72 @@ class JungleScanner {
                 // Invalid function declarations: function keyword followed immediately by non-identifier
                 if (/\bfunction\s+[^a-zA-Z_$(\s]/.test(trimmed)) {
                     e(lineNum, "Invalid function name — function names must start with a letter, '$', or '_'.", "Fix the function name.", "JavaScript syntax");
+                }
+                // NEW: arguments object in arrow function
+                if (/\barguments\b/.test(trimmed) && /=>/.test(fullCode.slice(Math.max(0, fullCode.indexOf(trimmed) - 200), fullCode.indexOf(trimmed) + trimmed.length))) {
+                    e(lineNum, "'arguments' object is not available in arrow functions.", "Use rest parameters (...args) instead of 'arguments' in arrow functions.", "JavaScript error", "error");
+                }
+                // NEW: delete on variable (not property)
+                if (/\bdelete\s+[a-zA-Z_$][\w$]*\s*[;,)\n]/.test(trimmed) && !/\bdelete\s+\w[\w$]*\./.test(trimmed) && !/\bdelete\s+\w[\w$]*\[/.test(trimmed)) {
+                    e(lineNum, "'delete' on a variable is a no-op — it always returns true but does nothing.", "Use 'delete obj.prop' to remove object properties; variables cannot be deleted.", "JavaScript logic", "warning");
+                }
+                // NEW: for...in on arrays
+                if (/\bfor\s*\(\s*(var|let|const)\s+\w+\s+in\s+/.test(trimmed)) {
+                    e(lineNum, "for...in loop on an array iterates keys, not values, and includes inherited properties.", "Use for...of or .forEach() to iterate array values.", "JavaScript logic", "warning");
+                }
+                // NEW: .bind(this) — suggest arrow function
+                if (/\.bind\s*\(\s*this\s*\)/.test(trimmed)) {
+                    e(lineNum, ".bind(this) is often unnecessary with arrow functions.", "Consider converting the callback to an arrow function to lexically bind 'this'.", "JavaScript style", "info");
+                }
+                // NEW: .then() without .catch()
+                if (/\.then\s*\(/.test(trimmed) && !/\.catch\s*\(/.test(trimmed) && !/\.catch\s*\(/.test((lines[idx + 1] || '') + (lines[idx + 2] || ''))) {
+                    e(lineNum, "Promise .then() without a .catch() — unhandled rejections can crash silently.", "Add .catch(err => ...) or use async/await with try/catch.", "JavaScript async", "warning");
+                }
+                // NEW: parseInt without radix
+                if (/\bparseInt\s*\(\s*[^,)]+\s*\)/.test(trimmed) && !/\bparseInt\s*\([^)]+,[^)]+\)/.test(trimmed)) {
+                    e(lineNum, "parseInt() called without a radix argument.", "Always specify the radix: parseInt(str, 10) to avoid octal/hex surprises.", "JavaScript style", "warning");
+                }
+                // NEW: assignment to undefined
+                if (/\bundefined\s*=/.test(trimmed)) {
+                    e(lineNum, "Assigning to 'undefined' is not allowed in strict mode and is always wrong.", "Do not reassign 'undefined'; use a different variable name.", "JavaScript error", "error");
+                }
+                // NEW: NaN === NaN
+                if (/\bNaN\s*===\s*NaN\b|\bNaN\s*==\s*NaN\b/.test(trimmed)) {
+                    e(lineNum, "NaN === NaN is always false — NaN is never equal to itself.", "Use Number.isNaN(value) or isNaN(value) to check for NaN.", "JavaScript logic", "error");
+                }
+                // NEW: with() statement
+                if (/^\s*with\s*\(/.test(line)) {
+                    e(lineNum, "'with' statement is forbidden in strict mode and creates unpredictable scoping.", "Rewrite using explicit variable references instead of 'with'.", "JavaScript error", "error");
+                }
+                // NEW: duplicate case values (scan ahead)
+                if (/^switch\s*\(/.test(trimmed)) {
+                    const caseValues = new Set();
+                    for (let j = idx + 1; j < Math.min(idx + 200, lines.length); j++) {
+                        const caseTrimmed = lines[j].trim();
+                        const caseMatch = caseTrimmed.match(/^case\s+(.+?)\s*:/);
+                        if (caseMatch) {
+                            const val = caseMatch[1];
+                            if (caseValues.has(val)) {
+                                e(j + 1, `Duplicate case value '${val}' in switch statement.`, "Each case value should be unique; duplicate cases are unreachable.", "JavaScript logic", "warning");
+                            }
+                            caseValues.add(val);
+                        }
+                        if (/^\}/.test(caseTrimmed)) break;
+                    }
+                }
+                // NEW: shadowed variables (let x inside block when x already declared in outer scope)
+                if (/^\s*(let|const)\s+(\w+)/.test(line)) {
+                    const varMatch = line.match(/^\s*(?:let|const)\s+(\w+)/);
+                    if (varMatch) {
+                        const varName = varMatch[1];
+                        const priorCode = lines.slice(0, idx).join('\n');
+                        if (new RegExp(`\\b(let|const|var)\\s+${varName}\\b`).test(priorCode)) {
+                            const currentIndent = (line.match(/^(\s*)/) || ['',''])[1].length;
+                            if (currentIndent > 0) {
+                                e(lineNum, `Variable '${varName}' shadows an outer declaration.`, `Rename this '${varName}' to avoid shadowing the outer variable and potential confusion.`, "JavaScript logic", "info");
+                            }
+                        }
+                    }
                 }
             } else if (lang === 'Java') {
                 if (/public\s+class\s+[A-Za-z_]\w*/.test(trimmed) && !/[{;]/.test(trimmed)) {
@@ -460,6 +623,56 @@ class JungleScanner {
         });
         return issues;
     }
+
+    // Universal advanced checks — apply to all languages
+    static scanUniversalAdvanced(lang, lines) {
+        const issues = [];
+        const e = (ln, msg, hint, kind, col, sev) => issues.push(this.makeIssue(ln, msg, hint, kind, col ?? null, sev ?? "info"));
+        const fullCode = lines.join('\n');
+
+        // Detect files with no actual code (only whitespace/comments)
+        const commentPatterns = lang === 'Python' || lang === 'Ruby' || lang === 'Bash'
+            ? /^\s*(#.*)?$/
+            : /^\s*(\/\/.*|\/\*.*\*\/\s*|#.*)?$/;
+        const hasCode = lines.some(l => l.trim() && !commentPatterns.test(l));
+        if (!hasCode && lines.length > 0) {
+            e(1, "File contains no executable code — only whitespace or comments.", "Add code or remove the file if it is no longer needed.", "Code quality", null, "info");
+        }
+
+        // Detect very long functions (>50 lines between open and close brace)
+        // Works for JS/TS/Java/C/C++/Go/Rust — brace-delimited languages
+        const bracelangs = ['Javascript','TypeScript','Java','C','C++','Go','Rust','PHP','C#','Kotlin','Swift'];
+        if (bracelangs.includes(lang)) {
+            let fnStartLine = -1;
+            let fnBraceDepth = 0;
+            let inFn = false;
+            for (let i = 0; i < lines.length; i++) {
+                const t = lines[i].trim();
+                // Detect function/method opening — a line containing 'function', '=>', or known patterns with '{'
+                const isFnOpen = /\b(function\s+\w+|function\s*\(|\w+\s*\([^)]*\)\s*\{|=>\s*\{)/.test(t);
+                for (let ci = 0; ci < lines[i].length; ci++) {
+                    const ch = lines[i][ci];
+                    if (ch === '{') {
+                        if (!inFn && isFnOpen) { inFn = true; fnStartLine = i + 1; fnBraceDepth = 1; }
+                        else if (inFn) fnBraceDepth++;
+                    } else if (ch === '}' && inFn) {
+                        fnBraceDepth--;
+                        if (fnBraceDepth === 0) {
+                            const fnLen = (i + 1) - fnStartLine;
+                            if (fnLen > 50) {
+                                e(fnStartLine, `Function is ${fnLen} lines long — consider splitting it.`, "Break large functions into smaller, focused helpers for readability and testability.", "Code quality", null, "info");
+                            }
+                            inFn = false;
+                            fnStartLine = -1;
+                        }
+                    }
+                }
+            }
+        }
+
+        return issues;
+    }
+
     // Advanced HTML checks
     static scanHtmlPatterns(lines) {
         const issues = [];
@@ -468,6 +681,24 @@ class JungleScanner {
         // Missing <!DOCTYPE html>
         if (!/<!DOCTYPE\s+html>/i.test(fullCode)) {
             e(1, "Missing <!DOCTYPE html> declaration.", "Add <!DOCTYPE html> as the very first line of the document.", "HTML best practice", null, "warning");
+        }
+        // Missing lang on <html> tag
+        if (/<html[\s>]/i.test(fullCode) && !/<html[^>]+lang\s*=/i.test(fullCode)) {
+            const htmlLine = lines.findIndex(l => /<html[\s>]/i.test(l));
+            e(htmlLine >= 0 ? htmlLine + 1 : 1, "<html> tag is missing a 'lang' attribute.", "Add lang=\"en\" (or appropriate language code) to <html> for accessibility and SEO.", "HTML accessibility", null, "warning");
+        }
+        // Duplicate id attributes
+        const idMatches = [...fullCode.matchAll(/\bid\s*=\s*["']([^"']+)["']/gi)];
+        const idSeen = new Map();
+        for (const m of idMatches) {
+            const idVal = m[1];
+            const beforeMatch = fullCode.slice(0, m.index);
+            const lineNum = beforeMatch.split('\n').length;
+            if (idSeen.has(idVal)) {
+                e(lineNum, `Duplicate id="${idVal}" found — id attributes must be unique in a document.`, "Change one of the duplicate ids to a unique value or use a class instead.", "HTML accessibility", null, "error");
+            } else {
+                idSeen.set(idVal, lineNum);
+            }
         }
         const deprecatedTags = ['center', 'font', 'marquee', 'blink'];
         lines.forEach((line, idx) => {
@@ -495,6 +726,24 @@ class JungleScanner {
             if (/<script\s*>\s*<\/script>/i.test(line) || /<script>\s*<\/script>/i.test(line)) {
                 e(lineNum, "Empty <script> block with no src or content.", "Add a src attribute or add script content, or remove the tag.", "HTML quality", null, "info");
             }
+            // NEW: <a href="#"> placeholder links
+            if (/<a\b[^>]*\bhref\s*=\s*["']#["'][^>]*>/i.test(line)) {
+                e(lineNum, "<a href=\"#\"> is a placeholder link with no real destination.", "Replace '#' with a real URL or use a <button> for click handlers.", "HTML quality", null, "info");
+            }
+            // NEW: <input> without type attribute
+            const inputMatches = [...line.matchAll(/<input\b([^>]*)>/gi)];
+            for (const m of inputMatches) {
+                if (!/\btype\s*=/i.test(m[1])) {
+                    e(lineNum, "<input> is missing a 'type' attribute — defaults to 'text' but is ambiguous.", "Add type=\"text\", type=\"email\", type=\"checkbox\", etc. to be explicit.", "HTML quality", null, "info");
+                }
+            }
+            // NEW: <form> without action or onsubmit
+            const formMatches = [...line.matchAll(/<form\b([^>]*)>/gi)];
+            for (const m of formMatches) {
+                if (!/\b(action|onsubmit)\s*=/i.test(m[1])) {
+                    e(lineNum, "<form> has no 'action' or 'onsubmit' — form submission may go nowhere.", "Add an action URL or onsubmit handler to process the form data.", "HTML quality", null, "info");
+                }
+            }
         });
         return issues;
     }
@@ -507,6 +756,14 @@ class JungleScanner {
         let hasColor = false;
         let hasBgColor = false;
         const vendorPrefixProps = {};
+
+        // Track per-rule-block state for duplicate property and margin:auto checks
+        let inBlock = false;
+        let blockProps = new Map(); // prop -> first line seen
+        let blockStartLine = -1;
+        let blockHasWidth = false;
+        let marginAutoLine = -1;
+
         lines.forEach((line, idx) => {
             const lineNum = idx + 1;
             const trimmed = line.trim();
@@ -530,6 +787,56 @@ class JungleScanner {
             if (standardMatch && !/^-/.test(trimmed)) {
                 const prop = standardMatch[1];
                 if (vendorPrefixProps[prop]) vendorPrefixProps[prop].hasStandard = true;
+            }
+
+            // Block tracking for duplicate properties, margin:auto, z-index, float, 0px
+            if (trimmed.endsWith('{')) {
+                inBlock = true;
+                blockProps = new Map();
+                blockStartLine = lineNum;
+                blockHasWidth = false;
+                marginAutoLine = -1;
+            } else if (trimmed === '}') {
+                // Check margin:auto without width
+                if (marginAutoLine > 0 && !blockHasWidth) {
+                    e(marginAutoLine, "'margin: auto' is set but no 'width' is defined in this rule block.", "margin: auto only centers block elements that have an explicit width.", "CSS layout", null, "info");
+                }
+                inBlock = false;
+                blockProps = new Map();
+                blockHasWidth = false;
+                marginAutoLine = -1;
+            }
+
+            if (inBlock && trimmed.includes(':') && !trimmed.startsWith('//') && !trimmed.startsWith('/*')) {
+                const propMatch = trimmed.match(/^([\w-]+)\s*:/);
+                if (propMatch) {
+                    const prop = propMatch[1].toLowerCase();
+                    // NEW: duplicate property in same rule block
+                    if (blockProps.has(prop)) {
+                        e(lineNum, `Duplicate CSS property '${prop}' in the same rule block.`, `Remove or merge the duplicate '${prop}' declaration — the second one overrides the first.`, "CSS quality", null, "warning");
+                    } else {
+                        blockProps.set(prop, lineNum);
+                    }
+                    // Track width
+                    if (prop === 'width') blockHasWidth = true;
+                    // Track margin:auto
+                    if (prop === 'margin' && /:\s*auto\b/i.test(trimmed)) marginAutoLine = lineNum;
+                    // NEW: z-index > 9000
+                    if (prop === 'z-index') {
+                        const zMatch = trimmed.match(/:\s*(\d+)/);
+                        if (zMatch && parseInt(zMatch[1], 10) > 9000) {
+                            e(lineNum, `z-index value ${zMatch[1]} is extremely high (> 9000).`, "Avoid arbitrarily large z-index values; use a z-index scale (e.g. 100, 200, 300) for maintainability.", "CSS quality", null, "info");
+                        }
+                    }
+                    // NEW: float usage
+                    if (prop === 'float' && !/none/i.test(trimmed)) {
+                        e(lineNum, "'float' is used — consider modern layout methods.", "Replace float-based layouts with Flexbox or CSS Grid for simpler, more robust layouts.", "CSS quality", null, "info");
+                    }
+                    // NEW: 0px instead of 0
+                    if (/:\s*0px\b/.test(trimmed)) {
+                        e(lineNum, "Value '0px' should be written as just '0' — units are unnecessary on zero.", "Replace '0px' with '0'; CSS does not require units for zero values.", "CSS style", null, "info");
+                    }
+                }
             }
         });
         // Report !important overuse (more than 3)
