@@ -1,8 +1,7 @@
 """
 database.py — ForgeAI SQLite knowledge store
 
-Replaces the in-file dictionaries in knowledge_base.py with a proper
-SQLite database that can grow without limit and without touching source code.
+SQLite knowledge store backed by shared/knowledgebase.ts (via knowledgebase.json).
 
 Schema
 ------
@@ -12,7 +11,7 @@ Schema
   lang_hello_world — hello-world examples per language
 
 All tables are created automatically on first import.
-Data is loaded from knowledge_base.py once on startup if the DB is empty.
+Data is seeded from shared/knowledgebase.json once on startup if the DB is empty.
 
 Public API
 ----------
@@ -83,7 +82,7 @@ def _init_schema() -> None:
         """)
 
 
-# ── Seed from knowledge_base.py (runs once if tables are empty) ───────────────
+# ── Seed from knowledgebase.json (runs once if tables are empty) ──────────────
 
 def _seed_if_empty() -> None:
     with _connect() as conn:
