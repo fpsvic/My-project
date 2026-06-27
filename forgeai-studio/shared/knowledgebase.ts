@@ -6,9 +6,23 @@
 export type KnowledgeMap = Record<string, string>;
 export type CodeExamplesMap = Record<string, Record<string, string>>;
 
-export const spaceKeywords: readonly string[] = ["sun", "earth", "moon", "mars", "space", "astronom", "galaxy", "universe", "distance", "miles", "gravity", "orbit", "planet", "speed of light", "cosmic", "sol", "luna", "star", "solar", "venus", "saturn", "jupiter", "neptune", "uranus", "mercury", "milky way", "black hole", "nebula", "supernova", "neutron star", "dark matter", "dark energy", "big bang", "light year", "parsec", "hubble", "telescope", "asteroid", "comet", "meteor", "atmosphere", "exoplanet", "wormhole"];
-export const earthKeywords: readonly string[] = ["rock", "mineral", "stone", "geolog", "petrolog", "basalt", "granite", "sediment", "metamorph", "igneous", "volcano", "lava", "magma", "magmatic", "caldera", "tectonic", "plate", "ring of fire", "subduction", "trench", "mariana", "ocean", "underwater", "hydrothermal", "vent", "black smoker", "seafloor", "crust", "mantle", "mohs", "earthquake", "seismic", "richter", "fossil", "erosion", "glacier", "ice age", "carbon dating"];
-export const advancedScienceKeywords: readonly string[] = ["quantum", "physics", "planck", "boltzmann", "chemistry", "element", "carbon", "noble", "electroneg", "dna", "gene", "cell", "transcription", "biology", "golden ratio", "phi", "euler", "irrational", "einstein", "relativity", "e=mc", "photon", "electron", "proton", "neutron", "atom", "molecule", "compound", "periodic", "mendeleev", "entropy", "thermodynamics", "maxwell", "faraday", "newton", "gravity constant", "avogadro", "mole", "bohr", "schrodinger", "heisenberg", "uncertainty"];
+import {
+  earthKeywords,
+  historyKeywords,
+  mathKeywords,
+  scienceKeywords,
+  spaceKeywords,
+} from "./database";
+
+export {
+  earthKeywords,
+  historyKeywords,
+  mathKeywords,
+  scienceKeywords,
+  scienceKeywords as advancedScienceKeywords,
+  spaceKeywords,
+} from "./database";
+
 export const politicalKeywords: readonly string[] = ["washington", "president", "lincoln", "fdr", "new deal", "civil war", "party", "whig", "federalist", "constitution", "politic", "align", "congress", "senate", "amendment", "declaration", "jefferson", "adams", "hamilton", "madison", "jackson", "grant", "wilson", "eisenhower", "kennedy", "reagan", "clinton", "obama", "trump", "biden"];
 export const protectedEnglishWords: readonly string[] = ["when", "what", "with", "where", "which", "while", "make", "game", "play", "from", "about", "your", "then", "than", "them", "they", "this", "that", "there", "have", "some", "more", "like", "will", "would", "could", "should", "tell", "show", "find", "solve", "how", "who", "whom", "whose", "why", "want", "went", "well", "were", "been", "does", "done", "once"];
 export const highConfidenceKeywords: readonly string[] = ["volcano", "volcanoes", "caldera", "subduction", "trench", "mariana", "ocean", "hydrothermal", "vent", "chemosynthesis", "lithosphere", "basalt", "granite", "calculus", "trigonometry", "derivative", "integral", "differentiation", "integration", "quantum", "physics", "planck", "boltzmann", "electronegativity", "transcription", "washington", "president", "lincoln", "roosevelt", "constitution", "federalist", "whig", "python", "javascript", "typescript", "golang", "kotlin", "rust", "rarest", "fastest", "rocks", "stone"];
@@ -635,7 +649,7 @@ export function resolveAliases(map: KnowledgeMap): void {
 export const knowledgeBase = {
   spaceKeywords,
   earthKeywords,
-  advancedScienceKeywords,
+  advancedScienceKeywords: scienceKeywords,
   politicalKeywords,
   protectedEnglishWords,
   highConfidenceKeywords,

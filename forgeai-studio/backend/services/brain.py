@@ -19,11 +19,13 @@ from data.knowledge_base import (
     POLITICAL_KEYWORDS,
 )
 from data.database import load_knowledge as _load_knowledge
-from services.math_engine import generate_math_response
-from services.space_engine import generate_space_response
-from services.earth_engine import generate_earth_response
-from services.science_engine import generate_science_response
-from services.history_engine import generate_history_response
+from services.domain_engine import (
+    generate_math_response,
+    generate_space_response,
+    generate_earth_response,
+    generate_science_response,
+    generate_history_response,
+)
 from services.code_generater import (
     generate_anything,
     generate_anything_with_meta,

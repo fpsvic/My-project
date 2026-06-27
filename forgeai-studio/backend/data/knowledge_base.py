@@ -1,16 +1,19 @@
 """
-Thin loader for knowledge data generated from shared/knowledgebase.ts.
+Thin loader for knowledge data generated from shared/knowledgebase.ts and shared/database.ts.
 
-Source of truth: forgeai-studio/shared/knowledgebase.ts
-Regenerate Python seed: npm run kb:export (from forgeai-studio/)
+Domain keywords source: shared/database.ts (npm run db:export)
+Other KB data source: shared/knowledgebase.ts (npm run kb:export)
 """
 
 from __future__ import annotations
 
-from data.knowledge_seed import (
+from data.domain_base import (
     ADVANCED_SCIENCE_KEYWORDS,
-    CODING_HELP,
     EARTH_KEYWORDS,
+    SPACE_KEYWORDS,
+)
+from data.knowledge_seed import (
+    CODING_HELP,
     GENERAL_KNOWLEDGE,
     HIGH_CONFIDENCE_KEYWORDS,
     LANG_EXAMPLES,
@@ -18,5 +21,4 @@ from data.knowledge_seed import (
     LANG_HISTORY,
     POLITICAL_KEYWORDS,
     PROTECTED_ENGLISH_WORDS,
-    SPACE_KEYWORDS,
 )

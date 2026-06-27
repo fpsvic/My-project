@@ -5,9 +5,12 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  advancedScienceKeywords,
-  codingHelp,
   earthKeywords,
+  scienceKeywords as advancedScienceKeywords,
+  spaceKeywords,
+} from "../shared/database";
+import {
+  codingHelp,
   generalKnowledge,
   highConfidenceKeywords,
   langExamples,
@@ -16,7 +19,6 @@ import {
   politicalKeywords,
   protectedEnglishWords,
   resolveAliases,
-  spaceKeywords,
 } from "../shared/knowledgebase";
 
 const general = { ...generalKnowledge };

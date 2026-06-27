@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "kb:export": "tsx scripts/export-knowledgebase.ts",
+    "db:export": "tsx scripts/export-database.ts",
     "frontend:dev": "npm run dev --prefix frontend",
     "frontend:build": "npm run build --prefix frontend"
   },
