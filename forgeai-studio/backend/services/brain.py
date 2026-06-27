@@ -3189,7 +3189,7 @@ def _dispatch_project(query: str, kind: str = "auto", mode: str = "forge_code") 
     from services.code_generater import parse_build_request
     spec = parse_build_request(query)
     project, researched = generate_anything_with_meta(query)
-    verb = "compiled" if project.kind == "game" else "built"
+    verb = "autonomously coded" if spec.use_autonomous else ("compiled" if project.kind == "game" else "built")
     action = "Play Game" if project.kind == "game" else "Run Project"
     n = len(project.files)
     file_list = ", ".join(f"`{f.name}`" for f in project.files)
@@ -3199,7 +3199,8 @@ def _dispatch_project(query: str, kind: str = "auto", mode: str = "forge_code") 
         feat_line = f"- **Features detected:** {', '.join(spec.features[:6])}\n" if spec.features else ""
         intro = (
             f"### Thinking Process\n"
-            f"- **Intent:** {'Game compilation' if project.kind == 'game' else 'App generation'}\n"
+            f"- **Intent:** {'Autonomous game coding' if project.kind == 'game' else 'Autonomous app generation'}\n"
+            f"- **Approach:** Original code written from scratch — no templates copied\n"
             f"- **Parsed:** kind={spec.kind}, genre={spec.genre or 'n/a'}, app={spec.app_type or 'n/a'}\n"
             f"{feat_line}"
             + (f"- **Web research:** gathered context for this custom build\n" if researched else "")
@@ -3215,8 +3216,8 @@ def _dispatch_project(query: str, kind: str = "auto", mode: str = "forge_code") 
         )
     else:
         intro = (
-            f"I {verb} **{project.title}** — {n} file{'s' if n != 1 else ''} generated ({file_list}).{research_note} "
-            f"The code is split into separate modules for easy editing. "
+            f"I {verb} **{project.title}** from scratch — {n} original file{'s' if n != 1 else ''} ({file_list}).{research_note} "
+            f"No templates were copied; the logic was composed for your exact request. "
             f"Browse the files below, then hit **\"{action}\"** to launch."
         )
     return {

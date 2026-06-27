@@ -15,6 +15,7 @@ import urllib.request
 from dataclasses import dataclass, field
 
 from data.game_templates import GAME_TEMPLATES
+from services.autonomous_coder import autonomous_generate, is_autonomous_candidate
 
 
 # =============================================================================
@@ -5878,16 +5879,29 @@ def generate_game_project(query: str) -> ProjectResult:
     effective = _enrich_query_from_spec(query, spec)
     q = spec.normalized
 
-    if spec.use_synthesis or spec.genre == "universal" or spec.complexity == "complex":
+    code = ""
+    title = spec.title
+
+    # 1. Autonomous — original code from scratch (no template copying)
+    if spec.use_autonomous:
+        auto = autonomous_generate(effective)
+        code = auto.get("code", "")
+        title = auto.get("title", spec.title)
+
+    # 2. Synthesis — compositional canvas game engine
+    if (not code or len(code) < 200) and (spec.use_synthesis or spec.genre == "universal" or spec.complexity == "complex"):
         code = synthesize_game(effective)
         title = spec.title
-    else:
+
+    # 3. Compile — genre templates as last resort for classic games
+    if not code or len(code) < 200:
         compiled = compile_game(effective)
         title = compiled.get("title", spec.title)
         code = compiled.get("code", "")
         if not code or len(code) < 200:
-            code = synthesize_game(effective)
-            title = spec.title
+            auto = autonomous_generate(effective)
+            code = auto.get("code", "")
+            title = auto.get("title", spec.title)
 
     files = split_html_to_files(code, "game.js")
     files = _append_typescript_types(files, spec)
@@ -5901,21 +5915,33 @@ def generate_app_project(query: str) -> ProjectResult:
     effective = _enrich_query_from_spec(query, spec)
     q = spec.normalized
 
-    if spec.kind == "crud" or any(w in q for w in ("dashboard", "inventory", "database", "crud", "admin")):
-        built = build_dynamic_app(effective)
-    elif spec.app_type:
-        built = build_app(effective)
-    elif spec.kind == "tool":
-        built = build_dynamic_app(effective)
-    else:
-        built = build_dynamic_app(effective)
+    title = spec.title
+    code = ""
 
-    title = built.get("title", spec.title)
-    code = built.get("code", "")
-    if not code or len(code) < 100:
-        built = build_app(effective)
+    # 1. Autonomous — custom app logic written from scratch
+    if spec.use_autonomous and (spec.kind in ("tool", "crud", "app") or not spec.app_type):
+        auto = autonomous_generate(effective)
+        code = auto.get("code", "")
+        title = auto.get("title", spec.title)
+
+    # 2. Dynamic builders for CRUD / tools
+    if not code or len(code) < 150:
+        if spec.kind == "crud" or any(w in q for w in ("dashboard", "inventory", "database", "crud", "admin")):
+            built = build_dynamic_app(effective)
+        elif spec.app_type:
+            built = build_app(effective)
+        elif spec.kind == "tool":
+            built = build_dynamic_app(effective)
+        else:
+            built = build_dynamic_app(effective)
         title = built.get("title", spec.title)
         code = built.get("code", "")
+
+    # 3. Final fallback — autonomous again if templates produced nothing useful
+    if not code or len(code) < 100:
+        auto = autonomous_generate(effective)
+        code = auto.get("code", "")
+        title = auto.get("title", spec.title)
 
     files = split_html_to_files(code, "app.js")
     files = _append_typescript_types(files, spec)
@@ -5937,6 +5963,7 @@ class BuildSpec:
     theme: str = "dark"
     use_synthesis: bool = False
     use_research: bool = False
+    use_autonomous: bool = True
     complexity: str = "medium"  # simple | medium | complex
 
 
@@ -5948,6 +5975,7 @@ def parse_build_request(query: str) -> BuildSpec:
     spec.genre = _detect_genre(q)
     spec.app_type = detect_app_type(q)
     spec.use_synthesis = spec.genre == "universal" or should_synthesize(query)
+    spec.use_autonomous = is_autonomous_candidate(query) or spec.use_synthesis or spec.complexity != "simple"
     spec.use_research = _has_build_intent(q) and (
         spec.genre == "universal"
         or spec.use_synthesis
