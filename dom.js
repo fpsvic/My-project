@@ -69,6 +69,10 @@
                 <button id="add-file-btn" title="Add New File">+</button>
             </div>
             <ul class="file-list" id="file-list"></ul>
+            <div style="padding:8px 15px;font-size:0.72rem;color:#4a6057;border-top:1px solid #1c2321;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+                <span>Storage</span>
+                <span id="storage-size-badge">0 Bytes</span>
+            </div>
         </div>
         <div class="main-content">
             <div class="editor-header">
