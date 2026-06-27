@@ -1954,9 +1954,6 @@ def forge(
                 )
                 if nlg_output and len(nlg_output) >= 20:
                     structured = vary_structure(nlg_output, query)
-                    if mode == "forge_thinking" and intent != "programming":
-                        thinking = _build_thinking_header(query, intent, memory, max_atoms)
-                        return f"{thinking}\n\n---\n\n{structured}"
                     if mode == "forge_code" and effective_depth >= 1 and intent != "programming":
                         brief = _brief_reasoning_line(query, intent, memory)
                         if brief and random.random() < 0.55:
@@ -1988,9 +1985,6 @@ def forge(
             )
             if nlg_output and len(nlg_output) >= 20:
                 structured = vary_structure(nlg_output, query)
-                if mode == "forge_thinking" and intent != "programming":
-                    thinking = _build_thinking_header(query, intent, memory, max_atoms)
-                    return f"{thinking}\n\n---\n\n{structured}"
                 if mode == "forge_code" and effective_depth >= 1 and intent != "programming":
                     brief = _brief_reasoning_line(query, intent, memory)
                     if brief:
@@ -2000,9 +1994,6 @@ def forge(
             pass
 
     structured = vary_structure(content, query)
-    if mode == "forge_thinking" and intent not in ("build_game", "build_app"):
-        thinking = _build_thinking_header(query, intent, memory, max_atoms)
-        return f"{thinking}\n\n---\n\n{structured}"
     return structured
 
 
@@ -3580,8 +3571,7 @@ def _synthesize_programming_response(query: str, q: str, mode: str = "forge_code
                 )
             return response
 
-    from services.code_generater import web_lookup
-    return web_lookup(query)
+    return _web_lookup_summarized(query, mode)
 
 # --- QUICK MODE ---
 
@@ -4073,16 +4063,841 @@ def _comprehend_query(query: str, q: str, memory: dict | None = None) -> dict:
     }
 
 
+# =============================================================================
+# THINKING ENGINE — deliberate reasoning before every response
+# =============================================================================
+
+@dataclass
+class ThinkingTrace:
+    """Structured record of how ForgeAI reasoned about a question before answering."""
+    query: str
+    interpreted: str
+    question_type: str
+    complexity: str
+    entity: str
+    aspect: str | None
+    source_plan: str
+    confidence: int
+    steps: list[str] = field(default_factory=list)
+    observations: list[str] = field(default_factory=list)
+    memory_notes: list[str] = field(default_factory=list)
+    strategy: str = ""
+    intent_guess: str = ""
+
+    def to_markdown(self, compact: bool = False) -> str:
+        q_short = self.query[:90] + ("…" if len(self.query) > 90 else "")
+        conf_label = _confidence_label(self.confidence)
+        if compact:
+            obs = random.choice(self.observations) if self.observations else ""
+            step = random.choice(self.steps) if self.steps else ""
+            lines = [
+                "### Thinking",
+                f"- **Read:** {self.interpreted}",
+                f"- **Plan:** {self.source_plan} ({conf_label})",
+            ]
+            if step:
+                lines.append(f"- **Next:** {step}")
+            if obs:
+                lines.append(f"- *{obs}*")
+            return "\n".join(lines)
+
+        lines = [
+            "### Thinking Process",
+            f"- **Original question:** \"{q_short}\"",
+            f"- **How I read it:** {self.interpreted}",
+            f"- **Question type:** {self.question_type} · **Complexity:** {self.complexity}",
+        ]
+        if self.entity:
+            lines.append(f"- **Subject / entity:** {self.entity}")
+        if self.aspect:
+            lines.append(f"- **Aspect requested:** {self.aspect}")
+        if self.memory_notes:
+            lines.append(f"- **Conversation context:** {'; '.join(self.memory_notes[:3])}")
+        lines += [
+            f"- **Information source:** {self.source_plan}",
+            f"- **Confidence:** {conf_label} ({self.confidence}%)",
+            f"- **Answer strategy:** {self.strategy}",
+            "- **Reasoning steps:**",
+        ]
+        for i, step in enumerate(self.steps, 1):
+            lines.append(f"  {i}. {step}")
+        if self.observations:
+            lines.append("- **Internal notes:**")
+            for obs in self.observations[:4]:
+                lines.append(f"  - *{obs}*")
+        return "\n".join(lines)
+
+
+_QUESTION_TYPE_PATTERNS: list[tuple[str, str]] = [
+    (r"^(how fast|how quick|how speedy)", "factual — speed measurement"),
+    (r"^(how many|how much)", "factual — quantity"),
+    (r"^(how big|how large|how tall|how heavy|how deep|how far)", "factual — scale / distance"),
+    (r"^(what is|what are|what's)", "definitional — what something is"),
+    (r"^(who is|who was|who made|who invented)", "biographical / attribution"),
+    (r"^(when did|when was|what year)", "temporal — dates and timelines"),
+    (r"^(where is|where are|where do|where does)", "locational — place or habitat"),
+    (r"^(why do|why does|why is|why are)", "causal — reasons and mechanisms"),
+    (r"^(can you|could you|please)", "request — action or explanation"),
+    (r"^(make|build|create|code|write|generate)", "build request — code / project"),
+    (r"^(solve|calculate|compute|evaluate|simplify|integrate|differentiate)", "mathematical computation"),
+    (r"^(tell me about|explain|describe|overview)", "exploratory — broad overview"),
+    (r"^(compare|difference between|vs\b|versus)", "comparative — contrast two things"),
+    (r"^(is it true|is it possible|can a|does a)", "verification — yes/no or possibility"),
+]
+
+_THINKING_OBSERVATIONS: dict[str, list[str]] = {
+    "specific": [
+        "The user wants a precise fact, not a lecture — lead with the answer.",
+        "This is a narrow question; I should avoid unrelated tangents.",
+        "A single strong sentence may be enough if the fact is clear.",
+        "I'll extract the exact figure or date before elaborating.",
+    ],
+    "broad": [
+        "This is open-ended — I should cover several angles without overwhelming.",
+        "A layered answer works better than a single fact dump here.",
+        "I'll prioritize the most surprising or useful facts first.",
+        "The user likely wants breadth; I'll weave connections between facts.",
+    ],
+    "followup": [
+        "This continues an earlier thread — I must stay on the same subject.",
+        "Context from prior messages should shape what I emphasize next.",
+        "I should not re-introduce basics already covered in this conversation.",
+        "Picking an uncovered aspect will feel more helpful than repeating.",
+    ],
+    "build": [
+        "This is a creation request — templates and synthesis both need consideration.",
+        "I should parse features, genre, and complexity before generating files.",
+        "The output must be runnable in-browser with clean file separation.",
+        "If the request is unusual, a quick web lookup may improve the build.",
+    ],
+    "math": [
+        "Symbolic math needs step-by-step working, not just a final number.",
+        "I'll check for calculus, trig, or algebra patterns before solving.",
+        "Showing the method matters as much as the result here.",
+    ],
+    "unknown": [
+        "This may not be in the local knowledge base — I'll plan a fallback path.",
+        "Low confidence locally — web search is a reasonable backup.",
+        "I should be honest if coverage is thin rather than inventing details.",
+    ],
+}
+
+_THINKING_STEP_POOL: dict[str, list[str]] = {
+    "parse": [
+        "Parse the question literally — identify subject, aspect, and desired answer shape",
+        "Strip filler words and isolate the core information need",
+        "Determine whether this is specific, broad, or a follow-up",
+        "Read the question as a human would — what are they really trying to learn?",
+    ],
+    "context": [
+        "Scan the full conversation for topic continuity and unresolved references",
+        "Check if pronouns like \"it\" or \"they\" refer to an earlier subject",
+        "Note which aspects were already discussed so I don't repeat myself",
+        "Anchor follow-ups to the active thread entity from memory",
+    ],
+    "source": [
+        "Search the knowledge base for the longest matching key",
+        "Route to the specialised engine (space, earth, science, history, animals)",
+        "Evaluate whether local data is sufficient or web lookup is needed",
+        "Pick compile vs synthesize path for build requests",
+    ],
+    "compose": [
+        "Lead with a direct answer, then add supporting context",
+        "Vary sentence structure so the reply feels natural, not canned",
+        "Select 2–4 fact atoms that best match the question focus",
+        "Tie the conclusion back to the exact wording of the question",
+    ],
+    "verify": [
+        "Sanity-check numbers and units before stating them",
+        "Ensure I'm answering the question asked, not a nearby one",
+        "Confirm the entity matches conversation context on follow-ups",
+        "If confidence is low, prefer lookup or a clear uncertainty note",
+    ],
+}
+
+
+def _classify_question_type(q: str) -> str:
+    for pattern, label in _QUESTION_TYPE_PATTERNS:
+        if re.search(pattern, q):
+            return label
+    if _is_specific_question(q):
+        return "factual — specific detail"
+    if _is_broad_question(q):
+        return "exploratory — overview"
+    return "general — open query"
+
+
+def _assess_complexity(query: str, q: str, memory: dict) -> str:
+    score = 0
+    if len(q.split()) > 12:
+        score += 2
+    if _detect_aspect(q):
+        score += 1
+    if memory.get("continuing_thread"):
+        score += 1
+    if _has_build_verb(q):
+        score += 3
+    if any(w in q for w in ("compare", "versus", "difference", "explain", "everything")):
+        score += 2
+    if _is_broad_question(q):
+        score += 2
+    if score >= 5:
+        return "high"
+    if score >= 2:
+        return "medium"
+    return "low"
+
+
+def _analyze_literal_meaning(query: str, q: str, comprehend: dict) -> str:
+    if comprehend.get("question_read"):
+        return comprehend["question_read"]
+    aspect = comprehend.get("aspect") or _detect_aspect(q)
+    entity = comprehend.get("entity") or _extract_entity(query) or "the topic"
+    qtype = _classify_question_type(q)
+    if aspect:
+        aspect_labels = {
+            "speed": f"a question about how fast **{entity}** is",
+            "size": f"a question about the size or scale of **{entity}**",
+            "diet": f"a question about what **{entity}** eats",
+            "habitat": f"a question about where **{entity}** lives",
+            "date": f"a question about when **{entity}** happened or existed",
+            "count": f"a question about how many / how much regarding **{entity}**",
+            "inventor": f"a question about who created or discovered **{entity}**",
+            "composition": f"a question about what **{entity}** is made of",
+        }
+        return f"The user is asking {aspect_labels.get(aspect, f'about **{entity}** ({aspect})')}."
+    if comprehend.get("is_build"):
+        return f"The user wants me to **build or generate** something: \"{query[:70]}\"."
+    if "mathematical" in qtype:
+        return f"The user wants a **math solution** for: \"{query[:70]}\"."
+    if "exploratory" in qtype:
+        return f"The user wants a **broad overview** of **{entity}**."
+    return f"The user is asking ({qtype}): \"{query[:80]}{'…' if len(query) > 80 else ''}\"."
+
+
+def _reason_about_conversation(memory: dict, history: list) -> list[str]:
+    notes: list[str] = []
+    if memory.get("continuing_thread"):
+        conf = memory.get("thread_confidence", 0)
+        topic = (memory.get("active_topic") or "")[:60]
+        notes.append(f"continuing thread on \"{topic}\" (confidence {conf}%)")
+    if memory.get("topic_shift"):
+        notes.append("user signaled a topic shift — treat as fresh subject")
+    covered = memory.get("covered_aspects") or []
+    if covered:
+        notes.append(f"aspects already covered: {', '.join(covered[:5])}")
+    depth = memory.get("thread_depth", 0)
+    if depth >= 2:
+        notes.append(f"{depth} prior turns on this topic — go deeper, don't repeat intro")
+    convo = memory.get("conversation") or {}
+    entities = convo.get("all_entities") or []
+    if entities:
+        notes.append(f"entities in session: {', '.join(entities[:4])}")
+    topics = convo.get("all_topics") or []
+    if len(topics) > 1:
+        notes.append(f"{len(topics)} distinct topics this session")
+    if not notes and not history:
+        notes.append("first message in conversation — no prior context")
+    return notes
+
+
+def _plan_information_source(
+    comprehend: dict,
+    q: str,
+    memory: dict,
+    workspace: str,
+) -> tuple[str, int]:
+    """Return (source_description, confidence 0-100)."""
+    entity = comprehend.get("entity") or memory.get("active_entity") or ""
+    if comprehend.get("is_build") or _has_build_verb(q):
+        return "code generator — compile / synthesize project files", 85
+    if _score_math(q) >= 50:
+        return "math engine — symbolic computation", 90
+    kb = _kb_fact_lookup(q, entity=entity)
+    if kb:
+        return "local knowledge base — direct key match", 88
+    best_engine = None
+    engine_scores = {
+        "space": _score_space(q),
+        "earth": _score_earth(q),
+        "science": _score_science(q),
+        "history": _score_history(q),
+        "animals": _score_animals(q),
+        "programming": _score_programming(q),
+    }
+    top_engine = max(engine_scores, key=engine_scores.get)
+    top_score = engine_scores[top_engine]
+    if top_score >= 55:
+        labels = {
+            "space": "space engine — astronomy facts",
+            "earth": "earth engine — geology / geography",
+            "science": "science engine — physics / chemistry / biology",
+            "history": "history engine — events and people",
+            "animals": "animals engine — species facts",
+            "programming": "programming KB — languages and patterns",
+        }
+        return labels[top_engine], min(95, top_score + 10)
+    if _score_knowledge(q) >= 40:
+        return "general knowledge base — token / aspect search", 70
+    if workspace == "code" and _has_build_verb(q):
+        return "code workspace — project generation", 80
+    return "web lookup — Google / DuckDuckGo fallback", 45
+
+
+def _plan_answer_strategy(comprehend: dict, complexity: str, source: str) -> str:
+    if comprehend.get("is_build"):
+        options = [
+            "Parse build spec → route to game or app compiler → split HTML into files",
+            "Detect genre and features → compile template or synthesize custom logic",
+            "Enrich query with detected theme/features → generate multi-file project",
+        ]
+        return random.choice(options)
+    if comprehend.get("is_specific"):
+        options = [
+            "Extract exact fact → NLG rewrite → varied natural phrasing",
+            "Pull best-matching sentence → lead with answer → optional context line",
+            "Aspect-targeted extraction → bold lead fact → brief supporting detail",
+        ]
+        return random.choice(options)
+    if comprehend.get("is_broad") or complexity == "high":
+        options = [
+            "Multi-atom NLG compose → structural variation → key takeaway",
+            "Pull related KB entries → comprehensive thread-aware response",
+            "Layer facts from general to specific → varied connectors and closer",
+        ]
+        return random.choice(options)
+    if "web lookup" in source:
+        return "Search web → summarize snippets → forge into readable answer"
+    return random.choice([
+        "Knowledge lookup → forge pipeline → varied structure",
+        "Engine dispatch → fact extraction → natural language generation",
+        "Score intents → best engine → compose with thread context",
+    ])
+
+
+def _confidence_label(score: int) -> str:
+    if score >= 85:
+        return "high"
+    if score >= 65:
+        return "moderate"
+    if score >= 45:
+        return "low"
+    return "very low"
+
+
+def _pick_thinking_observations(
+    comprehend: dict,
+    complexity: str,
+    confidence: int,
+    memory: dict,
+) -> list[str]:
+    pool: list[str] = []
+    if comprehend.get("is_specific"):
+        pool.extend(_THINKING_OBSERVATIONS["specific"])
+    if comprehend.get("is_broad"):
+        pool.extend(_THINKING_OBSERVATIONS["broad"])
+    if memory.get("continuing_thread"):
+        pool.extend(_THINKING_OBSERVATIONS["followup"])
+    if comprehend.get("is_build"):
+        pool.extend(_THINKING_OBSERVATIONS["build"])
+    if _score_math(comprehend.get("normalized", "")) >= 40:
+        pool.extend(_THINKING_OBSERVATIONS["math"])
+    if confidence < 55:
+        pool.extend(_THINKING_OBSERVATIONS["unknown"])
+    if not pool:
+        pool = _THINKING_OBSERVATIONS["unknown"]
+    return random.sample(pool, min(3, len(pool)))
+
+
+def _build_thinking_steps(
+    comprehend: dict,
+    memory: dict,
+    source: str,
+    strategy: str,
+) -> list[str]:
+    steps: list[str] = []
+    steps.append(random.choice(_THINKING_STEP_POOL["parse"]))
+    if memory.get("continuing_thread") or (memory.get("conversation") or {}).get("turn_count", 0) > 2:
+        steps.append(random.choice(_THINKING_STEP_POOL["context"]))
+    steps.append(random.choice(_THINKING_STEP_POOL["source"]) + f" → **{source.split('—')[0].strip()}**")
+    steps.append(random.choice(_THINKING_STEP_POOL["compose"]))
+    if comprehend.get("is_specific") or comprehend.get("is_broad"):
+        steps.append(random.choice(_THINKING_STEP_POOL["verify"]))
+    if comprehend.get("is_build"):
+        steps.append("Generate production-ready files and verify HTML/CSS/JS split")
+    return steps
+
+
+def _run_thinking_pipeline(
+    query: str,
+    q: str,
+    memory: dict,
+    comprehend: dict,
+    history: list,
+    workspace: str = "chat",
+) -> ThinkingTrace:
+    """
+    Think through the question before any routing or answering.
+    Called at the start of generate_response for every non-quick request.
+    """
+    interpreted = _analyze_literal_meaning(query, q, comprehend)
+    question_type = _classify_question_type(q)
+    complexity = _assess_complexity(query, q, memory)
+    memory_notes = _reason_about_conversation(memory, history)
+    source, confidence = _plan_information_source(comprehend, q, memory, workspace)
+    strategy = _plan_answer_strategy(comprehend, complexity, source)
+    steps = _build_thinking_steps(comprehend, memory, source, strategy)
+    observations = _pick_thinking_observations(comprehend, complexity, confidence, memory)
+
+    return ThinkingTrace(
+        query=query,
+        interpreted=interpreted,
+        question_type=question_type,
+        complexity=complexity,
+        entity=comprehend.get("entity") or memory.get("active_entity") or "",
+        aspect=comprehend.get("aspect"),
+        source_plan=source,
+        confidence=confidence,
+        steps=steps,
+        observations=observations,
+        memory_notes=memory_notes,
+        strategy=strategy,
+        intent_guess=comprehend.get("intent_hint") or "",
+    )
+
+
+def _should_attach_thinking(mode: str) -> bool:
+    return mode in ("forge_thinking", "forge_code")
+
+
+def _attach_thinking(result: str | dict, trace: ThinkingTrace | None, mode: str) -> str | dict:
+    """Prepend the thinking trace before the final answer."""
+    if not trace or not _should_attach_thinking(mode):
+        return result
+    compact = mode == "forge_code"
+    block = trace.to_markdown(compact=compact)
+
+    if isinstance(result, dict):
+        text = result.get("text", "")
+        if "### Thinking" in text:
+            return result
+        return {**result, "text": f"{block}\n\n---\n\n{text}"}
+
+    if "### Thinking" in result:
+        return result
+    return f"{block}\n\n---\n\n{result}"
+
+
+# =============================================================================
+# FULL CONVERSATION READER — re-read entire chat before responding
+# =============================================================================
+
+def _parse_history_turns(history: list) -> list[dict]:
+    """Parse every message in the conversation in order."""
+    turns: list[dict] = []
+    for i, msg in enumerate(history):
+        role = msg.get("role", "")
+        text = (msg.get("text") or msg.get("content") or "").strip()
+        if text:
+            turns.append({"index": i, "role": role, "text": text})
+    return turns
+
+
+def read_full_conversation(history: list, current_query: str = "") -> dict:
+    """
+    Re-read the entire conversation from the first message to the latest.
+    Used before every response so ForgeAI has full session awareness.
+    """
+    turns = _parse_history_turns(history)
+    user_turns = [t for t in turns if t["role"] == "user"]
+    ai_turns = [t for t in turns if t["role"] == "assistant"]
+
+    entities_seen: list[str] = []
+    topics: list[str] = []
+    keywords_counter: dict[str, int] = {}
+    aspects_seen: list[str] = []
+
+    for t in user_turns:
+        norm = _normalize(t["text"])
+        if not _is_followup_query(norm):
+            topics.append(t["text"][:80])
+            ent = _extract_entity(t["text"])
+            if ent:
+                entities_seen.append(ent)
+        for w in _query_keywords(norm):
+            keywords_counter[w] = keywords_counter.get(w, 0) + 1
+        asp = _detect_aspect(norm)
+        if asp and asp not in aspects_seen:
+            aspects_seen.append(asp)
+
+    recent = turns[-14:] if len(turns) > 14 else turns
+    transcript: list[str] = []
+    for t in recent:
+        label = "User" if t["role"] == "user" else "ForgeAI"
+        excerpt = t["text"][:180].replace("\n", " ")
+        suffix = "…" if len(t["text"]) > 180 else ""
+        transcript.append(f"- **{label}:** {excerpt}{suffix}")
+
+    top_keywords = sorted(keywords_counter, key=keywords_counter.get, reverse=True)[:10]
+
+    summary_parts: list[str] = []
+    if topics:
+        summary_parts.append(f"Topics: {', '.join(topics[:4])}")
+    if entities_seen:
+        summary_parts.append(f"Subjects: {', '.join(dict.fromkeys(entities_seen)[:5])}")
+    summary_parts.append(f"{len(turns)} messages ({len(user_turns)} from user)")
+
+    return {
+        "turn_count": len(turns),
+        "user_turn_count": len(user_turns),
+        "ai_turn_count": len(ai_turns),
+        "transcript": transcript,
+        "all_entities": list(dict.fromkeys(entities_seen)),
+        "all_topics": topics,
+        "top_keywords": top_keywords,
+        "aspects_discussed": aspects_seen,
+        "first_user_message": user_turns[0]["text"] if user_turns else None,
+        "last_user_message": user_turns[-1]["text"] if user_turns else None,
+        "conversation_summary": ". ".join(summary_parts),
+    }
+
+
+def _enrich_memory_from_conversation(memory: dict, convo: dict) -> dict:
+    """Merge full-conversation digest into the working memory dict."""
+    memory["conversation"] = convo
+    if not memory.get("active_entity") and convo.get("all_entities"):
+        memory["active_entity"] = convo["all_entities"][-1]
+    if not memory.get("active_topic") and convo.get("all_topics"):
+        memory["active_topic"] = convo["all_topics"][-1]
+    for asp in convo.get("aspects_discussed") or []:
+        if asp not in memory.get("covered_aspects", []):
+            memory.setdefault("covered_aspects", []).append(asp)
+    return memory
+
+
+# =============================================================================
+# WEB LOOKUP SUMMARIZER — summarize Google / DuckDuckGo results
+# =============================================================================
+
+_WEB_SUMMARY_INTROS = [
+    "I searched the web because this wasn't in my local knowledge base. Here's what I found:",
+    "This wasn't covered locally, so I looked it up online. Summary:",
+    "I pulled this from a web search — here's the distilled answer:",
+    "After checking Google and DuckDuckGo, here's a concise summary:",
+    "Web search results, summarized for you:",
+]
+
+_WEB_SUMMARY_CLOSERS = [
+    "That's the gist from online sources — let me know if you want more detail.",
+    "Source was the open web; accuracy depends on the pages indexed.",
+    "I can dig deeper on any part of this if you want.",
+    "",
+]
+
+
+def _summarize_web_heuristic(text: str, query: str) -> str:
+    """Fallback summarizer when NLG rewrite is unavailable."""
+    plain = re.sub(r"[*_#`\[\]]", "", text)
+    sentences = [
+        s.strip()
+        for s in re.split(r"(?<=[.!?])\s+", plain)
+        if len(s.strip()) > 25
+    ]
+    seen: set[str] = set()
+    unique: list[str] = []
+    for s in sentences:
+        key = s.lower()[:50]
+        if key not in seen:
+            seen.add(key)
+            unique.append(s)
+    kws = _query_keywords(_normalize(query))
+    if kws:
+        scored = sorted(
+            unique,
+            key=lambda s: sum(1 for w in kws if w in s.lower()),
+            reverse=True,
+        )
+        unique = scored
+    picks = unique[:4]
+    if not picks:
+        return plain[:400]
+    if len(picks) == 1:
+        return picks[0]
+    return "**Key points:**\n\n" + "\n".join(f"- {p}" for p in picks)
+
+
+def _summarize_web_result(
+    query: str,
+    raw: str,
+    mode: str = "forge_code",
+    memory: dict | None = None,
+) -> str:
+    """Turn raw search snippets into a readable summarized answer."""
+    if not raw or raw.startswith("I don't have"):
+        return raw
+
+    plain = re.sub(r"^#+\s*Web Search Result\s*\n*", "", raw, flags=re.I)
+    plain = re.sub(r"^#+\s*", "", plain, flags=re.MULTILINE)
+    plain = re.sub(r"\*Source:[^*]+\*", "", plain)
+    plain = plain.strip()
+    if not plain:
+        return raw
+
+    summary_body = plain
+    try:
+        nlg = generate_from_content(
+            f"Web search results for \"{query}\":\n\n{plain[:1200]}",
+            query,
+            max_atoms=3,
+            elaborate=mode == "forge_thinking",
+            memory=memory,
+        )
+        if nlg and len(nlg) >= 30:
+            summary_body = vary_structure(nlg, query)
+    except Exception:
+        summary_body = _summarize_web_heuristic(plain, query)
+
+    intro = random.choice(_WEB_SUMMARY_INTROS)
+    closer = random.choice(_WEB_SUMMARY_CLOSERS)
+    parts = [intro, "", summary_body]
+    if closer:
+        parts += ["", closer]
+    return "\n".join(parts)
+
+
+def _web_lookup_summarized(
+    query: str,
+    mode: str = "forge_code",
+    memory: dict | None = None,
+) -> str:
+    """Look up the web and return a summarized answer."""
+    raw = web_lookup(query)
+    if "### Web Search Result" not in raw and not raw.startswith("I don't have"):
+        return raw
+    return _summarize_web_result(query, raw, mode, memory)
+
+
+# =============================================================================
+# EXTENDED REASONING — deeper pre-answer analysis helpers
+# =============================================================================
+
+_DOMAIN_THINKING_HINTS: dict[str, list[str]] = {
+    "animals": [
+        "Check species name, habitat, diet, and predators as separate fact layers",
+        "Biology questions often need both the statistic and the mechanism",
+        "Common names may map to multiple species — prefer the best-known match",
+    ],
+    "space": [
+        "Distances in astronomy need units — km, AU, or light-years",
+        "Scale comparisons help humans grasp cosmic numbers",
+        "Distinguish planets, moons, stars, and galaxies before answering",
+    ],
+    "science": [
+        "Separate the phenomenon from the measurement",
+        "Constants and formulas should be stated with conditions (temperature, medium)",
+        "Mechanism + number is stronger than either alone",
+    ],
+    "history": [
+        "Anchor dates to named events or figures for clarity",
+        "Cause and consequence matter as much as the date itself",
+        "Watch for BC/AD and century boundary confusion",
+    ],
+    "programming": [
+        "Match the language the user named before showing syntax",
+        "A minimal working example beats a long explanation",
+        "Distinguish language history from how-to coding questions",
+    ],
+    "math": [
+        "Identify expression type before choosing a solver path",
+        "Show steps for calculus; direct evaluation for arithmetic",
+        "Watch for implicit multiplication and order of operations",
+    ],
+    "build_game": [
+        "Genre detection drives template selection",
+        "Playability in-browser is the hard constraint",
+        "Feature list from the query should map to game mechanics",
+    ],
+    "build_app": [
+        "App type (calculator, todo, timer) selects the builder",
+        "UI theme and layout matter for perceived quality",
+        "CRUD/dashboard requests need dynamic builder, not static template",
+    ],
+}
+
+
+def _score_query_ambiguity(q: str, comprehend: dict) -> int:
+    """0 = clear, 100 = very ambiguous."""
+    score = 0
+    if not comprehend.get("entity") and not _extract_entity(q):
+        score += 25
+    if _PRONOUN_RE.search(q) and not comprehend.get("entity"):
+        score += 30
+    if len(q.split()) <= 3:
+        score += 20
+    if _is_followup_query(q) and not comprehend.get("continuing"):
+        score += 15
+    if not _detect_aspect(q) and not _is_broad_question(q) and not comprehend.get("is_build"):
+        score += 10
+    return min(100, score)
+
+
+def _anticipate_followups(comprehend: dict, memory: dict) -> list[str]:
+    """Guess what the user might ask next — used in thinking observations."""
+    entity = comprehend.get("entity") or memory.get("active_entity") or "it"
+    aspect = comprehend.get("aspect")
+    suggestions: list[str] = []
+    aspect_chain = {
+        "speed": ["habitat", "diet", "size"],
+        "diet": ["habitat", "predator", "behavior"],
+        "habitat": ["diet", "behavior", "size"],
+        "date": ["inventor", "composition", "definition"],
+        "definition": ["composition", "date", "count"],
+    }
+    if aspect and aspect in aspect_chain:
+        for next_asp in aspect_chain[aspect][:2]:
+            suggestions.append(f"what is the {next_asp} of {entity}")
+    if comprehend.get("is_broad"):
+        suggestions.append(f"specific facts about {entity}")
+    if comprehend.get("is_build"):
+        suggestions.append("refinements or additional features for the project")
+    return suggestions[:3]
+
+
+def _deep_intent_analysis(q: str, scores: dict[str, int]) -> list[str]:
+    """Produce ranked intent hypotheses for the thinking trace."""
+    ranked = sorted(scores.items(), key=lambda x: -x[1])
+    lines: list[str] = []
+    for intent, score in ranked[:4]:
+        if score < 15:
+            continue
+        bar = "█" * (score // 10) + "░" * (10 - score // 10)
+        lines.append(f"{intent}: {score}% [{bar}]")
+    return lines
+
+
+def _domain_thinking_notes(intent: str, comprehend: dict) -> list[str]:
+    """Domain-specific reasoning hints appended to thinking observations."""
+    pool: list[str] = []
+    if comprehend.get("is_build"):
+        if comprehend.get("build_game_score", 0) >= comprehend.get("build_app_score", 0):
+            pool = _DOMAIN_THINKING_HINTS.get("build_game", [])
+        else:
+            pool = _DOMAIN_THINKING_HINTS.get("build_app", [])
+    elif intent in _DOMAIN_THINKING_HINTS:
+        pool = _DOMAIN_THINKING_HINTS[intent]
+    if not pool:
+        return []
+    return random.sample(pool, min(2, len(pool)))
+
+
+def _reflect_on_conversation_arc(convo: dict) -> str | None:
+    """One-line summary of how the conversation has evolved."""
+    if not convo or convo.get("turn_count", 0) < 3:
+        return None
+    topics = convo.get("all_topics") or []
+    if len(topics) >= 3:
+        return f"Session has covered {len(topics)} topics — latest focus may differ from earlier ones"
+    if len(topics) == 1:
+        return f"Single-topic session so far: \"{topics[0][:50]}\""
+    if topics:
+        return f"Conversation moved from \"{topics[0][:35]}\" toward \"{topics[-1][:35]}\""
+    return None
+
+
+def _enrich_thinking_trace(
+    trace: ThinkingTrace,
+    comprehend: dict,
+    memory: dict,
+    scores: dict[str, int] | None = None,
+) -> ThinkingTrace:
+    """Add domain notes, ambiguity score, and follow-up anticipation."""
+    ambiguity = _score_query_ambiguity(comprehend.get("normalized", ""), comprehend)
+    if ambiguity >= 40:
+        trace.observations.append(
+            f"Query ambiguity is {ambiguity}% — leaning on conversation context to disambiguate"
+        )
+    arc = _reflect_on_conversation_arc(memory.get("conversation") or {})
+    if arc:
+        trace.memory_notes.append(arc)
+    followups = _anticipate_followups(comprehend, memory)
+    if followups and random.random() < 0.5:
+        trace.observations.append(
+            f"User may follow up with: {followups[0]}"
+        )
+    if scores:
+        ranked = _deep_intent_analysis(comprehend.get("normalized", ""), scores)
+        if ranked:
+            trace.observations.append(f"Intent ranking: {'; '.join(ranked[:2])}")
+    intent = trace.intent_guess or "knowledge"
+    trace.observations.extend(_domain_thinking_notes(intent, comprehend))
+    return trace
+
+
+_INTENT_LABELS_EXTENDED: dict[str, str] = {
+    "greeting": "Social greeting — introduce capabilities",
+    "build_game": "Game build — compile or synthesize playable project",
+    "build_app": "App build — calculator, todo, tool, or dynamic app",
+    "build_any": "Generic build — route to best generator",
+    "math": "Mathematics — symbolic solve with steps",
+    "space": "Astronomy and space science",
+    "earth": "Earth science, geography, geology",
+    "science": "Physics, chemistry, biology concepts",
+    "history": "Historical events, people, dates",
+    "programming": "Code, languages, syntax, examples",
+    "animals": "Species facts — diet, habitat, speed, behavior",
+    "knowledge": "General knowledge base lookup",
+}
+
+
+def _label_intent(intent: str) -> str:
+    return _INTENT_LABELS_EXTENDED.get(intent, intent.replace("_", " ").title())
+
+
+# =============================================================================
+# THINKING SELF-TEST — run with: python -m services.brain
+# =============================================================================
+
+def _thinking_self_test() -> None:
+    """Quick smoke test for the thinking pipeline."""
+    sample_memory = {
+        "active_entity": "cheetah",
+        "active_topic": "how fast is a cheetah",
+        "continuing_thread": False,
+        "thread_depth": 1,
+        "covered_aspects": [],
+        "conversation": read_full_conversation([], "how fast is a cheetah"),
+    }
+    q = "how fast is a cheetah"
+    norm = _normalize(q)
+    comp = _comprehend_query(q, norm, sample_memory)
+    comp["normalized"] = norm
+    trace = _run_thinking_pipeline(q, norm, sample_memory, comp, [], "chat")
+    print(trace.to_markdown(compact=False))
+    print("\n--- compact ---\n")
+    print(trace.to_markdown(compact=True))
+
+
 def generate_response(query: str, mode: str, history: list, quick_mode: bool = False, workspace: str = "chat") -> str | dict:
     q = _normalize(query)
     if quick_mode:
         return _quick_response(query, q)
-    # Scan full chat history, then resolve follow-up references
+
+    # Re-read the entire conversation before doing anything else
+    convo = read_full_conversation(history, query)
     context_scan = scan_chat_context(history, query)
     query, q, memory = _resolve_context(query, q, history, context_scan)
+    memory = _enrich_memory_from_conversation(memory, convo)
+
     thread_depth = memory.get("thread_depth", 0)
     active_entity = memory.get("active_entity") or ""
     comprehend = _comprehend_query(query, q, memory)
+    comprehend["normalized"] = q
+
+    # Think through the question before routing or answering
+    thinking = _run_thinking_pipeline(query, q, memory, comprehend, history, workspace)
+
+    def _finish(result: str | dict) -> str | dict:
+        return _attach_thinking(result, thinking, mode)
 
     # Thread follow-up: build a richer multi-KB response when continuing a topic
     if (
@@ -4096,17 +4911,17 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
             memory.get("active_topic") or query, active_entity, memory
         )
         if comp:
-            return _forge_or_exact(comp, query, q, "knowledge", depth=thread_depth, mode=mode, memory=memory)
+            return _finish(_forge_or_exact(comp, query, q, "knowledge", depth=thread_depth, mode=mode, memory=memory))
 
     if is_update_request(q, history):
-        return _dispatch_update(query, history, mode)
+        return _finish(_dispatch_update(query, history, mode))
     if _score_animals(q) >= 60:
-        return _forge_or_exact(_dispatch_animals(query, q), query, q, "animals", mode=mode, memory=memory)
+        return _finish(_forge_or_exact(_dispatch_animals(query, q), query, q, "animals", mode=mode, memory=memory))
 
     # KB lookup with entity context from comprehension
     kb_hit = _kb_fact_lookup(q, entity=comprehend["entity"] or active_entity)
     if kb_hit:
-        return _forge_or_exact(kb_hit, query, q, "knowledge", mode=mode, memory=memory)
+        return _finish(_forge_or_exact(kb_hit, query, q, "knowledge", mode=mode, memory=memory))
 
     code_mode = workspace == "code"
     BUILD_BOOST = 30 if code_mode else 0
@@ -4128,6 +4943,10 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     best_intent = max(scores, key=lambda k: scores[k])
     best_score = scores[best_intent]
 
+    # Enrich thinking trace now that intent scores are known
+    thinking.intent_guess = best_intent
+    thinking = _enrich_thinking_trace(thinking, comprehend, memory, scores)
+
     # Comprehension hint boosts the most likely intent
     hint = comprehend.get("intent_hint")
     if hint and hint in scores:
@@ -4146,41 +4965,41 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
 
     if best_score < (20 if code_mode else 30):
         if _has_build_verb(q) or code_mode:
-            return _dispatch_project(query, mode=mode)
-        return web_lookup(query)
+            return _finish(_dispatch_project(query, mode=mode))
+        return _finish(_web_lookup_summarized(query, mode, memory))
     if best_intent == "greeting":
-        return _dispatch_greeting(mode)
+        return _finish(_dispatch_greeting(mode))
     if best_intent == "build_game":
-        return _dispatch_game(query, q, mode)
+        return _finish(_dispatch_game(query, q, mode))
     if best_intent == "build_any":
-        return _dispatch_dynamic(query, mode)
+        return _finish(_dispatch_dynamic(query, mode))
     if best_intent == "build_app":
         if _match(q, *_APP_NOUNS):
-            return _dispatch_app(query, mode)
-        return _dispatch_dynamic(query, mode)
+            return _finish(_dispatch_app(query, mode))
+        return _finish(_dispatch_dynamic(query, mode))
     if best_intent == "math":
-        return generate_math_response(query, mode)
+        return _finish(generate_math_response(query, mode))
     if best_intent == "space":
         full = generate_space_response(query, mode)
-        return _forge_or_exact(full, query, q, "space", depth=thread_depth, mode=mode, memory=memory)
+        return _finish(_forge_or_exact(full, query, q, "space", depth=thread_depth, mode=mode, memory=memory))
     if best_intent == "earth":
         full = generate_earth_response(query, mode)
-        return _forge_or_exact(full, query, q, "earth", depth=thread_depth, mode=mode, memory=memory)
+        return _finish(_forge_or_exact(full, query, q, "earth", depth=thread_depth, mode=mode, memory=memory))
     if best_intent == "science":
         full = generate_science_response(query, mode)
-        return _forge_or_exact(full, query, q, "science", depth=thread_depth, mode=mode, memory=memory)
+        return _finish(_forge_or_exact(full, query, q, "science", depth=thread_depth, mode=mode, memory=memory))
     if best_intent == "history":
         full = generate_history_response(query, mode)
-        return _forge_or_exact(full, query, q, "history", depth=thread_depth, mode=mode, memory=memory)
+        return _finish(_forge_or_exact(full, query, q, "history", depth=thread_depth, mode=mode, memory=memory))
     if best_intent == "programming":
-        return _dispatch_programming(query, mode)
+        return _finish(_dispatch_programming(query, mode))
     if best_intent == "animals":
         raw = _dispatch_animals(query, q)
-        return _forge_or_exact(raw, query, q, "animals", depth=thread_depth, mode=mode, memory=memory)
+        return _finish(_forge_or_exact(raw, query, q, "animals", depth=thread_depth, mode=mode, memory=memory))
     if best_intent == "knowledge":
         for key, answer in GENERAL_KNOWLEDGE.items():
             if key in q or q in key:
-                return _forge_or_exact(answer, query, q, "knowledge", depth=thread_depth, mode=mode, memory=memory)
+                return _finish(_forge_or_exact(answer, query, q, "knowledge", depth=thread_depth, mode=mode, memory=memory))
     if code_mode and _has_build_verb(q):
-        return _dispatch_project(query, mode=mode)
-    return web_lookup(query)
+        return _finish(_dispatch_project(query, mode=mode))
+    return _finish(_web_lookup_summarized(query, mode, memory))
