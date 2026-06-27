@@ -18,6 +18,10 @@ from dataclasses import dataclass, field
 from data.game_templates import GAME_TEMPLATES
 from data.knowledge_base import CODING_HELP, LANG_EXAMPLES, LANG_HELLO_WORLD, LANG_HISTORY
 
+# Limits — same generation logic, bounded output size
+MAX_PROJECT_FILES = 50
+CHAT_CODE_LINE_LIMIT = 50
+
 
 # =============================================================================
 # GAME COMPILER
@@ -6746,6 +6750,24 @@ export interface AppConfig {
     return files + [ProjectFile("types.ts", ts, "typescript")]
 
 
+def _cap_project_files(files: list[ProjectFile]) -> list[ProjectFile]:
+    """Keep project output within MAX_PROJECT_FILES (same logic, bounded file count)."""
+    if len(files) <= MAX_PROJECT_FILES:
+        return files
+    priority = ("index.html", "game.js", "app.js", "style.css", "types.ts", "README.md")
+    ordered: list[ProjectFile] = []
+    names = {f.name for f in files}
+    for name in priority:
+        if name in names:
+            ordered.append(next(f for f in files if f.name == name))
+    for f in files:
+        if f.name not in {x.name for x in ordered}:
+            ordered.append(f)
+        if len(ordered) >= MAX_PROJECT_FILES:
+            break
+    return ordered[:MAX_PROJECT_FILES]
+
+
 def _append_readme(result: ProjectResult, spec: BuildSpec) -> ProjectResult:
     lines = [
         f"# {result.title}",
@@ -6768,6 +6790,7 @@ def _append_readme(result: ProjectResult, spec: BuildSpec) -> ProjectResult:
     files = list(result.files)
     if not any(f.name == "README.md" for f in files):
         files.append(ProjectFile("README.md", readme, "markdown"))
+    files = _cap_project_files(files)
     return ProjectResult(result.title, result.kind, files)
 
 
@@ -7727,7 +7750,7 @@ def generate_power_code(query: str, workspace: str = "code") -> str | None:
     code = composer(task, query)
     if workspace == "chat":
         lines = [ln for ln in code.strip().splitlines() if ln.strip()]
-        code = "\n".join(lines[: min(28, len(lines))])
+        code = "\n".join(lines[: min(CHAT_CODE_LINE_LIMIT, len(lines))])
 
     display = lang.upper() if lang in ("sql", "r") else lang.replace("golang", "Go").title()
     task_label = task.replace("_", " ").title()
