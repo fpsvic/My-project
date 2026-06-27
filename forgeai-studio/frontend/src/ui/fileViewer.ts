@@ -1,4 +1,5 @@
 import type { ProjectFile } from '../types';
+import { openSandboxPreview } from './sandbox';
 
 // Language → display label
 const LANG_LABEL: Record<string, string> = {
@@ -83,7 +84,7 @@ export function buildFileViewer(
   kind: 'game' | 'app' | string,
 ): HTMLElement {
   const wrap = document.createElement('div');
-  wrap.className = 'file-viewer my-4 bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-lg font-mono text-[11px]';
+  wrap.className = 'file-viewer my-4 bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-lg text-sm';
 
   // ── Header: Explorer label + Run button ──
   const isGame = kind === 'game';
@@ -95,16 +96,16 @@ export function buildFileViewer(
   header.className = 'bg-slate-950/60 px-4 py-2.5 border-b border-slate-800 flex justify-between items-center';
   header.innerHTML = `
     <div class="flex items-center space-x-2 text-slate-400">
-      <i class="fa-solid fa-folder-open text-[10px] text-slate-500"></i>
-      <span class="text-[10px] font-bold tracking-wider uppercase text-slate-500">Project Files</span>
-      <span class="text-slate-700 text-[10px]">${files.length} file${files.length !== 1 ? 's' : ''}</span>
+      <i class="fa-solid fa-folder-open text-xs text-slate-500"></i>
+      <span class="text-sm font-medium text-slate-400">Project Files</span>
+      <span class="text-slate-600 text-xs">${files.length} file${files.length !== 1 ? 's' : ''}</span>
     </div>
     <div class="flex items-center space-x-2">
-      <button class="btn-copy-all font-semibold transition flex items-center space-x-1.5 border border-slate-800 bg-slate-950/40 px-2 py-1 rounded text-slate-400 hover:text-white text-[9px]">
-        <i class="fa-regular fa-copy text-[10px]"></i><span>Copy All</span>
+      <button class="btn-copy-all font-medium transition flex items-center space-x-1.5 border border-slate-800 bg-slate-950/40 px-2 py-1 rounded text-slate-400 hover:text-white text-xs">
+        <i class="fa-regular fa-copy text-xs"></i><span>Copy All</span>
       </button>
-      <button class="btn-run font-semibold transition flex items-center space-x-1.5 border px-2.5 py-1 rounded-md ${runColor} text-[9px]">
-        <i class="fa-solid ${runIcon} text-[10px]"></i><span>${runLabel}</span>
+      <button class="btn-run font-medium transition flex items-center space-x-1.5 border px-2.5 py-1 rounded-md ${runColor} text-xs">
+        <i class="fa-solid ${runIcon} text-xs"></i><span>${runLabel}</span>
       </button>
     </div>`;
   wrap.appendChild(header);
@@ -117,7 +118,7 @@ export function buildFileViewer(
     const tab = document.createElement('button');
     tab.dataset.idx = String(idx);
     tab.className = [
-      'tab-btn flex items-center space-x-1.5 px-3 py-2 text-[10px] font-medium border-b-2 transition shrink-0',
+      'tab-btn flex items-center space-x-1.5 px-3 py-2 text-sm font-medium border-b-2 transition shrink-0',
       idx === 0
         ? 'text-slate-200 border-indigo-500 bg-slate-900/60'
         : 'text-slate-500 border-transparent hover:text-slate-300 hover:bg-slate-800/30',
@@ -125,7 +126,7 @@ export function buildFileViewer(
     tab.innerHTML = `
       ${fileIcon(file.language)}
       <span>${escapeHtml(file.name)}</span>
-      <span class="text-[8px] font-bold text-slate-600 ml-0.5">${langBadge(file.language)}</span>`;
+      <span class="text-xs text-slate-500 ml-0.5">${langBadge(file.language)}</span>`;
     tabBar.appendChild(tab);
   });
   wrap.appendChild(tabBar);
@@ -135,7 +136,7 @@ export function buildFileViewer(
     const panel = document.createElement('div');
     panel.dataset.panelIdx = String(idx);
     panel.className = idx === 0 ? '' : 'hidden';
-    panel.innerHTML = `<pre class="p-4 overflow-x-auto text-slate-200 leading-normal max-h-[420px] overflow-y-auto"><code>${escapeHtml(file.content)}</code></pre>`;
+    panel.innerHTML = `<pre class="p-4 overflow-x-auto text-slate-200 leading-relaxed max-h-[420px] overflow-y-auto font-mono text-sm"><code>${escapeHtml(file.content)}</code></pre>`;
     return panel;
   });
   panels.forEach(p => wrap.appendChild(p));
@@ -144,9 +145,9 @@ export function buildFileViewer(
   const footer = document.createElement('div');
   footer.className = 'bg-slate-950/30 border-t border-slate-800 px-4 py-1.5 flex items-center justify-between';
   footer.innerHTML = `
-    <span class="active-file-label text-[9px] text-slate-600">${escapeHtml(files[0]?.name ?? '')}</span>
-    <button class="btn-copy-file text-[9px] font-medium text-slate-500 hover:text-white transition flex items-center space-x-1">
-      <i class="fa-regular fa-copy text-[10px]"></i><span>Copy File</span>
+    <span class="active-file-label text-xs text-slate-500">${escapeHtml(files[0]?.name ?? '')}</span>
+    <button class="btn-copy-file text-xs font-medium text-slate-500 hover:text-white transition flex items-center space-x-1">
+      <i class="fa-regular fa-copy text-xs"></i><span>Copy File</span>
     </button>`;
   wrap.appendChild(footer);
 
@@ -187,12 +188,8 @@ export function buildFileViewer(
   // ── Run project ──
   header.querySelector('.btn-run')?.addEventListener('click', () => {
     const doc = stitchProject(files);
-    const modal = document.getElementById('sandboxModal');
-    const frame = document.getElementById('sandboxFrame') as HTMLIFrameElement | null;
-    if (modal && frame) {
-      modal.classList.remove('hidden');
-      frame.srcdoc = doc;
-    }
+    if (!doc.trim()) return;
+    openSandboxPreview(doc);
   });
 
   return wrap;

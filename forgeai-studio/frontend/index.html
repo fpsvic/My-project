@@ -35,6 +35,12 @@
         #codePanel { display: none; }
         #codePanel.panel-open { display: flex; }
         @media (max-width: 900px) { #codePanel { display: none !important; } }
+        #codePanelFileSidebar { width: 11rem; transition: width 0.2s ease, opacity 0.2s ease; }
+        #codePanelFileSidebar.collapsed { width: 2.25rem; }
+        #codePanelFileSidebar.collapsed .file-sidebar-label,
+        #codePanelFileSidebar.collapsed #codePanelFileTree { display: none; }
+        #codePanelFileSidebar.collapsed #btnToggleFileSidebar i { transform: rotate(180deg); }
+        #sandboxLoading { transition: opacity 0.2s ease; }
     </style>
 </head>
 <body class="bg-white text-slate-800 font-sans min-h-screen flex overflow-hidden antialiased grid-bg">
@@ -180,10 +186,15 @@
       <div id="codePanelTabs" class="flex items-end overflow-x-auto border-b border-slate-700/50 bg-[#0d1117] shrink-0" style="min-height:34px"></div>
       <!-- Body: file tree + code content -->
       <div class="flex flex-1 min-h-0">
-        <!-- File tree -->
-        <div class="w-36 border-r border-slate-700/30 bg-[#0d1117] flex flex-col pt-2 px-1.5 pb-2 shrink-0 overflow-y-auto">
-          <p class="text-[9px] text-slate-600 uppercase tracking-widest font-semibold px-1 mb-2">Explorer</p>
-          <div id="codePanelFileTree" class="space-y-0.5"></div>
+        <!-- File tree (collapsible) -->
+        <div id="codePanelFileSidebar" class="border-r border-slate-700/30 bg-[#0d1117] flex flex-col pt-2 px-1.5 pb-2 shrink-0 overflow-hidden">
+          <div class="flex items-center justify-between px-1 mb-2 min-w-0">
+            <p class="file-sidebar-label text-xs text-slate-400 font-medium truncate">Files</p>
+            <button id="btnToggleFileSidebar" type="button" title="Collapse file sidebar" class="p-1 text-slate-500 hover:text-slate-300 hover:bg-slate-800/60 rounded transition shrink-0">
+              <i class="fa-solid fa-chevron-left text-[10px] transition-transform"></i>
+            </button>
+          </div>
+          <div id="codePanelFileTree" class="space-y-0.5 overflow-y-auto flex-1 min-h-0"></div>
         </div>
         <!-- Code content -->
         <div id="codePanelCode" class="flex-1 overflow-auto bg-[#0d1117] relative">
@@ -209,7 +220,11 @@
                 </button>
             </div>
             <div class="flex-1 bg-slate-950 relative">
-                <iframe id="sandboxFrame" class="w-full h-full border-none" sandbox="allow-scripts allow-popups"></iframe>
+                <div id="sandboxLoading" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 z-10 hidden">
+                    <i class="fa-solid fa-circle-notch text-indigo-400 text-2xl animate-spin mb-3"></i>
+                    <p class="text-sm text-slate-300 font-medium">Loading preview...</p>
+                </div>
+                <iframe id="sandboxFrame" class="w-full h-full border-none" sandbox="allow-scripts allow-popups allow-forms allow-modals"></iframe>
             </div>
         </div>
     </div>

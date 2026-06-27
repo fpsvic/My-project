@@ -7,7 +7,7 @@ import { formatMarkdown } from './markdown';
 import { showToast } from './toast';
 import { renderSessionList } from './sidebar';
 import { buildFileViewer } from './fileViewer';
-import { showProjectInPanel } from './codePanel';
+import { showProjectInPanel, setCodePanelGenerating } from './codePanel';
 import type { ProjectFile } from '../types';
 
 function getChatFeed(): HTMLElement {
@@ -25,18 +25,19 @@ export function addUserMessageUI(text: string): void {
   feed.scrollTop = feed.scrollHeight;
 }
 
-export function addThinkingIndicatorUI(): HTMLElement {
+export function addThinkingIndicatorUI(label?: string): HTMLElement {
   const feed = getChatFeed();
   const row = document.createElement('div');
   row.className = 'flex items-start space-x-4 max-w-[95%] text-left';
+  const thinkingText = label ?? 'Formulating system response...';
   row.innerHTML = `
     <div class="h-8 w-8 bg-slate-100 border border-slate-200 rounded-lg flex items-center justify-center shrink-0 shadow-sm">
       <i class="fa-solid fa-circle-notch text-slate-600 text-xs animate-spin"></i>
     </div>
     <div class="bg-slate-50 border border-slate-200/60 p-5 rounded-2xl rounded-tl-none w-full space-y-2">
-      <div class="flex items-center space-x-2 text-slate-500 text-xs font-medium" id="thinkingLabel">
+      <div class="flex items-center space-x-2 text-slate-500 text-sm font-medium" id="thinkingLabel">
         <i class="fa-solid fa-brain text-slate-400" id="thinkingIcon"></i>
-        <span id="thinkingText">Formulating system response...</span>
+        <span id="thinkingText">${escapeHTML(thinkingText)}</span>
       </div>
       ${settings.showTypingShimmer ? '<div class="h-3 shimmer-bg rounded w-3/4"></div><div class="h-3 shimmer-bg rounded w-1/2"></div>' : ''}
     </div>`;
@@ -303,7 +304,15 @@ export function initChatForm(): void {
     addUserMessageUI(text);
     input.value = '';
 
-    const thinkingRow = addThinkingIndicatorUI();
+    const thinkingLabel = state.activeWorkspace === 'code'
+      ? 'Generating your code...'
+      : 'Formulating system response...';
+
+    if (state.activeWorkspace === 'code') {
+      setCodePanelGenerating();
+    }
+
+    const thinkingRow = addThinkingIndicatorUI(thinkingLabel);
 
     try {
       const res = await sendChat({
