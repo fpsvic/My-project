@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Top-Down Soccer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<h1>⚽ Top-Down Soccer</h1>
+
+<div id="ui">
+  <div class="team-badge team-you">YOU</div>
+  <span id="score">0 — 0</span>
+  <div class="team-badge team-ai">AI</div>
+  <span id="timer">2:00</span>
+</div>
+
+<div class="wrapper">
+  <canvas id="gameCanvas" width="800" height="520"></canvas>
+  <div id="overlay">
+    <h2>⚽ Kick Off!</h2>
+    <p>Get Ready...</p>
+  </div>
+</div>
+
+<div id="controls">
+  WASD / Arrows — Move &nbsp;<span>|</span>&nbsp;
+  Space — Sprint &nbsp;<span>|</span>&nbsp;
+  Enter — Restart
+</div>
+
+<script src="physics.js"></script>
+<script src="characters.js"></script>
+<script>
+const canvas  = document.getElementById('gameCanvas');
+const ctx     = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const scoreEl = document.getElementById('score');
+const timerEl = document.getElementById('timer');
+
+const W = canvas.width, H = canvas.height;
+const CX = W / 2, CY = H / 2;
+const MATCH_TIME = 120;
+
+// Player configs: jersey, shorts, skin, number
+const PLAYER_CFG  = { jersey: '#1db954', shorts: '#ffffff', skin: SKIN[0], num: 10 };
+const TM_CFGS = [
+  { jersey: '#1db954', shorts: '#ffffff', skin: SKIN[1], num: 5 },
+  { jersey: '#1db954', shorts: '#ffffff', skin: SKIN[2], num: 7 },
+  { jersey: '#ffcc00', shorts: '#1db954', skin: SKIN[0], num: 1 },  // GK
+];
+const AI_CFGS = [
+  { jersey: '#e63946', shorts: '#111',    skin: SKIN[3], num: 9 },
+  { jersey: '#e63946', shorts: '#111',    skin: SKIN[2], num: 4 },
+  { jersey: '#e63946', shorts: '#111',    skin: SKIN[1], num: 6 },
+  { jersey: '#ff8800', shorts: '#e63946', skin: SKIN[3], num: 1 },  // GK
+];
+
+let state, keys = {};
+
+// ——— State init ———
+function mkEntity(x, y, role) {
+  return { x, y, vx: 0, vy: 0, role, angle: Math.PI / 2, kickCooldown: 0 };
+}
+
+function initGame() {
+  state = {
+    time: MATCH_TIME,
+    score: [0, 0],
+    phase: 'kickoff',
+    phaseTimer: 2,
+    goalFlash: 0,
+    goalTeam: -1,
+    ball: { x: CX, y: CY, vx: 0, vy: 0 },
+    player: mkEntity(CX - 90, CY, 'player'),
+    teammates: [
+      mkEntity(CX - 200, CY - 90, 'defender'),
+      mkEntity(CX - 200, CY + 90, 'defender'),
+      mkEntity(FIELD.x + 22, CY, 'keeper'),
+    ],
+    ai: [
+      mkEntity(CX + 90,  CY,       'forward'),
+      mkEntity(CX + 200, CY - 90,  'defender'),
+      mkEntity(CX + 200, CY + 90,  'defender'),
+      mkEntity(FIELD.x + FIELD.w - 22, CY, 'keeper'),
+    ],
+  };
+  updateUI();
+  showOverlay('⚽ Kick Off!', 'Get Ready...');
+}
+
+function resetPositions() {
+  const b = state.ball;
+  b.x = CX; b.y = CY; b.vx = 0; b.vy = 0;
+  state.player.x = CX - 90; state.player.y = CY; state.player.vx = 0; state.player.vy = 0;
+  state.ai[0].x = CX + 90;  state.ai[0].y = CY;
+  state.ai[1].x = CX + 200; state.ai[1].y = CY - 90;
+  state.ai[2].x = CX + 200; state.ai[2].y = CY + 90;
+  state.ai[3].x = FIELD.x + FIELD.w - 22; state.ai[3].y = CY;
+  state.teammates[0].x = CX - 200; state.teammates[0].y = CY - 90;
+  state.teammates[1].x = CX - 200; state.teammates[1].y = CY + 90;
+  state.teammates[2].x = FIELD.x + 22; state.teammates[2].y = CY;
+  for (const e of allEntities()) { e.vx = 0; e.vy = 0; e.kickCooldown = 0; }
+}
+
+function allEntities() {
+  return [state.player, ...state.teammates, ...state.ai];
+}
+
+// ——— Input ———
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Enter') initGame();
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// ——— Player update ———
+function updatePlayer(dt) {
+  const p = state.player;
+  let dx = 0, dy = 0;
+  if (keys['KeyW'] || keys['ArrowUp'])    dy -= 1;
+  if (keys['KeyS'] || keys['ArrowDown'])  dy += 1;
+  if (keys['KeyA'] || keys['ArrowLeft'])  dx -= 1;
+  if (keys['KeyD'] || keys['ArrowRight']) dx += 1;
+
+  const sprint = keys['Space'];
+  const topSpeed = sprint ? 5.8 : 4.0;
+  const accel    = sprint ? 1.2 : 0.9;
+  const friction = 0.78;
+
+  if (dx || dy) {
+    const [nx, ny] = norm(dx, dy);
+    p.vx += nx * accel;
+    p.vy += ny * accel;
+    capSpeed(p, topSpeed);
+  } else {
+    p.vx *= friction;
+    p.vy *= friction;
+    if (Math.abs(p.vx) < 0.1) p.vx = 0;
+    if (Math.abs(p.vy) < 0.1) p.vy = 0;
+  }
+
+  p.x += p.vx;
+  p.y += p.vy;
+  clampField(p, PLAYER_R);
+
+  const kickPower = sprint ? 10 : 7.5;
+  tryKick(p, state.ball, kickPower, dt);
+}
+
+// ——— AI brains ———
+function moveAgent(agent, tx, ty, topSpeed, dt) {
+  const dx = tx - agent.x, dy = ty - agent.y;
+  const d  = Math.hypot(dx, dy);
+  if (d < 2) return;
+  const accel = 0.7;
+  const [nx, ny] = norm(dx, dy);
+  agent.vx += nx * accel;
+  agent.vy += ny * accel;
+  capSpeed(agent, topSpeed);
+  agent.x += agent.vx;
+  agent.y += agent.vy;
+  agent.vx *= 0.82;
+  agent.vy *= 0.82;
+  clampField(agent, PLAYER_R);
+}
+
+function updateAI(dt) {
+  const b = state.ball;
+
+  state.ai.forEach((a, i) => {
+    let tx = b.x, ty = b.y, spd = 3.2;
+
+    if (a.role === 'keeper') {
+      tx  = FIELD.x + FIELD.w - 28;
+      ty  = Math.max(CY - GOAL_W / 2 + 12, Math.min(CY + GOAL_W / 2 - 12, b.y));
+      spd = 3.8;
+    } else if (a.role === 'forward') {
+      // Intercept ball trajectory
+      const ticks = Math.max(1, dist(a, b) / 4);
+      tx = b.x + b.vx * ticks * 0.4;
+      ty = b.y + b.vy * ticks * 0.4;
+      spd = 3.4;
+    } else if (a.role === 'defender') {
+      if (b.x > CX - 60) {
+        tx = b.x; ty = b.y; spd = 3.0;
+      } else {
+        tx = CX + 180; ty = i === 1 ? CY - 90 : CY + 90; spd = 1.8;
+      }
+    }
+
+    moveAgent(a, tx, ty, spd, dt);
+    const kickPower = a.role === 'keeper' ? 8 : 9;
+    if (tryKick(a, b, kickPower, dt)) {
+      // Aim toward player's goal with slight inaccuracy
+      const aimX = FIELD.x - b.x;
+      const aimY = CY - b.y + (Math.random() - 0.5) * 60;
+      const [nx, ny] = norm(aimX, aimY);
+      b.vx = nx * kickPower;
+      b.vy = ny * kickPower;
+      a.kickCooldown = KICK_COOLDOWN;
+    }
+  });
+
+  state.teammates.forEach((t, i) => {
+    let tx, ty, spd = 2.8;
+
+    if (t.role === 'keeper') {
+      tx  = FIELD.x + 28;
+      ty  = Math.max(CY - GOAL_W / 2 + 12, Math.min(CY + GOAL_W / 2 - 12, b.y));
+      spd = 3.6;
+    } else {
+      if (b.x < CX + 60) {
+        tx = b.x; ty = b.y; spd = 2.8;
+      } else {
+        tx = CX - 180; ty = i === 0 ? CY - 90 : CY + 90; spd = 1.8;
+      }
+    }
+
+    moveAgent(t, tx, ty, spd, dt);
+    if (tryKick(t, b, 8, dt)) {
+      const aimX = FIELD.x + FIELD.w - b.x;
+      const aimY = CY - b.y + (Math.random() - 0.5) * 40;
+      const [nx, ny] = norm(aimX, aimY);
+      b.vx = nx * 8;
+      b.vy = ny * 8;
+      t.kickCooldown = KICK_COOLDOWN;
+    }
+  });
+
+  // Separate overlapping players
+  const all = allEntities();
+  for (let i = 0; i < all.length; i++)
+    for (let j = i + 1; j < all.length; j++)
+      separateCircles(all[i], all[j]);
+}
+
+// ——— Score / overlay ———
+function doScore(team) {
+  state.score[team]++;
+  state.phase = 'goal';
+  state.phaseTimer = 2.8;
+  state.goalFlash = 1.0;
+  state.goalTeam = team;
+  updateUI();
+  const msg  = team === 0 ? '🎉 GOAL!' : '😬 GOAL!';
+  const sub  = team === 0 ? 'You scored!' : 'AI scored!';
+  showOverlay(msg, sub);
+}
+
+function showOverlay(title, sub) {
+  overlay.innerHTML = `<h2>${title}</h2><p>${sub}</p>`;
+  overlay.style.display = 'flex';
+}
+
+function updateUI() {
+  scoreEl.textContent = `${state.score[0]} — ${state.score[1]}`;
+  const m = Math.floor(state.time / 60);
+  const s = Math.floor(state.time % 60);
+  timerEl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// ——— Field drawing ———
+function drawField() {
+  // Grass base
+  ctx.fillStyle = '#2d7a3a';
+  ctx.fillRect(FIELD.x, FIELD.y, FIELD.w, FIELD.h);
+
+  // Alternating stripes
+  const sw = FIELD.w / 8;
+  ctx.fillStyle = '#2f8040';
+  for (let i = 0; i < 8; i += 2)
+    ctx.fillRect(FIELD.x + i * sw, FIELD.y, sw, FIELD.h);
+
+  // Field outline
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 2.5;
+  ctx.strokeRect(FIELD.x, FIELD.y, FIELD.w, FIELD.h);
+
+  // Halfway line
+  ctx.beginPath();
+  ctx.moveTo(CX, FIELD.y);
+  ctx.lineTo(CX, FIELD.y + FIELD.h);
+  ctx.stroke();
+
+  // Center circle
+  ctx.beginPath();
+  ctx.arc(CX, CY, 60, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = 'white';
+  ctx.beginPath();
+  ctx.arc(CX, CY, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  const gTop = CY - GOAL_W / 2, gBot = CY + GOAL_W / 2;
+
+  // Penalty areas
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+  ctx.lineWidth = 1.8;
+  ctx.strokeRect(FIELD.x,                  CY - 100, 90, 200);
+  ctx.strokeRect(FIELD.x + FIELD.w - 90,   CY - 100, 90, 200);
+
+  // Penalty spots
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.beginPath(); ctx.arc(FIELD.x + 60,              CY, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(FIELD.x + FIELD.w - 60,    CY, 3, 0, Math.PI * 2); ctx.fill();
+
+  // Goal nets (left = you, right = AI)
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(FIELD.x - GOAL_D, gTop, GOAL_D, GOAL_W);
+  ctx.fillRect(FIELD.x + FIELD.w, gTop, GOAL_D, GOAL_W);
+
+  // Net grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 1;
+  for (let y = gTop; y <= gBot; y += 18) {
+    ctx.beginPath(); ctx.moveTo(FIELD.x - GOAL_D, y); ctx.lineTo(FIELD.x, y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(FIELD.x + FIELD.w, y); ctx.lineTo(FIELD.x + FIELD.w + GOAL_D, y); ctx.stroke();
+  }
+
+  // Goal posts
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(FIELD.x, gTop); ctx.lineTo(FIELD.x - GOAL_D, gTop);
+  ctx.lineTo(FIELD.x - GOAL_D, gBot); ctx.lineTo(FIELD.x, gBot);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(FIELD.x + FIELD.w, gTop); ctx.lineTo(FIELD.x + FIELD.w + GOAL_D, gTop);
+  ctx.lineTo(FIELD.x + FIELD.w + GOAL_D, gBot); ctx.lineTo(FIELD.x + FIELD.w, gBot);
+  ctx.stroke();
+}
+
+// ——— Goal flash ———
+function drawGoalFlash() {
+  if (state.goalFlash <= 0) return;
+  const color = state.goalTeam === 0 ? '#88ff88' : '#ff8888';
+  ctx.save();
+  ctx.globalAlpha = state.goalFlash * 0.28;
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+  state.goalFlash -= 0.025;
+}
+
+// ——— Main loop ———
+let last = 0;
+function loop(ts) {
+  const dt = Math.min((ts - last) / 1000, 0.05);
+  last = ts;
+
+  // Background
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+  drawField();
+
+  if (state.phase === 'kickoff') {
+    state.phaseTimer -= dt;
+    if (state.phaseTimer <= 0) {
+      state.phase = 'play';
+      overlay.style.display = 'none';
+    }
+  } else if (state.phase === 'play') {
+    updateCooldowns(allEntities(), dt);
+    updatePlayer(dt);
+    updateAI(dt);
+    const scored = moveBall(state.ball, state);
+    if (scored === 'player') doScore(0);
+    else if (scored === 'ai')    doScore(1);
+
+    state.time -= dt;
+    if (state.time <= 0) {
+      state.time = 0;
+      state.phase = 'end';
+      const [p, a] = state.score;
+      const msg = p > a ? '🏆 You Win!' : p < a ? '😞 You Lose!' : '🤝 Draw!';
+      showOverlay(msg, `Final: ${p} — ${a} | Press Enter to restart`);
+    }
+    updateUI();
+  } else if (state.phase === 'goal') {
+    state.phaseTimer -= dt;
+    if (state.phaseTimer <= 0) {
+      resetPositions();
+      state.phase = 'kickoff';
+      state.phaseTimer = 1.8;
+      showOverlay('⚽ Kick Off!', 'Get Ready...');
+    }
+  }
+
+  // Draw everyone
+  state.teammates.forEach((t, i) => {
+    const cfg = TM_CFGS[i];
+    drawCharacter(ctx, t.x, t.y, getFacingAngle(t), cfg.jersey, cfg.shorts, cfg.skin, cfg.num, false);
+  });
+  state.ai.forEach((a, i) => {
+    const cfg = AI_CFGS[i];
+    drawCharacter(ctx, a.x, a.y, getFacingAngle(a), cfg.jersey, cfg.shorts, cfg.skin, cfg.num, false);
+  });
+
+  const p = state.player;
+  drawCharacter(ctx, p.x, p.y, getFacingAngle(p), PLAYER_CFG.jersey, PLAYER_CFG.shorts, PLAYER_CFG.skin, PLAYER_CFG.num, true);
+
+  drawBall(ctx, state.ball);
+  drawGoalFlash();
+
+  requestAnimationFrame(loop);
+}
+
+initGame();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
