@@ -32,8 +32,8 @@ def chat(req: ChatRequest):
     spell_result = spell_correct_query(req.query)
     processed = spell_result["text"]
 
-    from services import web_search as _ws
-    _ws._last_searched = False
+    from services import code_generater as _cg
+    _cg._last_searched = False
 
     result = generate_response(processed, req.mode, req.history, quick_mode=req.quick_mode, workspace=req.workspace)
 
@@ -48,6 +48,6 @@ def chat(req: ChatRequest):
     return ChatResponse(
         text=text,
         corrections=spell_result.get("corrections", []),
-        web_searched=_ws._last_searched,
+        web_searched=_cg._last_searched,
         project_files=project_files,
     )

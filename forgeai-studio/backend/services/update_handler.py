@@ -101,18 +101,17 @@ def extract_last_code(history: list[dict]) -> str | None:
 
 def apply_update(query: str, history: list[dict]) -> dict:
     """Rebuild the project with the modification applied."""
-    from services.code_generator import generate_project
+    from services.code_generater import generate_anything, generate_crud_app, _detect_entity, _detect_features, _make_title
 
     original_query = _find_original_build_query(history) or ""
     project = extract_last_project(history)
 
     if project or original_query:
-        # Rebuild entire project combining original intent + modification
         if original_query:
             combined = f"{original_query}. Additionally: {query}"
         else:
             combined = query
-        result = generate_project(combined)
+        result = generate_anything(combined)
         return {
             "title": result.title,
             "kind": result.kind,
@@ -120,9 +119,8 @@ def apply_update(query: str, history: list[dict]) -> dict:
         }
 
     # Legacy fallback: try to patch inline HTML
-    from services.dynamic_builder import generate_crud_app, _detect_entity, _detect_features, _make_title
     entity, emoji, fields = _detect_entity(query)
     features = _detect_features(query)
-    title = _make_title(entity, emoji)
-    new_code = generate_crud_app(entity, emoji, fields, features, title)
+    title = _make_title(entity, query)
+    new_code = generate_crud_app(query)
     return {"title": title, "kind": "app", "files": [{"name": "index.html", "content": new_code, "language": "html"}]}

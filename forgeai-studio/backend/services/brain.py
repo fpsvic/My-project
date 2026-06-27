@@ -29,10 +29,17 @@ from services.space_engine import generate_space_response
 from services.earth_engine import generate_earth_response
 from services.science_engine import generate_science_response
 from services.history_engine import generate_history_response
-from services.game_compiler import compile_game
-from services.app_builder import build_app, detect_app_type
-from services.dynamic_builder import build_dynamic_app
-from services.code_generator import generate_project
+from services.code_generater import (
+    generate_anything,
+    generate_anything_with_meta,
+    generate_project,
+    compile_game,
+    build_app,
+    detect_app_type,
+    build_dynamic_app,
+    web_lookup,
+    _last_searched,
+)
 from services.update_handler import is_update_request, apply_update
 
 # Load DB-backed dicts (cached in memory after first access)
@@ -2648,20 +2655,22 @@ def _dispatch_animals(query: str, q: str) -> str:
 
 def _dispatch_project(query: str, kind: str = "auto", mode: str = "forge_code") -> dict:
     """Generate a multi-file project and return a response dict."""
-    project = generate_project(query)
+    project, researched = generate_anything_with_meta(query)
     verb = "compiled" if project.kind == "game" else "built"
     action = "Play Game" if project.kind == "game" else "Run Project"
     n = len(project.files)
     file_list = ", ".join(f"`{f.name}`" for f in project.files)
+    research_note = " I looked up context on Google to understand your request." if researched else ""
 
     if mode == "forge_thinking":
         intro = (
             f"### Thinking Process\n"
             f"- **Intent:** {'Game compilation' if project.kind == 'game' else 'App generation'}\n"
             f"- **Query parsed:** genre/type detection, theme extraction, feature flags\n"
-            f"- **Output:** {n} file{'s' if n != 1 else ''} — {file_list}\n\n"
+            + (f"- **Web research:** Used Google/DuckDuckGo to gather context for this custom build\n" if researched else "")
+            + f"- **Output:** {n} file{'s' if n != 1 else ''} — {file_list}\n\n"
             f"---\n\n"
-            f"I {verb} **{project.title}** with {n} production-ready file{'s' if n != 1 else ''}. "
+            f"I {verb} **{project.title}** with {n} production-ready file{'s' if n != 1 else ''}.{research_note} "
             f"Browse the file tree below, then hit **\"{action}\"** to launch it live."
         )
     elif mode == "forge_instant":
@@ -2671,7 +2680,7 @@ def _dispatch_project(query: str, kind: str = "auto", mode: str = "forge_code") 
         )
     else:
         intro = (
-            f"I {verb} **{project.title}** — {n} file{'s' if n != 1 else ''} generated ({file_list}). "
+            f"I {verb} **{project.title}** — {n} file{'s' if n != 1 else ''} generated ({file_list}).{research_note} "
             f"The code is split into separate modules for easy editing. "
             f"Browse the files below, then hit **\"{action}\"** to launch."
         )
@@ -3027,7 +3036,7 @@ def _synthesize_programming_response(query: str, q: str, mode: str = "forge_code
                 )
             return response
 
-    from services.web_search import web_lookup
+    from services.code_generater import web_lookup
     return web_lookup(query)
 
 # --- QUICK MODE ---
@@ -3361,7 +3370,8 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     best_intent = max(scores, key=lambda k: scores[k])
     best_score = scores[best_intent]
     if best_score < (20 if code_mode else 30):
-        from services.web_search import web_lookup
+        if _has_build_verb(q) or code_mode:
+            return _dispatch_project(query, mode=mode)
         return web_lookup(query)
     if best_intent == "greeting":
         return _dispatch_greeting(mode)
@@ -3408,5 +3418,4 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
                 return forge(raw, q, "knowledge", depth=thread_depth, mode=mode)
     if code_mode and _has_build_verb(q):
         return _dispatch_project(query, mode=mode)
-    from services.web_search import web_lookup
     return web_lookup(query)
