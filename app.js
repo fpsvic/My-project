@@ -494,3 +494,67 @@ function renderLangPickerGrid(filter) {
 window.onload = () => {
     projects = JungleStorage.getProjects();
 };
+
+// ── Drag-and-drop file import ─────────────────────────────────────────────────
+(function setupDragDrop() {
+    const zones = [
+        document.getElementById('editor-wrapper'),
+        document.getElementById('file-list'),
+        document.getElementById('preview-frame'),
+    ];
+
+    function isZip(file) {
+        return file.name.toLowerCase().endsWith('.zip') ||
+               file.type === 'application/zip' ||
+               file.type === 'application/x-zip-compressed';
+    }
+
+    function handleFiles(fileList) {
+        const files = Array.from(fileList);
+        const zips = files.filter(isZip);
+        const valid = files.filter(f => !isZip(f));
+
+        if (zips.length > 0) {
+            JungleUI.showToast('⛔ This editor does not allow ZIP files. Please drag or create a normal file.', null, 'error');
+        }
+
+        valid.forEach(file => {
+            const reader = new FileReader();
+            reader.onload = e => {
+                const content = e.target.result;
+                const p = JungleUI.getCurrentProject();
+                if (!p) return;
+                const safeName = JungleIntelligence.sanitizeFileName(file.name, p.lang, p.files);
+                p.files[safeName] = content;
+                JungleStorage.saveProjects(projects);
+                JungleUI.renderFilesList();
+                JungleUI.switchToFile(safeName);
+                JungleUI.showToast(`✓ Imported ${safeName}`, null, 'success');
+            };
+            reader.readAsText(file);
+        });
+    }
+
+    zones.forEach(zone => {
+        if (!zone) return;
+        zone.addEventListener('dragover', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.style.outline = '2px dashed #528b74';
+            zone.style.outlineOffset = '-4px';
+        });
+        zone.addEventListener('dragleave', e => {
+            zone.style.outline = '';
+            zone.style.outlineOffset = '';
+        });
+        zone.addEventListener('drop', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.style.outline = '';
+            zone.style.outlineOffset = '';
+            if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+                handleFiles(e.dataTransfer.files);
+            }
+        });
+    });
+})();
