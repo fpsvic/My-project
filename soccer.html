@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Top-Down Soccer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: 'Arial', sans-serif; }
+  h1 { color: #eee; font-size: 28px; margin-bottom: 12px; letter-spacing: 2px; text-transform: uppercase; }
+  #gameCanvas { border: 3px solid #444; border-radius: 4px; display: block; }
+  #ui { display: flex; align-items: center; gap: 40px; margin-top: 12px; color: #eee; font-size: 18px; }
+  #score { font-size: 32px; font-weight: bold; letter-spacing: 4px; }
+  #timer { font-size: 22px; }
+  #controls { color: #888; font-size: 13px; margin-top: 8px; text-align: center; }
+  #overlay { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.75); color: #fff; border-radius: 4px; pointer-events: none; }
+  #overlay h2 { font-size: 36px; margin-bottom: 10px; }
+  #overlay p { font-size: 18px; color: #aaa; }
+  .wrapper { position: relative; }
+</style>
+</head>
+<body>
+<h1>⚽ Top-Down Soccer</h1>
+<div id="ui">
+  <span id="score">0 — 0</span>
+  <span id="timer">2:00</span>
+</div>
+<div class="wrapper">
+  <canvas id="gameCanvas" width="800" height="520"></canvas>
+  <div id="overlay" style="width:800px;height:520px;top:0;left:0;"></div>
+</div>
+<div id="controls">WASD / Arrow Keys — Move &nbsp;|&nbsp; Space — Sprint &nbsp;|&nbsp; Enter — Restart</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const scoreEl = document.getElementById('score');
+const timerEl = document.getElementById('timer');
+
+const W = canvas.width, H = canvas.height;
+const FIELD = { x: 60, y: 40, w: W - 120, h: H - 80 };
+const GOAL_W = 100, GOAL_D = 18;
+const PLAYER_R = 14, BALL_R = 9, AI_R = 14;
+const MATCH_TIME = 120; // seconds
+
+let state, keys = {};
+
+function initGame() {
+  state = {
+    time: MATCH_TIME,
+    score: [0, 0],
+    phase: 'kickoff', // kickoff, play, goal, end
+    phaseTimer: 2,
+    ball: { x: W/2, y: H/2, vx: 0, vy: 0 },
+    player: { x: W/2 - 80, y: H/2, vx: 0, vy: 0, sprint: false },
+    ai: [
+      { x: W/2 + 80, y: H/2, vx: 0, vy: 0, role: 'forward' },
+      { x: W/2 + 180, y: H/2 - 80, vx: 0, vy: 0, role: 'defender' },
+      { x: W/2 + 180, y: H/2 + 80, vx: 0, vy: 0, role: 'defender' },
+      { x: FIELD.x + FIELD.w - 20, y: H/2, vx: 0, vy: 0, role: 'keeper' },
+    ],
+    teammates: [
+      { x: W/2 - 180, y: H/2 - 80, vx: 0, vy: 0, role: 'defender' },
+      { x: W/2 - 180, y: H/2 + 80, vx: 0, vy: 0, role: 'defender' },
+      { x: FIELD.x + 20, y: H/2, vx: 0, vy: 0, role: 'keeper' },
+    ],
+    lastTouch: 'player',
+    goalFlash: 0,
+  };
+  updateUI();
+  overlay.innerHTML = '<h2>⚽ Kick Off!</h2><p>Get Ready...</p>';
+  overlay.style.display = 'flex';
+}
+
+function resetPositions(scoringTeam) {
+  const b = state.ball;
+  b.x = W/2; b.y = H/2; b.vx = 0; b.vy = 0;
+  const p = state.player;
+  p.x = W/2 - 80; p.y = H/2; p.vx = 0; p.vy = 0;
+  state.ai[0].x = W/2 + 80; state.ai[0].y = H/2;
+  state.ai[1].x = W/2 + 180; state.ai[1].y = H/2 - 80;
+  state.ai[2].x = W/2 + 180; state.ai[2].y = H/2 + 80;
+  state.ai[3].x = FIELD.x + FIELD.w - 20; state.ai[3].y = H/2;
+  state.teammates[0].x = W/2 - 180; state.teammates[0].y = H/2 - 80;
+  state.teammates[1].x = W/2 - 180; state.teammates[1].y = H/2 + 80;
+  state.teammates[2].x = FIELD.x + 20; state.teammates[2].y = H/2;
+}
+
+// ——— Input ———
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Enter') { initGame(); }
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// ——— Physics helpers ———
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+function norm(dx, dy) { const l = Math.hypot(dx, dy) || 1; return [dx/l, dy/l]; }
+
+function clampField(obj, r) {
+  obj.x = Math.max(FIELD.x + r, Math.min(FIELD.x + FIELD.w - r, obj.x));
+  obj.y = Math.max(FIELD.y + r, Math.min(FIELD.y + FIELD.h - r, obj.y));
+}
+
+function moveBall() {
+  const b = state.ball;
+  b.x += b.vx; b.y += b.vy;
+  b.vx *= 0.97; b.vy *= 0.97;
+  if (Math.abs(b.vx) < 0.05) b.vx = 0;
+  if (Math.abs(b.vy) < 0.05) b.vy = 0;
+
+  // Wall bounces (top/bottom)
+  if (b.y - BALL_R < FIELD.y) { b.y = FIELD.y + BALL_R; b.vy *= -0.7; }
+  if (b.y + BALL_R > FIELD.y + FIELD.h) { b.y = FIELD.y + FIELD.h - BALL_R; b.vy *= -0.7; }
+
+  const goalTop = H/2 - GOAL_W/2, goalBot = H/2 + GOAL_W/2;
+
+  // Left wall (player goal)
+  if (b.x - BALL_R < FIELD.x) {
+    if (b.y > goalTop && b.y < goalBot) {
+      // GOAL for AI!
+      if (state.phase === 'play') { score(1); return; }
+    } else {
+      b.x = FIELD.x + BALL_R; b.vx *= -0.7;
+    }
+  }
+  // Right wall (AI goal)
+  if (b.x + BALL_R > FIELD.x + FIELD.w) {
+    if (b.y > goalTop && b.y < goalBot) {
+      // GOAL for player!
+      if (state.phase === 'play') { score(0); return; }
+    } else {
+      b.x = FIELD.x + FIELD.w - BALL_R; b.vx *= -0.7;
+    }
+  }
+}
+
+function score(team) {
+  state.score[team]++;
+  state.phase = 'goal';
+  state.phaseTimer = 2.5;
+  state.goalFlash = 1;
+  updateUI();
+  overlay.innerHTML = `<h2>${team === 0 ? '🎉 GOAL!' : '😬 GOAL!'}</h2><p>${team === 0 ? 'You scored!' : 'AI scored!'}</p>`;
+  overlay.style.display = 'flex';
+}
+
+function kickBall(kicker, power) {
+  const b = state.ball;
+  const [dx, dy] = norm(b.x - kicker.x, b.y - kicker.y);
+  b.vx += dx * power;
+  b.vy += dy * power;
+}
+
+function collideCircles(a, ar, b, br) {
+  const d = dist(a, b);
+  if (d < ar + br) {
+    const overlap = ar + br - d + 0.5;
+    const [nx, ny] = norm(b.x - a.x, b.y - a.y);
+    b.x += nx * overlap / 2;
+    b.y += ny * overlap / 2;
+    a.x -= nx * overlap / 2;
+    a.y -= ny * overlap / 2;
+    // Transfer velocity
+    const relVx = a.vx - b.vx, relVy = a.vy - b.vy;
+    const dot = relVx * nx + relVy * ny;
+    if (dot > 0) {
+      b.vx += nx * dot * 0.6;
+      b.vy += ny * dot * 0.6;
+      a.vx -= nx * dot * 0.6;
+      a.vy -= ny * dot * 0.6;
+    }
+  }
+}
+
+// ——— Player update ———
+function updatePlayer(dt) {
+  const p = state.player;
+  let dx = 0, dy = 0;
+  if (keys['KeyW'] || keys['ArrowUp']) dy -= 1;
+  if (keys['KeyS'] || keys['ArrowDown']) dy += 1;
+  if (keys['KeyA'] || keys['ArrowLeft']) dx -= 1;
+  if (keys['KeyD'] || keys['ArrowRight']) dx += 1;
+  const sprint = keys['Space'];
+  const speed = sprint ? 5.5 : 3.8;
+  if (dx || dy) { const [nx, ny] = norm(dx, dy); p.vx = nx * speed; p.vy = ny * speed; }
+  else { p.vx *= 0.8; p.vy *= 0.8; }
+  p.x += p.vx; p.y += p.vy;
+  clampField(p, PLAYER_R);
+
+  // Kick ball on contact
+  if (dist(p, state.ball) < PLAYER_R + BALL_R + 1) {
+    kickBall(p, 3.5 + (sprint ? 1.5 : 0));
+    state.lastTouch = 'player';
+  }
+}
+
+// ——— AI update ———
+function moveToward(agent, tx, ty, speed) {
+  const [nx, ny] = norm(tx - agent.x, ty - agent.y);
+  agent.vx = nx * speed;
+  agent.vy = ny * speed;
+  agent.x += agent.vx;
+  agent.y += agent.vy;
+}
+
+function updateAI(dt) {
+  const b = state.ball;
+  const { ai, teammates } = state;
+
+  // Simple AI roles
+  ai.forEach((a, i) => {
+    let tx = b.x, ty = b.y, speed = 2.8;
+    if (a.role === 'keeper') {
+      // Stay near goal, track ball Y
+      tx = FIELD.x + FIELD.w - 30;
+      ty = Math.max(H/2 - GOAL_W/2 + 10, Math.min(H/2 + GOAL_W/2 - 10, b.y));
+      speed = 3.2;
+    } else if (a.role === 'forward') {
+      // Chase ball aggressively
+      speed = 3.0;
+    } else if (a.role === 'defender') {
+      // Chase if ball is in their half, else hold position
+      if (b.x > W/2) { tx = b.x; ty = b.y; speed = 2.6; }
+      else { tx = W/2 + 180; ty = i === 1 ? H/2 - 80 : H/2 + 80; speed = 1.5; }
+    }
+    const d = dist(a, b);
+    if (d < AI_R + BALL_R + 1) {
+      // Kick toward player's goal
+      const [nx, ny] = norm(FIELD.x - b.x, H/2 - b.y);
+      b.vx += nx * 4.5 + (Math.random() - 0.5) * 1.5;
+      b.vy += ny * 4.5 + (Math.random() - 0.5) * 1.5;
+      state.lastTouch = 'ai';
+    }
+    if (dist(a, b) > 1) moveToward(a, tx, ty, speed);
+    clampField(a, AI_R);
+  });
+
+  // Teammates (basic)
+  teammates.forEach((t, i) => {
+    let tx, ty, speed = 2.4;
+    if (t.role === 'keeper') {
+      tx = FIELD.x + 30;
+      ty = Math.max(H/2 - GOAL_W/2 + 10, Math.min(H/2 + GOAL_W/2 - 10, b.y));
+      speed = 3.0;
+    } else {
+      if (b.x < W/2) { tx = b.x; ty = b.y; }
+      else { tx = W/2 - 180; ty = i === 0 ? H/2 - 80 : H/2 + 80; }
+    }
+    if (dist(t, b) < AI_R + BALL_R + 1) {
+      const [nx, ny] = norm(FIELD.x + FIELD.w - b.x, H/2 - b.y);
+      b.vx += nx * 3.8;
+      b.vy += ny * 3.8;
+      state.lastTouch = 'teammate';
+    }
+    if (dist(t, b) > 1) moveToward(t, tx, ty, speed);
+    clampField(t, AI_R);
+  });
+
+  // Collisions between all entities
+  const all = [state.player, ...ai, ...teammates];
+  for (let i = 0; i < all.length; i++)
+    for (let j = i+1; j < all.length; j++)
+      collideCircles(all[i], PLAYER_R, all[j], PLAYER_R);
+}
+
+// ——— Drawing ———
+function drawField() {
+  // Grass
+  ctx.fillStyle = '#3a7d44';
+  ctx.fillRect(FIELD.x, FIELD.y, FIELD.w, FIELD.h);
+
+  // Stripes
+  ctx.fillStyle = '#3d8049';
+  const sw = FIELD.w / 10;
+  for (let i = 0; i < 10; i += 2) {
+    ctx.fillRect(FIELD.x + i * sw, FIELD.y, sw, FIELD.h);
+  }
+
+  // Lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(FIELD.x, FIELD.y, FIELD.w, FIELD.h);
+
+  // Center line
+  ctx.beginPath();
+  ctx.moveTo(W/2, FIELD.y);
+  ctx.lineTo(W/2, FIELD.y + FIELD.h);
+  ctx.stroke();
+
+  // Center circle
+  ctx.beginPath();
+  ctx.arc(W/2, H/2, 55, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(W/2, H/2, 4, 0, Math.PI*2);
+  ctx.fillStyle = 'white';
+  ctx.fill();
+
+  const goalTop = H/2 - GOAL_W/2, goalBot = H/2 + GOAL_W/2;
+
+  // Penalty areas
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.strokeRect(FIELD.x, H/2 - 90, 80, 180);
+  ctx.strokeRect(FIELD.x + FIELD.w - 80, H/2 - 90, 80, 180);
+
+  // Goals (left = player, right = AI)
+  ctx.fillStyle = '#ffffff22';
+  ctx.fillRect(FIELD.x - GOAL_D, goalTop, GOAL_D, GOAL_W);
+  ctx.fillRect(FIELD.x + FIELD.w, goalTop, GOAL_D, GOAL_W);
+
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 3;
+  // Left goal
+  ctx.beginPath();
+  ctx.moveTo(FIELD.x, goalTop);
+  ctx.lineTo(FIELD.x - GOAL_D, goalTop);
+  ctx.lineTo(FIELD.x - GOAL_D, goalBot);
+  ctx.lineTo(FIELD.x, goalBot);
+  ctx.stroke();
+  // Right goal
+  ctx.beginPath();
+  ctx.moveTo(FIELD.x + FIELD.w, goalTop);
+  ctx.lineTo(FIELD.x + FIELD.w + GOAL_D, goalTop);
+  ctx.lineTo(FIELD.x + FIELD.w + GOAL_D, goalBot);
+  ctx.lineTo(FIELD.x + FIELD.w, goalBot);
+  ctx.stroke();
+
+  // Goal labels
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.font = '11px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('YOU', FIELD.x - GOAL_D/2, FIELD.y - 6);
+  ctx.fillText('AI', FIELD.x + FIELD.w + GOAL_D/2, FIELD.y - 6);
+}
+
+function drawShadow(x, y, r) {
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(x + 3, y + 4, r, r * 0.5, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPlayer(p, color, outline, label) {
+  drawShadow(p.x, p.y, PLAYER_R);
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, PLAYER_R, 0, Math.PI*2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = outline;
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 9px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, p.x, p.y);
+}
+
+function drawBall() {
+  const b = state.ball;
+  drawShadow(b.x, b.y, BALL_R);
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, BALL_R, 0, Math.PI*2);
+  ctx.fillStyle = 'white';
+  ctx.fill();
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  // Simple pentagon pattern hint
+  ctx.fillStyle = '#333';
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, BALL_R * 0.38, 0, Math.PI*2);
+  ctx.fill();
+}
+
+function updateUI() {
+  scoreEl.textContent = `${state.score[0]} — ${state.score[1]}`;
+  const m = Math.floor(state.time / 60), s = Math.floor(state.time % 60);
+  timerEl.textContent = `${m}:${s.toString().padStart(2,'0')}`;
+}
+
+// ——— Goal flash ———
+function drawGoalFlash() {
+  if (state.goalFlash > 0) {
+    ctx.save();
+    ctx.globalAlpha = state.goalFlash * 0.35;
+    ctx.fillStyle = '#ffff00';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+    state.goalFlash -= 0.03;
+  }
+}
+
+// ——— Main loop ———
+let last = 0;
+function loop(ts) {
+  const dt = Math.min((ts - last) / 1000, 0.05);
+  last = ts;
+
+  ctx.clearRect(0, 0, W, H);
+  // Background
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, H);
+
+  drawField();
+
+  if (state.phase === 'kickoff') {
+    state.phaseTimer -= dt;
+    if (state.phaseTimer <= 0) { state.phase = 'play'; overlay.style.display = 'none'; }
+  } else if (state.phase === 'play') {
+    state.time -= dt;
+    if (state.time <= 0) {
+      state.time = 0;
+      state.phase = 'end';
+      const [p, a] = state.score;
+      const msg = p > a ? '🏆 You Win!' : p < a ? '😞 You Lose!' : '🤝 Draw!';
+      overlay.innerHTML = `<h2>${msg}</h2><p>Final: ${p} — ${a} &nbsp;|&nbsp; Press Enter to restart</p>`;
+      overlay.style.display = 'flex';
+    }
+    updatePlayer(dt);
+    updateAI(dt);
+    moveBall();
+    updateUI();
+  } else if (state.phase === 'goal') {
+    state.phaseTimer -= dt;
+    if (state.phaseTimer <= 0) {
+      resetPositions();
+      state.phase = 'kickoff';
+      state.phaseTimer = 1.5;
+      overlay.innerHTML = '<h2>⚽ Kick Off!</h2><p>Get Ready...</p>';
+      overlay.style.display = 'flex';
+    }
+  }
+
+  // Draw entities
+  state.teammates.forEach((t, i) => drawPlayer(t, '#2255cc', '#88aaff', i === 2 ? 'GK' : 'TM'));
+  state.ai.forEach((a, i) => drawPlayer(a, '#cc2233', '#ff8888', i === 3 ? 'GK' : 'AI'));
+  drawPlayer(state.player, '#22aa44', '#aaffbb', 'YOU');
+  drawBall();
+  drawGoalFlash();
+
+  requestAnimationFrame(loop);
+}
+
+initGame();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
