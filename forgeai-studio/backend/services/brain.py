@@ -1047,7 +1047,7 @@ def _infer_focus(query: str) -> str | None:
 
 # ── Multi-fact composition ────────────────────────────────────────────────────
 
-def _compose_multiple(atoms: list[FactAtom], focus: str | None) -> str:
+def _compose_multiple(atoms: list[FactAtom], focus: str | None, max_parts: int = 5) -> str:
     if not atoms:
         return ""
 
@@ -1068,8 +1068,9 @@ def _compose_multiple(atoms: list[FactAtom], focus: str | None) -> str:
     parts: list[str] = []
     used_gen_indices: dict[str, set[int]] = {}
     prev_type = ""
+    limit = min(max_parts, len(ordered))
 
-    for i, atom in enumerate(ordered[:4]):
+    for i, atom in enumerate(ordered[:limit]):
         gen_pool = used_gen_indices.setdefault(atom.type, set())
         sentence = _generate_sentence(atom, exclude_gens=gen_pool)
 
@@ -1090,7 +1091,11 @@ def _compose_multiple(atoms: list[FactAtom], focus: str | None) -> str:
         prev_type = atom.type
 
         if i == 0:
-            elab = _maybe_elaboration(atom, probability=0.38)
+            elab = _maybe_elaboration(atom, probability=0.5)
+            if elab:
+                parts.append(elab)
+        elif i == limit - 1:
+            elab = _maybe_elaboration(atom, probability=0.35)
             if elab:
                 parts.append(elab)
 
@@ -1120,30 +1125,140 @@ def _select_atoms(atoms: list[FactAtom], query: str, focus: str | None, max_atom
     if not atoms:
         return atoms
     scored = sorted(atoms, key=lambda a: -_score_atom_for_query(a, query, focus))
+
+    selected: list[FactAtom] = []
+    seen_types: set[str] = set()
+
+    # Always take the best-scoring atom first
+    if scored:
+        selected.append(scored[0])
+        seen_types.add(scored[0].type)
+
+    # Fill remaining slots with diverse, high-scoring atoms
+    for atom in scored[1:]:
+        if len(selected) >= max_atoms:
+            break
+        if atom.type in seen_types and len(selected) < max_atoms - 1:
+            continue
+        selected.append(atom)
+        seen_types.add(atom.type)
+
+    # If diversity filtering left us short, backfill from scored list
+    if len(selected) < max_atoms:
+        for atom in scored:
+            if atom not in selected:
+                selected.append(atom)
+            if len(selected) >= max_atoms:
+                break
+
     if focus:
-        focused = [a for a in scored if a.type == focus]
-        others = [a for a in scored if a.type != focus]
-        selected = (focused[:2] + others[:1]) if focused else scored[:max_atoms]
-        return selected[:max_atoms]
-    return scored[:max_atoms]
+        focused = [a for a in selected if a.type == focus]
+        if focused and selected[0] not in focused:
+            selected = focused[:1] + [a for a in selected if a.type != focus]
+    return selected[:max_atoms]
+
+
+def _extract_direct_answer(query: str, content: str, atoms: list[FactAtom], focus: str | None) -> str | None:
+    """Build a crisp lead sentence that answers the query directly."""
+    qn = _normalize(query)
+    aspect = _detect_aspect(qn)
+    if aspect:
+        hit = _extract_aspect(content, aspect)
+        if hit and len(hit) > 15:
+            return hit.strip()
+
+    if atoms:
+        top = max(atoms, key=lambda a: _score_atom_for_query(a, query, focus))
+        if top.value and top.unit:
+            label = top.subject.replace("_", " ") if top.subject else "this"
+            return f"**{top.value} {top.unit}** is the headline figure for {label}."
+        if top.value:
+            return f"**{top.value}** is the central number here."
+
+    for para in content.split("\n\n"):
+        p = re.sub(r"^#{1,4}\s+", "", para.strip())
+        if len(p) < 20 or p.startswith("```") or p.startswith("["):
+            continue
+        first = re.split(r"(?<=[.!?])\s+", _clean(p))[0]
+        if 20 <= len(first) <= 220:
+            return first
+    return None
+
+
+def _build_key_takeaway(atoms: list[FactAtom], query: str) -> str:
+    if not atoms:
+        return ""
+    top = max(atoms, key=lambda a: _score_atom_for_query(a, query, _infer_focus(query)))
+    fact = _generate_sentence(top)
+    if len(fact) > 180:
+        fact = fact[:177].rsplit(" ", 1)[0] + "…"
+    label = random.choice(["Bottom line", "Key takeaway", "What to remember", "The essential point"])
+    return f"**{label}:** {fact}"
+
+
+def _thread_preamble(memory: dict | None) -> str:
+    if not memory or not memory.get("continuing_thread"):
+        return ""
+    if memory.get("thread_confidence", 0) < 55:
+        return ""
+    topic = (memory.get("active_topic") or memory.get("last_user_query") or "").strip()
+    if not topic:
+        return ""
+    short = topic[:70] + ("…" if len(topic) > 70 else "")
+    return random.choice([
+        f"Picking up on **{short}** — here's a fuller picture:",
+        f"Sticking with your thread about **{short}**:",
+        f"To go deeper on **{short}**:",
+        f"Building on what we were discussing — **{short}**:",
+    ])
+
+
+def _enrich_response(
+    body: str,
+    query: str,
+    content: str,
+    atoms: list[FactAtom],
+    *,
+    elaborate: bool,
+    memory: dict | None = None,
+) -> str:
+    """Wrap NLG body with direct answer, thread context, and optional takeaway."""
+    if not body or not body.strip():
+        return body
+
+    parts: list[str] = []
+    preamble = _thread_preamble(memory)
+    if preamble:
+        parts.append(preamble)
+
+    focus = _infer_focus(query)
+    direct = _extract_direct_answer(query, content, atoms, focus)
+    if direct and direct.lower() not in body.lower()[: max(80, len(direct))]:
+        parts.append(direct)
+
+    parts.append(body)
+
+    if elaborate or (atoms and len(atoms) >= 2):
+        takeaway = _build_key_takeaway(atoms, query)
+        if takeaway and takeaway.lower() not in body.lower():
+            parts.append(takeaway)
+
+    return "\n\n".join(p.strip() for p in parts if p and p.strip())
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
-def generate_from_content(content: str, query: str, max_atoms: int = 3, elaborate: bool = False) -> str:
+def generate_from_content(
+    content: str,
+    query: str,
+    max_atoms: int = 3,
+    elaborate: bool = False,
+    memory: dict | None = None,
+) -> str:
     """
     Takes a KB content string and the original query.
     Extracts fact atoms, picks random sentence generators, and composes a fresh
     natural-language response. Every call produces a structurally different result.
-
-    Args:
-        content:   Raw KB string (may contain markdown, multiple sentences).
-        query:     The user's original question — used to prioritise relevant facts.
-        max_atoms: Maximum fact atoms to use (higher = more comprehensive output).
-        elaborate: When True, always add context and elaboration sentences.
-
-    Returns:
-        A freshly generated response string (plain text with optional markdown bold).
     """
     if not content or not content.strip():
         return "I couldn't find specific information on that."
@@ -1160,22 +1275,24 @@ def generate_from_content(content: str, query: str, max_atoms: int = 3, elaborat
         atom = relevant[0]
         sentence = _generate_sentence(atom)
         parts = [sentence]
-        if elaborate or random.random() < 0.55:
+        if elaborate or random.random() < 0.65:
             ctx = _single_atom_context(atom)
             if ctx:
                 parts.append(ctx)
-        elab_prob = 0.75 if elaborate else 0.45
+        elab_prob = 0.85 if elaborate else 0.55
         elab = _maybe_elaboration(atom, probability=elab_prob)
         if elab:
             parts.append(elab)
-        return " ".join(parts).strip()
+        body = " ".join(parts).strip()
+        return _enrich_response(body, query, content, relevant, elaborate=elaborate, memory=memory)
 
-    result = _compose_multiple(relevant, focus)
+    result = _compose_multiple(relevant, focus, max_parts=max_atoms)
     if elaborate and result and len(relevant) >= 2:
-        extra = _maybe_elaboration(relevant[0], probability=0.6)
+        extra = _maybe_elaboration(relevant[0], probability=0.7)
         if extra:
             result = result + " " + extra
-    return result if result else _generate_sentence(relevant[0])
+    body = result if result else _generate_sentence(relevant[0])
+    return _enrich_response(body, query, content, relevant, elaborate=elaborate, memory=memory)
 
 
 # =============================================================================
@@ -1721,7 +1838,7 @@ def vary_structure(content: str, query: str) -> str:
     opener = _pick_opener(query)
 
     # --- Pick closer (not always) ---
-    include_closer = random.random() < 0.55
+    include_closer = random.random() < 0.72
     closer = _pick_closer() if include_closer else ""
 
     # --- Assemble ---
@@ -1755,13 +1872,20 @@ def _mode_depth(mode: str, depth: int) -> int:
 
 def _mode_max_atoms(mode: str, depth: int) -> int:
     if mode == "forge_thinking":
-        return 7 if depth >= 2 else 5
+        return 9 if depth >= 2 else 7
     if mode == "forge_instant":
-        return 2
-    return 5 if depth >= 1 else 4
+        return 3
+    return 7 if depth >= 2 else 6
 
 
-def forge(content: str, query: str, intent: str = "knowledge", depth: int = 0, mode: str = "forge_code") -> str:
+def forge(
+    content: str,
+    query: str,
+    intent: str = "knowledge",
+    depth: int = 0,
+    mode: str = "forge_code",
+    memory: dict | None = None,
+) -> str:
     """
     Drop-in replacement for brain.forge().
 
@@ -1798,30 +1922,55 @@ def forge(content: str, query: str, intent: str = "knowledge", depth: int = 0, m
     # NLG atom-level rewrite for factual intents
     if intent in ("knowledge", "space", "earth", "science", "history", "animals", "programming"):
         try:
-            elaborate = mode == "forge_thinking"
+            elaborate = mode == "forge_thinking" or (mode == "forge_code" and effective_depth >= 1)
             nlg_output = generate_from_content(
                 content, query,
                 max_atoms=max_atoms,
                 elaborate=elaborate,
+                memory=memory,
             )
             if nlg_output and len(nlg_output) >= 20:
                 structured = vary_structure(nlg_output, query)
                 if mode == "forge_thinking" and intent != "programming":
-                    thinking = _build_thinking_header(query, intent)
+                    thinking = _build_thinking_header(query, intent, memory, max_atoms)
                     return f"{thinking}\n\n---\n\n{structured}"
+                if mode == "forge_code" and effective_depth >= 1 and intent != "programming":
+                    brief = _brief_reasoning_line(query, intent, memory)
+                    if brief:
+                        return f"{brief}\n\n{structured}"
                 return structured
         except Exception:
             pass
 
     structured = vary_structure(content, query)
     if mode == "forge_thinking" and intent not in ("build_game", "build_app"):
-        thinking = _build_thinking_header(query, intent)
+        thinking = _build_thinking_header(query, intent, memory, max_atoms)
         return f"{thinking}\n\n---\n\n{structured}"
     return structured
 
 
-def _build_thinking_header(query: str, intent: str) -> str:
-    """Generate a brief thinking-process header for forge_thinking mode."""
+def _brief_reasoning_line(query: str, intent: str, memory: dict | None) -> str:
+    """One-line reasoning hint for forge_code on threaded or complex queries."""
+    focus = _infer_focus(query) or "the core facts"
+    q_short = query[:70] + ("…" if len(query) > 70 else "")
+    if memory and memory.get("continuing_thread"):
+        return (
+            f"*Approach:* continuing our thread — prioritising **{focus}** "
+            f"to answer \"{q_short}\" comprehensively."
+        )
+    return (
+        f"*Approach:* pulling **{focus}** from the knowledge base to give a "
+        f"complete answer to \"{q_short}\"."
+    )
+
+
+def _build_thinking_header(
+    query: str,
+    intent: str,
+    memory: dict | None = None,
+    max_atoms: int = 5,
+) -> str:
+    """Generate a structured thinking-process header for forge_thinking mode."""
     intent_labels = {
         "knowledge": "General knowledge lookup",
         "space": "Space & astronomy analysis",
@@ -1832,12 +1981,28 @@ def _build_thinking_header(query: str, intent: str) -> str:
         "programming": "Programming concept analysis",
     }
     label = intent_labels.get(intent, "Query analysis")
+    focus = _infer_focus(query) or "multi-faceted facts"
     q_short = query[:80] + ("…" if len(query) > 80 else "")
+
+    steps = [
+        "1. **Parse** — understand what the user is really asking",
+        f"2. **Focus** — prioritise **{focus}**-type facts from the knowledge base",
+        f"3. **Select** — choose up to **{max_atoms}** query-relevant atoms, skip noise",
+        "4. **Compose** — lead with a direct answer, then layer context and connections",
+        "5. **Synthesise** — add takeaway and tie everything back to the original question",
+    ]
+    if memory and memory.get("continuing_thread"):
+        topic = (memory.get("active_topic") or "")[:55]
+        steps.insert(1, f"2. **Context** — continues our discussion about \"{topic}\"")
+        for i, step in enumerate(steps):
+            steps[i] = re.sub(r"^\d+\.", f"{i + 1}.", step)
+
     return (
         f"### Thinking Process\n"
         f"- **Intent:** {label}\n"
         f"- **Query:** \"{q_short}\"\n"
-        f"- **Approach:** Extract key facts, prioritise query-relevant details, compose structured response"
+        f"- **Reasoning steps:**\n"
+        + "\n".join(f"  {s}" for s in steps)
     )
 
 
@@ -3393,34 +3558,43 @@ def _related_kb_entries(entity: str, exclude_keys: list[str] | None = None) -> l
 
 def _build_comprehensive_response(topic: str, entity: str, memory: dict) -> str | None:
     """
-    For deep follow-ups (thread_depth >= 2), build a rich multi-part response
-    by pulling related KB entries and combining them.
+    Build a rich multi-part response by pulling related KB entries and combining them.
     """
     q_topic = _normalize(topic)
     covered = memory.get("covered_aspects", [])
 
-    # Gather the primary KB hit
     primary = _kb_fact_lookup(q_topic)
     if not primary:
-        return None
+        primary_key = None
+        for key, answer in GENERAL_KNOWLEDGE.items():
+            if entity and entity.lower() in key:
+                primary, primary_key = answer, key
+                break
+        if not primary:
+            return None
+    else:
+        primary_key = None
 
-    # Gather related entries about the same entity
-    related = _related_kb_entries(entity or topic, [])
-    # Filter: skip entries too similar to primary
+    related = _related_kb_entries(entity or topic, exclude_keys=[primary_key] if primary_key else [])
     seen_tokens = set(re.findall(r"[a-z]{4,}", primary.lower()))
     unique_related = []
     for r in related:
         r_tokens = set(re.findall(r"[a-z]{4,}", r.lower()))
         overlap = len(seen_tokens & r_tokens) / max(len(r_tokens), 1)
-        if overlap < 0.6 and r != primary:
+        if overlap < 0.65 and r != primary:
             unique_related.append(r)
 
-    if not unique_related:
+    if not unique_related and memory.get("thread_depth", 0) < 2:
         return None
 
-    # Build a combined comprehensive text
-    sections = [primary] + unique_related[:2]
+    sections = [primary] + unique_related[:3]
     combined = "\n\n".join(sections)
+
+    uncovered = [a for a in ["speed", "size", "diet", "habitat", "behavior", "lifespan", "composition", "date"]
+                 if a not in covered]
+    if uncovered:
+        combined += f"\n\n*Still to explore on this topic: {', '.join(uncovered[:3])}.*"
+
     return combined
 
 
@@ -3475,22 +3649,27 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
     thread_depth = memory.get("thread_depth", 0)
     active_entity = memory.get("active_entity") or ""
 
-    # Deep follow-up: try building a comprehensive multi-KB response
-    if thread_depth >= 2 and active_entity and q not in _FOLLOWUP_EXACT:
+    # Thread follow-up: build a richer multi-KB response when continuing a topic
+    if (
+        memory.get("continuing_thread")
+        and memory.get("thread_confidence", 0) >= 60
+        and active_entity
+        and q not in _FOLLOWUP_EXACT
+    ):
         comp = _build_comprehensive_response(
             memory.get("active_topic") or query, active_entity, memory
         )
         if comp:
-            return forge(comp, query, "knowledge", depth=thread_depth, mode=mode)
+            return forge(comp, query, "knowledge", depth=thread_depth, mode=mode, memory=memory)
 
     if is_update_request(q, history):
         return _dispatch_update(query, history, mode)
     if _score_animals(q) >= 60:
-        return forge(_dispatch_animals(query, q), q, "animals", mode=mode)
+        return forge(_dispatch_animals(query, q), q, "animals", mode=mode, memory=memory)
     # Universal specific-question pre-check: KB lookup beats domain engines
     kb_hit = _kb_fact_lookup(q)
     if kb_hit:
-        return forge(kb_hit, q, "knowledge", mode=mode)
+        return forge(kb_hit, q, "knowledge", mode=mode, memory=memory)
     code_mode = workspace == "code"
     BUILD_BOOST = 25 if code_mode else 0
     build_verb_score = 65 if _has_build_verb(q) and not _match(q, *(_GAME_NOUNS | _APP_NOUNS)) else 0
@@ -3540,33 +3719,33 @@ def generate_response(query: str, mode: str, history: list, quick_mode: bool = F
         full = generate_space_response(query, mode)
         fact = _try_extract_fact(full, q)
         raw = fact if fact else full
-        return forge(raw, q, "space", depth=thread_depth, mode=mode)
+        return forge(raw, q, "space", depth=thread_depth, mode=mode, memory=memory)
     if best_intent == "earth":
         full = generate_earth_response(query, mode)
         fact = _try_extract_fact(full, q)
         raw = fact if fact else full
-        return forge(raw, q, "earth", depth=thread_depth, mode=mode)
+        return forge(raw, q, "earth", depth=thread_depth, mode=mode, memory=memory)
     if best_intent == "science":
         full = generate_science_response(query, mode)
         fact = _try_extract_fact(full, q)
         raw = fact if fact else full
-        return forge(raw, q, "science", depth=thread_depth, mode=mode)
+        return forge(raw, q, "science", depth=thread_depth, mode=mode, memory=memory)
     if best_intent == "history":
         full = generate_history_response(query, mode)
         fact = _try_extract_fact(full, q)
         raw = fact if fact else full
-        return forge(raw, q, "history", depth=thread_depth, mode=mode)
+        return forge(raw, q, "history", depth=thread_depth, mode=mode, memory=memory)
     if best_intent == "programming":
         return _dispatch_programming(query, mode)
     if best_intent == "animals":
         raw = _dispatch_animals(query, q)
-        return forge(raw, q, "animals", depth=thread_depth, mode=mode)
+        return forge(raw, q, "animals", depth=thread_depth, mode=mode, memory=memory)
     if best_intent == "knowledge":
         for key, answer in GENERAL_KNOWLEDGE.items():
             if key in q or q in key:
                 fact = _try_extract_fact(answer, q)
                 raw = fact if fact else answer
-                return forge(raw, q, "knowledge", depth=thread_depth, mode=mode)
+                return forge(raw, q, "knowledge", depth=thread_depth, mode=mode, memory=memory)
     if code_mode and _has_build_verb(q):
         return _dispatch_project(query, mode=mode)
     return web_lookup(query)
