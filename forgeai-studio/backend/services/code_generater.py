@@ -7462,6 +7462,169 @@ def _cap_project_files(files: list[ProjectFile]) -> list[ProjectFile]:
     return ordered[:MAX_PROJECT_FILES]
 
 
+def _has_file(files: list[ProjectFile], name: str) -> bool:
+    return any(f.name == name for f in files)
+
+
+def _first_entry_file(files: list[ProjectFile]) -> str:
+    for preferred in ("index.html", "typescript/src/index.ts", "javascript/src/index.js", "python/src/main.py", "rust/src/main.rs"):
+        if _has_file(files, preferred):
+            return preferred
+    return files[0].name if files else "README.md"
+
+
+def _project_run_commands(result: ProjectResult) -> list[str]:
+    names = {f.name for f in result.files}
+    commands: list[str] = []
+    if "index.html" in names:
+        commands.append("Open index.html or use the built-in preview panel")
+    if any(n.startswith("typescript/") for n in names):
+        commands.append("cd typescript && npm install && npm run build && npm start")
+    if any(n.startswith("javascript/") for n in names):
+        commands.append("cd javascript && npm install && npm test && npm start")
+    if any(n.startswith("python/") for n in names):
+        commands.append("cd python && python -m pytest")
+    if any(n.startswith("java/") for n in names):
+        commands.append("cd java && mvn test")
+    if any(n.startswith("rust/") for n in names):
+        commands.append("cd rust && cargo test && cargo run")
+    if any(n.startswith("ruby/") for n in names):
+        commands.append("cd ruby && bundle install && ruby test/pipeline_test.rb")
+    if any(n.startswith("sql/") for n in names):
+        commands.append("psql -f sql/schema.sql -f sql/queries.sql")
+    if any(n.startswith("r/") for n in names):
+        commands.append("Rscript r/analysis.R")
+    return commands or ["Review the generated source files"]
+
+
+def _append_agent_files(result: ProjectResult, spec: BuildSpec) -> ProjectResult:
+    """Add Replit-style run/debug/test metadata without changing source logic."""
+    files = list(result.files)
+    names = {f.name for f in files}
+    entry = _first_entry_file(files)
+    commands = _project_run_commands(result)
+    command_block = "\n".join(f"- `{cmd}`" for cmd in commands)
+    language_list = sorted({f.language for f in files if f.language != "markdown"})
+    language_line = ", ".join(language_list) if language_list else "source files"
+
+    additions: list[ProjectFile] = []
+    if "index.html" in names and not _has_file(files, "package.json"):
+        additions.append(ProjectFile("package.json", f'''{{
+  "name": "{_project_slug(result.title)}",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {{
+    "start": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  }},
+  "devDependencies": {{
+    "vite": "latest",
+    "typescript": "latest"
+  }}
+}}
+''', "json"))
+
+    if not _has_file(files, ".replit"):
+        additions.append(ProjectFile(".replit", f'''entrypoint = "{entry}"
+
+[run]
+command = "{'npm install && npm run start' if 'index.html' in names else 'cat RUNBOOK.md'}"
+
+[nix]
+channel = "stable-24_05"
+''', "toml"))
+
+    if not _has_file(files, "RUNBOOK.md"):
+        additions.append(ProjectFile("RUNBOOK.md", f'''# Runbook: {result.title}
+
+## What ForgeAI generated
+
+- **Kind:** {result.kind}
+- **Languages:** {language_line}
+- **Entry file:** `{entry}`
+- **File count:** {len(files)}
+
+## Run commands
+
+{command_block}
+
+## Replit-style workflow
+
+1. Open the file tree and inspect `README.md`.
+2. Install dependencies for the language folder you want to run.
+3. Run the matching test command before changing behavior.
+4. If a command fails, copy the error and ask ForgeAI to update the generated project.
+''', "markdown"))
+
+    if not _has_file(files, "TEST_PLAN.md"):
+        additions.append(ProjectFile("TEST_PLAN.md", f'''# Test Plan
+
+## Smoke tests
+
+{command_block}
+
+## Manual checks
+
+- Verify generated entry points run without syntax errors.
+- Verify the README command for each selected language is accurate.
+- Verify project names, schemas, and classes match the requested domain.
+- For web apps/games, open the preview and test core interactions.
+
+## Regression checks
+
+- Re-run tests after editing generated code.
+- Keep generated data models consistent across language folders.
+''', "markdown"))
+
+    if not _has_file(files, "DEBUGGING.md"):
+        additions.append(ProjectFile("DEBUGGING.md", f'''# Debugging Guide
+
+## If dependencies fail
+
+- Run the command from the folder that owns the manifest (`package.json`, `pyproject.toml`, `Cargo.toml`, `pom.xml`, or `Gemfile`).
+- Delete generated build folders (`dist`, `target`, `.pytest_cache`) and retry.
+
+## If runtime behavior is wrong
+
+1. Reproduce with the smallest command from `RUNBOOK.md`.
+2. Capture the exact error message.
+3. Check the matching source file and test file.
+4. Ask ForgeAI to patch the failing file and include the error text.
+
+## Project notes
+
+- Generated by ForgeAI Code Mode.
+- Intended to be edited iteratively like a Replit project.
+''', "markdown"))
+
+    if not _has_file(files, "AGENTS.md"):
+        additions.append(ProjectFile("AGENTS.md", f'''# ForgeAI Coding Agent Notes
+
+## Goal
+
+Maintain **{result.title}** as an iterative coding project.
+
+## When changing code
+
+1. Read `README.md`, `RUNBOOK.md`, and `TEST_PLAN.md`.
+2. Edit the smallest file set that solves the request.
+3. Run the matching command from `RUNBOOK.md`.
+4. If tests fail, use `DEBUGGING.md` to capture and fix the exact error.
+
+## Project rules
+
+- Keep entry points runnable.
+- Keep shared data models consistent across languages.
+- Add or update tests when behavior changes.
+- Prefer small, reviewable changes over rewriting unrelated files.
+''', "markdown"))
+
+    if additions:
+        files.extend(additions)
+    return ProjectResult(result.title, result.kind, _cap_project_files(files))
+
+
 def _append_readme(result: ProjectResult, spec: BuildSpec) -> ProjectResult:
     lines = [
         f"# {result.title}",
@@ -7484,8 +7647,8 @@ def _append_readme(result: ProjectResult, spec: BuildSpec) -> ProjectResult:
     files = list(result.files)
     if not any(f.name == "README.md" for f in files):
         files.append(ProjectFile("README.md", readme, "markdown"))
-    files = _cap_project_files(files)
-    return ProjectResult(result.title, result.kind, files)
+    result_with_readme = ProjectResult(result.title, result.kind, files)
+    return _append_agent_files(result_with_readme, spec)
 
 
 _GAME_KEYWORDS = {

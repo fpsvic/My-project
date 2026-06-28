@@ -7,7 +7,6 @@ export interface AppSettings {
   streamingText: boolean;
   quickMode: boolean;
   compactMessages: boolean;
-  textSize: 'sm' | 'base' | 'lg';
   showSearchIndicator: boolean;
   showTypingShimmer: boolean;
 }
@@ -17,7 +16,6 @@ const DEFAULTS: AppSettings = {
   streamingText: true,
   quickMode: false,
   compactMessages: false,
-  textSize: 'sm',
   showSearchIndicator: true,
   showTypingShimmer: true,
 };
@@ -93,14 +91,6 @@ function applyCompact(on: boolean): void {
   }
 }
 
-// ── Text size ─────────────────────────────────────────────────────────────────
-
-function applyTextSize(size: AppSettings['textSize']): void {
-  const map = { sm: '13px', base: '15px', lg: '17px' };
-  const feed = document.getElementById('chatFeed');
-  if (feed) feed.style.fontSize = map[size];
-}
-
 // ── Quick mode sync ───────────────────────────────────────────────────────────
 
 function applyQuickMode(on: boolean): void {
@@ -128,7 +118,6 @@ export function applySettings(s: AppSettings): void {
   saveSettings(s);
   applyDarkMode(s.darkMode);
   applyCompact(s.compactMessages);
-  applyTextSize(s.textSize);
   applyQuickMode(s.quickMode);
 }
 
@@ -140,21 +129,11 @@ function styleToggle(btn: HTMLElement, on: boolean): void {
   if (knob) knob.style.transform = on ? 'translateX(16px)' : 'translateX(0)';
 }
 
-function styleSizeButtons(panel: HTMLElement, active: string): void {
-  panel.querySelectorAll<HTMLElement>('.size-btn').forEach((b) => {
-    const isActive = b.dataset.size === active;
-    b.style.background = isActive ? '#6366f1' : '#fff';
-    b.style.borderColor = isActive ? '#6366f1' : '#e2e8f0';
-    b.style.color = isActive ? '#fff' : '#475569';
-  });
-}
-
 function refreshPanel(panel: HTMLElement, s: AppSettings): void {
   panel.querySelectorAll<HTMLElement>('.toggle-btn').forEach((btn) => {
     const key = btn.dataset.key as keyof AppSettings;
     styleToggle(btn, Boolean(s[key]));
   });
-  styleSizeButtons(panel, s.textSize);
 }
 
 // ── Panel HTML ────────────────────────────────────────────────────────────────
@@ -197,15 +176,6 @@ function buildPanel(): HTMLElement {
       <p style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin:0 0 4px;">Appearance</p>
       ${row('Dark Mode', 'Switch to dark theme', 'darkMode')}
       ${row('Compact Messages', 'Reduce spacing between messages', 'compactMessages')}
-
-      <div style="padding:10px 0;border-bottom:1px solid #f1f5f9;">
-        <p style="font-size:12px;font-weight:600;color:#1e293b;margin:0 0 8px;">Text Size</p>
-        <div style="display:flex;gap:8px;">
-          <button class="size-btn" data-size="sm"   style="flex:1;padding:6px;border-radius:8px;border:1px solid #e2e8f0;font-size:11px;font-weight:600;cursor:pointer;transition:.15s;">Small</button>
-          <button class="size-btn" data-size="base" style="flex:1;padding:6px;border-radius:8px;border:1px solid #e2e8f0;font-size:11px;font-weight:600;cursor:pointer;transition:.15s;">Normal</button>
-          <button class="size-btn" data-size="lg"   style="flex:1;padding:6px;border-radius:8px;border:1px solid #e2e8f0;font-size:11px;font-weight:600;cursor:pointer;transition:.15s;">Large</button>
-        </div>
-      </div>
 
       <p style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin:16px 0 4px;">Behaviour</p>
       ${row('Streaming Text', 'Animate words as they appear', 'streamingText')}
@@ -261,15 +231,6 @@ export function initSettings(): void {
     btn.addEventListener('click', () => {
       const key = btn.dataset.key as keyof AppSettings;
       const next = { ...settings, [key]: !settings[key] };
-      applySettings(next);
-      refreshPanel(panel, next);
-    });
-  });
-
-  panel.querySelectorAll<HTMLElement>('.size-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const size = btn.dataset.size as AppSettings['textSize'];
-      const next = { ...settings, textSize: size };
       applySettings(next);
       refreshPanel(panel, next);
     });
