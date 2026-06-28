@@ -3,6 +3,7 @@ import { saveSessions, saveActiveWorkspace } from '../utils/storage';
 import { generateId, getLanguageIconHTML } from '../utils/helpers';
 import { showToast } from './toast';
 import { renderCurrentSessionChat } from './chat';
+import { ensureModeForWorkspace } from './modeSelector';
 import type { Workspace } from '../types';
 
 // ── Workspace helpers ─────────────────────────────────────────────────────────
@@ -51,6 +52,7 @@ export function switchWorkspace(ws: Workspace): void {
   state.activeWorkspace = ws;
   saveActiveWorkspace(ws);
   updateWorkspaceUI();
+  ensureModeForWorkspace(ws);
 
   // Switch to the most recent session in this workspace, or create one
   const sessions = workspaceSessions();

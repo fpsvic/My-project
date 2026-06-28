@@ -24,7 +24,7 @@ export const MODE_CONFIGS: Record<Mode, ModeConfig> = {
 export const state = {
   sessions: [] as Session[],
   currentSessionId: '',
-  activeMode: 'forge_code' as Mode,
+  activeMode: 'forge_thinking' as Mode,
   activeLanguage: 'javascript',
   quickMode: false,
   activeWorkspace: 'chat' as Workspace,

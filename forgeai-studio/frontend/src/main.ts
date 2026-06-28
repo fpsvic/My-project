@@ -4,7 +4,7 @@ import { generateId } from './utils/helpers';
 import { initSplash } from './ui/splash';
 import { initSidebar, renderSessionList, createNewSession } from './ui/sidebar';
 import { initChatForm, initQuickToggle, renderCurrentSessionChat } from './ui/chat';
-import { initModeSelector, updateModeSelectorUI } from './ui/modeSelector';
+import { ensureModeForWorkspace, initModeSelector, updateModeSelectorUI } from './ui/modeSelector';
 import { openSandboxFromCode, closeSandbox } from './ui/sandbox';
 import { initSettings, loadSettings } from './ui/settings';
 import { initCodePanel } from './ui/codePanel';
@@ -60,8 +60,9 @@ function bootstrap(): void {
   const savedMode = loadActiveMode();
   if (savedMode && MODE_CONFIGS[savedMode]) {
     state.activeMode = savedMode as Mode;
-    updateModeSelectorUI(savedMode as Mode);
   }
+  ensureModeForWorkspace(state.activeWorkspace);
+  updateModeSelectorUI(state.activeMode);
 
   const workspaceSessions = state.sessions.filter(s => s.workspace === state.activeWorkspace);
   if (workspaceSessions.length === 0) {

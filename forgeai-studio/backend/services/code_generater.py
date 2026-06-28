@@ -7557,6 +7557,33 @@ channel = "stable-24_05"
 4. If a command fails, copy the error and ask ForgeAI to update the generated project.
 ''', "markdown"))
 
+    if not _has_file(files, ".env.example"):
+        additions.append(ProjectFile(".env.example", f'''# Environment variables for {result.title}
+APP_ENV=development
+APP_NAME="{result.title}"
+LOG_LEVEL=debug
+
+# Add API keys or database URLs here when your project needs them.
+# DATABASE_URL=postgres://user:password@localhost:5432/app
+# API_KEY=replace-me
+''', "text"))
+
+    if not _has_file(files, "scripts/doctor.sh"):
+        additions.append(ProjectFile("scripts/doctor.sh", f'''#!/usr/bin/env bash
+set -euo pipefail
+
+echo "ForgeAI project doctor: {result.title}"
+echo "Detected files:"
+find . -maxdepth 3 -type f | sort
+
+echo
+echo "Suggested commands:"
+{chr(10).join(f'echo "- {cmd}"' for cmd in commands)}
+
+echo
+echo "Tip: run the command that matches the language folder you are editing."
+''', "shell"))
+
     if not _has_file(files, "TEST_PLAN.md"):
         additions.append(ProjectFile("TEST_PLAN.md", f'''# Test Plan
 
@@ -7575,6 +7602,70 @@ channel = "stable-24_05"
 
 - Re-run tests after editing generated code.
 - Keep generated data models consistent across language folders.
+''', "markdown"))
+
+    if not _has_file(files, "TASKS.md"):
+        additions.append(ProjectFile("TASKS.md", f'''# Implementation Tasks
+
+## Ready now
+
+- [ ] Run the smoke command from `RUNBOOK.md`.
+- [ ] Verify the generated entry file: `{entry}`.
+- [ ] Open the matching source folder and review names/classes.
+- [ ] Run tests for any language folder you edit.
+
+## Next improvements
+
+- [ ] Add persistent storage if the project needs saved data.
+- [ ] Add authentication if user accounts are required.
+- [ ] Add API integration once real endpoints are known.
+- [ ] Improve styling or CLI output after behavior works.
+''', "markdown"))
+
+    if not _has_file(files, "API_CONTRACT.md"):
+        additions.append(ProjectFile("API_CONTRACT.md", f'''# API / Data Contract
+
+## Core job shape
+
+```json
+{{
+  "id": "job-1",
+  "payload": {{
+    "project": "{result.title}",
+    "domain": "{spec.kind}"
+  }},
+  "status": "queued"
+}}
+```
+
+## Expected result shape
+
+```json
+{{
+  "id": "job-1",
+  "status": "processed",
+  "keys": ["domain", "project"]
+}}
+```
+
+Keep this contract consistent across generated languages when editing.
+''', "markdown"))
+
+    if not _has_file(files, "DEPENDENCIES.md"):
+        additions.append(ProjectFile("DEPENDENCIES.md", f'''# Dependencies
+
+## Languages / runtimes detected
+
+{chr(10).join(f"- {lang}" for lang in language_list) or "- none"}
+
+## Install strategy
+
+- JavaScript / TypeScript: use `npm install` in the relevant folder.
+- Python: create a virtual environment before installing dev tools.
+- Rust: use `cargo test` to fetch crates and verify builds.
+- Java: use Maven from the `java` folder.
+- Ruby: use Bundler from the `ruby` folder.
+- SQL / R: install the matching local runtime before running scripts.
 ''', "markdown"))
 
     if not _has_file(files, "DEBUGGING.md"):
