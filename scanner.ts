@@ -519,6 +519,26 @@ class JungleScanner {
                         }
                     }
                 }
+                // setTimeout/setInterval with a string argument (behaves like eval)
+                if (/\b(setTimeout|setInterval)\s*\(\s*["']/.test(trimmed)) {
+                    e(lineNum, "setTimeout/setInterval with a string argument runs code like eval().", "Pass an arrow function instead: setTimeout(() => { ... }, delay).", "JavaScript security", "warning");
+                }
+                // Nested ternary operators (two or more ? in one line)
+                const _ternaryStripped = trimmed.replace(/"[^"]*"|'[^']*'|`[^`]*`/g, '""');
+                if ((_ternaryStripped.match(/\?/g) || []).length >= 2) {
+                    e(lineNum, "Nested ternary operators reduce readability.", "Extract into named variables or use if/else for multi-branch logic.", "JavaScript style", "info");
+                }
+                // JSON.parse without a try/catch nearby
+                if (/\bJSON\.parse\s*\(/.test(trimmed)) {
+                    const nearby = lines.slice(Math.max(0, idx - 4), Math.min(lines.length, idx + 4)).join('\n');
+                    if (!/\btry\b/.test(nearby)) {
+                        e(lineNum, "JSON.parse() can throw on malformed input — no try/catch found nearby.", "Wrap JSON.parse() in try/catch or use a safe parse helper.", "JavaScript error handling", "warning");
+                    }
+                }
+                // Object spread vs Object.assign({}, ...) mutating first arg
+                if (/\bObject\.assign\s*\(\s*\w[\w.]*\s*,/.test(trimmed) && !/Object\.assign\s*\(\s*\{\s*\}/.test(trimmed)) {
+                    e(lineNum, "Object.assign() mutates the first argument — this may be unintentional.", "Pass {} as the first argument to create a new object: Object.assign({}, source).", "JavaScript logic", "warning");
+                }
             } else if (lang === 'Java') {
                 if (/public\s+class\s+[A-Za-z_]\w*/.test(trimmed) && !/[{;]/.test(trimmed)) {
                     e(lineNum, "Java class declaration is missing an opening brace.", "Add '{' after the class name.", "Java syntax");
@@ -633,6 +653,10 @@ class JungleScanner {
             if (/[ \t]{3,}$/.test(line)) {
                 e(lineNum, "Line has trailing whitespace.", "Remove the trailing spaces or tabs.", "Style");
             }
+            // More than 3 consecutive blank lines
+            if (!line.trim() && idx >= 3 && !lines[idx-1].trim() && !lines[idx-2].trim() && !lines[idx-3].trim()) {
+                e(lineNum, "More than 3 consecutive blank lines.", "Reduce excessive whitespace to improve readability.", "Style", null);
+            }
             // TODO/FIXME/HACK/XXX comments
             const todoMatch = commentRe.exec(line);
             if (todoMatch) {
@@ -659,6 +683,11 @@ class JungleScanner {
         const hasCode = lines.some(l => l.trim() && !commentPatterns.test(l));
         if (!hasCode && lines.length > 0) {
             e(1, "File contains no executable code — only whitespace or comments.", "Add code or remove the file if it is no longer needed.", "Code quality", null, "info");
+        }
+
+        // Large file warning
+        if (lines.length > 600) {
+            e(1, `File is ${lines.length} lines long.`, "Consider splitting this into smaller modules — large files are harder to navigate and test.", "Code quality", null, "info");
         }
 
         // Detect very long functions (>50 lines between open and close brace)
@@ -886,7 +915,15 @@ class JungleScanner {
                     if (/:\s*0px\b/.test(trimmed)) {
                         e(lineNum, "Value '0px' should be written as just '0' — units are unnecessary on zero.", "Replace '0px' with '0'; CSS does not require units for zero values.", "CSS style", null, "info");
                     }
+                    // font-size in px — accessibility concern
+                    if (prop === 'font-size' && /:\s*\d+px\b/.test(trimmed)) {
+                        e(lineNum, "'font-size' set in 'px' prevents users from scaling text in their browser settings.", "Use 'rem' or 'em' units so font sizes respond to user preferences.", "CSS accessibility", null, "info");
+                    }
                 }
+            }
+            // Universal selector warning
+            if (/^\*\s*\{/.test(trimmed) || /,\s*\*\s*\{/.test(trimmed)) {
+                e(lineNum, "Universal selector '*' applies to every element and can hurt performance.", "Scope the universal selector: '.container *' or avoid it where possible.", "CSS performance", null, "info");
             }
         });
         // Report !important overuse (more than 3)
