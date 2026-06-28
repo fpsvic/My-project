@@ -352,6 +352,21 @@ class JungleScanner {
                         break;
                     }
                 }
+                // open() without a 'with' statement — file may not be closed
+                if (/\bopen\s*\(/.test(trimmed) && !/^\s*with\b/.test(line)) {
+                    const context = lines.slice(Math.max(0, idx - 2), idx + 1).join(' ');
+                    if (!/\bwith\b/.test(context)) {
+                        e(lineNum, "open() called without a 'with' statement — the file may not be closed on error.", "Use: with open(file) as f: to ensure the file is always closed.", "Python resource", "warning");
+                    }
+                }
+                // f-string with no {} interpolation — prefix is pointless
+                if (/\bf["']/.test(trimmed) && !/\{/.test(trimmed.replace(/\\{/g, ''))) {
+                    e(lineNum, "f-string has no {} placeholders — the 'f' prefix does nothing here.", "Remove the 'f' prefix or add a {variable} placeholder inside the string.", "Python style", "info");
+                }
+                // 'is' used for value equality (not None/True/False)
+                if (/\bis\s+(?!None\b|True\b|False\b|not\b)["'\d]/.test(trimmed)) {
+                    e(lineNum, "'is' checks object identity, not value equality.", "Use '==' to compare values; reserve 'is' for None, True, and False.", "Python logic", "warning");
+                }
             } else if (lang === 'Javascript' || lang === 'TypeScript') {
                 const condMatch = trimmed.match(/\b(if|while)\s*\((.*)\)/);
                 if (condMatch && /(^|[^=!<>])=([^=>]|$)/.test(condMatch[2])) {
@@ -705,6 +720,18 @@ class JungleScanner {
                 idSeen.set(idVal, lineNum);
             }
         }
+        // Missing <title>
+        if (/<head[\s>]/i.test(fullCode) && !/<title[\s>]/i.test(fullCode)) {
+            e(1, "Document is missing a <title> tag.", "Add <title>Your Page Title</title> inside <head> for SEO and accessible browser tabs.", "HTML best practice", null, "warning");
+        }
+        // Missing <meta charset>
+        if (!/<meta[^>]+charset\s*=/i.test(fullCode)) {
+            e(1, "Document is missing a <meta charset> declaration.", "Add <meta charset=\"UTF-8\"> as the first element inside <head>.", "HTML best practice", null, "warning");
+        }
+        // Missing <meta name="viewport">
+        if (!/<meta[^>]+name\s*=\s*["']viewport["']/i.test(fullCode)) {
+            e(1, "Document is missing a viewport meta tag.", "Add <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> for mobile responsiveness.", "HTML best practice", null, "info");
+        }
         const deprecatedTags = ['center', 'font', 'marquee', 'blink'];
         lines.forEach((line, idx) => {
             const lineNum = idx + 1;
@@ -746,6 +773,30 @@ class JungleScanner {
             for (const m of formMatches) {
                 if (!/\b(action|onsubmit)\s*=/i.test(m[1])) {
                     e(lineNum, "<form> has no 'action' or 'onsubmit' — form submission may go nowhere.", "Add an action URL or onsubmit handler to process the form data.", "HTML quality", null, "info");
+                }
+            }
+            // <button> without type attribute
+            const btnMatches = [...line.matchAll(/<button\b([^>]*)>/gi)];
+            for (const m of btnMatches) {
+                if (!/\btype\s*=/i.test(m[1])) {
+                    e(lineNum, "<button> missing a 'type' attribute — defaults to 'submit' which can accidentally submit parent forms.", "Add type=\"button\" for action buttons or type=\"submit\" for form submission.", "HTML quality", m.index! + 1, "info");
+                }
+            }
+            // <script src> in page without defer or async
+            const extScriptMatches = [...line.matchAll(/<script\b([^>]*)>/gi)];
+            for (const m of extScriptMatches) {
+                if (/\bsrc\s*=/i.test(m[1]) && !/\bdefer\b|\basync\b/i.test(m[1]) && !/\btype\s*=\s*["']module["']/i.test(m[1])) {
+                    e(lineNum, "<script src> without 'defer' or 'async' blocks HTML parsing until the script downloads.", "Add the 'defer' attribute to load the script after the document is parsed.", "HTML performance", m.index! + 1, "info");
+                }
+            }
+            // <label> without for attribute and not wrapping an input
+            const labelMatches = [...line.matchAll(/<label\b([^>]*)>/gi)];
+            for (const m of labelMatches) {
+                if (!/\bfor\s*=/i.test(m[1]) && !/\bhtmlfor\s*=/i.test(m[1])) {
+                    const labelContent = line.slice(m.index);
+                    if (!/<input\b/i.test(labelContent) && !/<select\b/i.test(labelContent) && !/<textarea\b/i.test(labelContent)) {
+                        e(lineNum, "<label> has no 'for' attribute linking it to an input.", "Add for=\"inputId\" matching the id of the associated input element.", "HTML accessibility", m.index! + 1, "info");
+                    }
                 }
             }
         });

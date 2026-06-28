@@ -340,6 +340,21 @@ class JungleScanner {
                         break;
                     }
                 }
+                // open() without a 'with' statement — file may not be closed
+                if (/\bopen\s*\(/.test(trimmed) && !/^\s*with\b/.test(line)) {
+                    const context = lines.slice(Math.max(0, idx - 2), idx + 1).join(' ');
+                    if (!/\bwith\b/.test(context)) {
+                        e(lineNum, "open() called without a 'with' statement — the file may not be closed on error.", "Use: with open(file) as f: to ensure the file is always closed.", "Python resource", "warning");
+                    }
+                }
+                // f-string with no {} interpolation — prefix is pointless
+                if (/\bf["']/.test(trimmed) && !/\{/.test(trimmed.replace(/\\{/g, ''))) {
+                    e(lineNum, "f-string has no {} placeholders — the 'f' prefix does nothing here.", "Remove the 'f' prefix or add a {variable} placeholder inside the string.", "Python style", "info");
+                }
+                // 'is' used for value equality (not None/True/False)
+                if (/\bis\s+(?!None\b|True\b|False\b|not\b)["'\d]/.test(trimmed)) {
+                    e(lineNum, "'is' checks object identity, not value equality.", "Use '==' to compare values; reserve 'is' for None, True, and False.", "Python logic", "warning");
+                }
             } else if (lang === 'Javascript' || lang === 'TypeScript') {
                 const condMatch = trimmed.match(/\b(if|while)\s*\((.*)\)/);
                 if (condMatch && /(^|[^=!<>])=([^=>]|$)/.test(condMatch[2])) {
@@ -493,6 +508,26 @@ class JungleScanner {
                         }
                     }
                 }
+                // setTimeout/setInterval with a string argument (behaves like eval)
+                if (/\b(setTimeout|setInterval)\s*\(\s*["']/.test(trimmed)) {
+                    e(lineNum, "setTimeout/setInterval with a string argument runs code like eval().", "Pass an arrow function instead: setTimeout(() => { ... }, delay).", "JavaScript security", "warning");
+                }
+                // Nested ternary operators (two or more ? in one line)
+                const _ternaryStripped = trimmed.replace(/"[^"]*"|'[^']*'|`[^`]*`/g, '""');
+                if ((_ternaryStripped.match(/\?/g) || []).length >= 2) {
+                    e(lineNum, "Nested ternary operators reduce readability.", "Extract into named variables or use if/else for multi-branch logic.", "JavaScript style", "info");
+                }
+                // JSON.parse without a try/catch nearby
+                if (/\bJSON\.parse\s*\(/.test(trimmed)) {
+                    const nearby = lines.slice(Math.max(0, idx - 4), Math.min(lines.length, idx + 4)).join('\n');
+                    if (!/\btry\b/.test(nearby)) {
+                        e(lineNum, "JSON.parse() can throw on malformed input — no try/catch found nearby.", "Wrap JSON.parse() in try/catch or use a safe parse helper.", "JavaScript error handling", "warning");
+                    }
+                }
+                // Object spread vs Object.assign({}, ...) mutating first arg
+                if (/\bObject\.assign\s*\(\s*\w[\w.]*\s*,/.test(trimmed) && !/Object\.assign\s*\(\s*\{\s*\}/.test(trimmed)) {
+                    e(lineNum, "Object.assign() mutates the first argument — this may be unintentional.", "Pass {} as the first argument to create a new object: Object.assign({}, source).", "JavaScript logic", "warning");
+                }
             } else if (lang === 'Java') {
                 if (/public\s+class\s+[A-Za-z_]\w*/.test(trimmed) && !/[{;]/.test(trimmed)) {
                     e(lineNum, "Java class declaration is missing an opening brace.", "Add '{' after the class name.", "Java syntax");
@@ -607,6 +642,10 @@ class JungleScanner {
             if (/[ \t]{3,}$/.test(line)) {
                 e(lineNum, "Line has trailing whitespace.", "Remove the trailing spaces or tabs.", "Style");
             }
+            // More than 3 consecutive blank lines
+            if (!line.trim() && idx >= 3 && !lines[idx-1].trim() && !lines[idx-2].trim() && !lines[idx-3].trim()) {
+                e(lineNum, "More than 3 consecutive blank lines.", "Reduce excessive whitespace to improve readability.", "Style", null);
+            }
             // TODO/FIXME/HACK/XXX comments
             const todoMatch = commentRe.exec(line);
             if (todoMatch) {
@@ -634,6 +673,11 @@ class JungleScanner {
         const hasCode = lines.some(l => l.trim() && !commentPatterns.test(l));
         if (!hasCode && lines.length > 0) {
             e(1, "File contains no executable code — only whitespace or comments.", "Add code or remove the file if it is no longer needed.", "Code quality", null, "info");
+        }
+
+        // Large file warning
+        if (lines.length > 600) {
+            e(1, `File is ${lines.length} lines long.`, "Consider splitting this into smaller modules — large files are harder to navigate and test.", "Code quality", null, "info");
         }
 
         // Detect very long functions (>50 lines between open and close brace)
@@ -697,6 +741,18 @@ class JungleScanner {
                 idSeen.set(idVal, lineNum);
             }
         }
+        // Missing <title>
+        if (/<head[\s>]/i.test(fullCode) && !/<title[\s>]/i.test(fullCode)) {
+            e(1, "Document is missing a <title> tag.", "Add <title>Your Page Title</title> inside <head> for SEO and accessible browser tabs.", "HTML best practice", null, "warning");
+        }
+        // Missing <meta charset>
+        if (!/<meta[^>]+charset\s*=/i.test(fullCode)) {
+            e(1, "Document is missing a <meta charset> declaration.", "Add <meta charset=\"UTF-8\"> as the first element inside <head>.", "HTML best practice", null, "warning");
+        }
+        // Missing <meta name="viewport">
+        if (!/<meta[^>]+name\s*=\s*["']viewport["']/i.test(fullCode)) {
+            e(1, "Document is missing a viewport meta tag.", "Add <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> for mobile responsiveness.", "HTML best practice", null, "info");
+        }
         const deprecatedTags = ['center', 'font', 'marquee', 'blink'];
         lines.forEach((line, idx) => {
             const lineNum = idx + 1;
@@ -739,6 +795,30 @@ class JungleScanner {
             for (const m of formMatches) {
                 if (!/\b(action|onsubmit)\s*=/i.test(m[1])) {
                     e(lineNum, "<form> has no 'action' or 'onsubmit' — form submission may go nowhere.", "Add an action URL or onsubmit handler to process the form data.", "HTML quality", null, "info");
+                }
+            }
+            // <button> without type attribute
+            const btnMatches = [...line.matchAll(/<button\b([^>]*)>/gi)];
+            for (const m of btnMatches) {
+                if (!/\btype\s*=/i.test(m[1])) {
+                    e(lineNum, "<button> missing a 'type' attribute — defaults to 'submit' which can accidentally submit parent forms.", "Add type=\"button\" for action buttons or type=\"submit\" for form submission.", "HTML quality", m.index + 1, "info");
+                }
+            }
+            // <script src> in page without defer or async
+            const extScriptMatches = [...line.matchAll(/<script\b([^>]*)>/gi)];
+            for (const m of extScriptMatches) {
+                if (/\bsrc\s*=/i.test(m[1]) && !/\bdefer\b|\basync\b/i.test(m[1]) && !/\btype\s*=\s*["']module["']/i.test(m[1])) {
+                    e(lineNum, "<script src> without 'defer' or 'async' blocks HTML parsing until the script downloads.", "Add the 'defer' attribute to load the script after the document is parsed.", "HTML performance", m.index + 1, "info");
+                }
+            }
+            // <label> without for attribute and not wrapping an input
+            const labelMatches = [...line.matchAll(/<label\b([^>]*)>/gi)];
+            for (const m of labelMatches) {
+                if (!/\bfor\s*=/i.test(m[1]) && !/\bhtmlfor\s*=/i.test(m[1])) {
+                    const labelContent = line.slice(m.index);
+                    if (!/<input\b/i.test(labelContent) && !/<select\b/i.test(labelContent) && !/<textarea\b/i.test(labelContent)) {
+                        e(lineNum, "<label> has no 'for' attribute linking it to an input.", "Add for=\"inputId\" matching the id of the associated input element.", "HTML accessibility", m.index + 1, "info");
+                    }
                 }
             }
         });
@@ -833,7 +913,15 @@ class JungleScanner {
                     if (/:\s*0px\b/.test(trimmed)) {
                         e(lineNum, "Value '0px' should be written as just '0' — units are unnecessary on zero.", "Replace '0px' with '0'; CSS does not require units for zero values.", "CSS style", null, "info");
                     }
+                    // font-size in px — accessibility concern
+                    if (prop === 'font-size' && /:\s*\d+px\b/.test(trimmed)) {
+                        e(lineNum, "'font-size' set in 'px' prevents users from scaling text in their browser settings.", "Use 'rem' or 'em' units so font sizes respond to user preferences.", "CSS accessibility", null, "info");
+                    }
                 }
+            }
+            // Universal selector warning
+            if (/^\*\s*\{/.test(trimmed) || /,\s*\*\s*\{/.test(trimmed)) {
+                e(lineNum, "Universal selector '*' applies to every element and can hurt performance.", "Scope the universal selector: '.container *' or avoid it where possible.", "CSS performance", null, "info");
             }
         });
         // Report !important overuse (more than 3)
