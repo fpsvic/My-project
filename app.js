@@ -362,6 +362,12 @@ templatePanelToggle.onclick = () => {
     const open = templatePanelBody.classList.toggle('open');
     templateToggleArrow.textContent = open ? '▲' : '▼';
 };
+function updateTemplateBtnVisibility() {
+    const p = JungleUI.getCurrentProject();
+    if (!p) return;
+    const hasContent = Object.values(p.files).some(c => c && c.trim().length > 0);
+    templatePanelToggle.style.display = hasContent ? 'none' : '';
+}
 document.querySelectorAll('.template-card').forEach(card => {
     card.onclick = () => {
         const p = JungleUI.getCurrentProject();
@@ -432,6 +438,7 @@ editor.oninput = () => {
         }
     }
     JungleUI.updateCodeHighlight();
+    updateTemplateBtnVisibility();
 };
 editor.onscroll = () => { highlightOverlay.scrollTop = lineGutter.scrollTop = editor.scrollTop; highlightOverlay.scrollLeft = editor.scrollLeft; };
 editor.onkeydown = (e) => {

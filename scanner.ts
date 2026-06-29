@@ -804,18 +804,22 @@ class JungleScanner {
                     e(lineNum, "<form> has no 'action' or 'onsubmit' — form submission may go nowhere.", "Add an action URL or onsubmit handler to process the form data.", "HTML quality", null, "info");
                 }
             }
-            // <button> without type attribute
+            // <button> without type inside a <form> — outside a form, the default is harmless
             const btnMatches = [...line.matchAll(/<button\b([^>]*)>/gi)];
+            const inForm = /<form[\s>]/i.test(fullCode.slice(0, fullCode.indexOf(line) >= 0 ? fullCode.indexOf(line) : 0));
             for (const m of btnMatches) {
-                if (!/\btype\s*=/i.test(m[1])) {
-                    e(lineNum, "<button> missing a 'type' attribute — defaults to 'submit' which can accidentally submit parent forms.", "Add type=\"button\" for action buttons or type=\"submit\" for form submission.", "HTML quality", m.index! + 1, "info");
+                if (!/\btype\s*=/i.test(m[1]) && inForm) {
+                    e(lineNum, "<button> missing a 'type' attribute inside a form — defaults to 'submit' and may submit unintentionally.", "Add type=\"button\" for action buttons or type=\"submit\" to be explicit.", "HTML quality", m.index! + 1, "info");
                 }
             }
-            // <script src> in page without defer or async
+            // <script src> in <head> without defer or async (not at end of body where it's fine)
             const extScriptMatches = [...line.matchAll(/<script\b([^>]*)>/gi)];
             for (const m of extScriptMatches) {
                 if (/\bsrc\s*=/i.test(m[1]) && !/\bdefer\b|\basync\b/i.test(m[1]) && !/\btype\s*=\s*["']module["']/i.test(m[1])) {
-                    e(lineNum, "<script src> without 'defer' or 'async' blocks HTML parsing until the script downloads.", "Add the 'defer' attribute to load the script after the document is parsed.", "HTML performance", m.index! + 1, "info");
+                    const beforeLine = fullCode.slice(0, fullCode.indexOf(line) >= 0 ? fullCode.indexOf(line) : 0);
+                    if (!/<\/head>/i.test(beforeLine) && /<head[\s>]/i.test(beforeLine)) {
+                        e(lineNum, "<script src> in <head> without 'defer' or 'async' blocks HTML parsing until the script downloads.", "Add the 'defer' attribute to load the script after the document is parsed.", "HTML performance", m.index! + 1, "info");
+                    }
                 }
             }
             // <label> without for attribute and not wrapping an input
@@ -915,15 +919,21 @@ class JungleScanner {
                     if (/:\s*0px\b/.test(trimmed)) {
                         e(lineNum, "Value '0px' should be written as just '0' — units are unnecessary on zero.", "Replace '0px' with '0'; CSS does not require units for zero values.", "CSS style", null, "info");
                     }
-                    // font-size in px — accessibility concern
+                    // font-size in px on root/body — accessibility concern (not on components)
                     if (prop === 'font-size' && /:\s*\d+px\b/.test(trimmed)) {
-                        e(lineNum, "'font-size' set in 'px' prevents users from scaling text in their browser settings.", "Use 'rem' or 'em' units so font sizes respond to user preferences.", "CSS accessibility", null, "info");
+                        const selector = (lines.slice(Math.max(0, idx - 8), idx).reverse().find(l => /^\s*[a-z][\w\s,:.#[\]>+~*()-]*\s*\{/.test(l.trim())) || '').trim();
+                        if (/^(html|body)\s*[\{,]/.test(selector)) {
+                            e(lineNum, "'font-size' in 'px' on html/body prevents users from scaling text in their browser.", "Use 'rem' on html/body so all relative sizes scale with user preferences.", "CSS accessibility", null, "info");
+                        }
                     }
                 }
             }
-            // Universal selector warning
+            // Universal selector warning — only flag when combined with heavy properties, not simple resets
             if (/^\*\s*\{/.test(trimmed) || /,\s*\*\s*\{/.test(trimmed)) {
-                e(lineNum, "Universal selector '*' applies to every element and can hurt performance.", "Scope the universal selector: '.container *' or avoid it where possible.", "CSS performance", null, "info");
+                const nextFewLines = lines.slice(idx + 1, idx + 6).join(' ');
+                if (/\b(font-size|color|background|display|position|overflow)\s*:/i.test(nextFewLines)) {
+                    e(lineNum, "Universal selector '*' with visual properties applies to every element.", "Scope this to a container: '.container *', or split into targeted selectors.", "CSS performance", null, "info");
+                }
             }
         });
         // Report !important overuse (more than 3)

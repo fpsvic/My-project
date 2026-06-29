@@ -268,6 +268,7 @@ class JungleUI {
         this.updateCodeHighlight();
         this.updateLinesOfCodeCount();
         JungleStorage.saveProjects(projects);
+        if (typeof updateTemplateBtnVisibility === 'function') updateTemplateBtnVisibility();
     }
     static updateCodeHighlight() {
         let code = editor.value;
