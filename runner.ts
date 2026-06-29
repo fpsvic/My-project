@@ -21,9 +21,59 @@ interface ErrorDetails {
 interface RunMeta {
     errName?: string;
     errStack?: string;
+    compiler?: string;
+}
+
+interface LangMeta {
+    compiled: boolean;
+    runtime: string;
+    judge0: number | null;
+    piston: string | null;
+    wasm?: string;
 }
 
 class JungleRunner {
+    // Per-language metadata: compiler/runtime name, whether it's a compiled language,
+    // Judge0 CE language ID, Piston language name, optional WASM offline runtime key
+    static LANG_META: Record<string, LangMeta> = {
+        'Javascript': { compiled: false, runtime: 'Node.js / V8',        judge0: 63,   piston: 'javascript' },
+        'TypeScript': { compiled: true,  runtime: 'tsc → V8',            judge0: 74,   piston: 'typescript' },
+        'Python':     { compiled: false, runtime: 'CPython 3.12',        judge0: 71,   piston: 'python',    wasm: 'pyodide' },
+        'Java':       { compiled: true,  runtime: 'javac + JVM 17',      judge0: 62,   piston: 'java' },
+        'C':          { compiled: true,  runtime: 'GCC 12',              judge0: 50,   piston: 'c' },
+        'C++':        { compiled: true,  runtime: 'G++ 12',              judge0: 54,   piston: 'cpp' },
+        'C#':         { compiled: true,  runtime: 'dotnet / Mono',       judge0: 51,   piston: 'csharp' },
+        'Go':         { compiled: true,  runtime: 'Go compiler 1.21',    judge0: 60,   piston: 'go' },
+        'Rust':       { compiled: true,  runtime: 'rustc 1.75',          judge0: 73,   piston: 'rust' },
+        'Kotlin':     { compiled: true,  runtime: 'kotlinc + JVM',       judge0: 78,   piston: 'kotlin' },
+        'Swift':      { compiled: true,  runtime: 'swiftc 5.9',          judge0: 83,   piston: 'swift' },
+        'Scala':      { compiled: true,  runtime: 'scalac + JVM',        judge0: 81,   piston: 'scala' },
+        'Haskell':    { compiled: true,  runtime: 'GHC 9.4',             judge0: 61,   piston: 'haskell' },
+        'Elixir':     { compiled: true,  runtime: 'elixirc + BEAM',      judge0: 57,   piston: 'elixir' },
+        'Erlang':     { compiled: true,  runtime: 'erlc + BEAM',         judge0: 58,   piston: 'erlang' },
+        'Clojure':    { compiled: true,  runtime: 'Clojure + JVM',       judge0: 86,   piston: 'clojure' },
+        'OCaml':      { compiled: true,  runtime: 'ocamlopt',            judge0: 65,   piston: 'ocaml' },
+        'F#':         { compiled: true,  runtime: 'dotnet F# 8',         judge0: 87,   piston: 'fsharp' },
+        'D':          { compiled: true,  runtime: 'DMD 2.105',           judge0: 56,   piston: 'd' },
+        'Fortran':    { compiled: true,  runtime: 'gfortran 12',         judge0: 59,   piston: 'fortran' },
+        'COBOL':      { compiled: true,  runtime: 'GnuCOBOL 3.1',       judge0: 77,   piston: 'cobol' },
+        'Pascal':     { compiled: true,  runtime: 'FPC 3.2',             judge0: 67,   piston: 'pascal' },
+        'Assembly':   { compiled: true,  runtime: 'NASM + ld',           judge0: 45,   piston: 'nasm' },
+        'Dart':       { compiled: true,  runtime: 'dart 3.2',            judge0: null, piston: 'dart' },
+        'Zig':        { compiled: true,  runtime: 'zig 0.11',            judge0: null, piston: 'zig' },
+        'Nim':        { compiled: true,  runtime: 'nim 2.0',             judge0: null, piston: 'nim' },
+        'Julia':      { compiled: false, runtime: 'Julia 1.9 (JIT)',     judge0: null, piston: 'julia' },
+        'Ruby':       { compiled: false, runtime: 'Ruby 3.2',            judge0: 72,   piston: 'ruby',   wasm: 'opal' },
+        'PHP':        { compiled: false, runtime: 'PHP 8.2',             judge0: 68,   piston: 'php',    wasm: 'php-wasm' },
+        'Lua':        { compiled: false, runtime: 'Lua 5.4',             judge0: 64,   piston: 'lua',    wasm: 'wasmoon' },
+        'R':          { compiled: false, runtime: 'R 4.3',               judge0: 80,   piston: 'r' },
+        'Perl':       { compiled: false, runtime: 'Perl 5.36',           judge0: 85,   piston: 'perl' },
+        'Bash':       { compiled: false, runtime: 'Bash 5.2',            judge0: 46,   piston: 'bash' },
+        'Lisp':       { compiled: false, runtime: 'SBCL 2.3',            judge0: 55,   piston: 'commonlisp' },
+        'Prolog':     { compiled: false, runtime: 'SWI-Prolog 9',        judge0: 69,   piston: 'prolog' },
+        'SQL':        { compiled: false, runtime: 'SQLite 3.43',         judge0: null, piston: null },
+    };
+
     static async execute(lang: string, code: string, files: Record<string, string>): Promise<void> {
         try {
             const scanIssues = JungleScanner.scan(lang, code);
@@ -68,48 +118,118 @@ class JungleRunner {
             const p = JungleUI.getCurrentProject();
             if (!p) return;
 
-            // ── Tier 1: Native JS/TS (no network) ─────────────────────────────
-            if (lang === 'Javascript' || lang === 'TypeScript') {
+            const meta = this.LANG_META[lang] || { compiled: false, runtime: lang, judge0: null, piston: null };
+            const actionLabel = meta.compiled
+                ? `⚙️ Compiling with ${meta.runtime}...`
+                : `▶ Running with ${meta.runtime}...`;
+
+            // ── Tier 1: Native JS (always works, no network) ─────────────────
+            if (lang === 'Javascript') {
                 terminalViewBody.textContent = "";
                 const res = await this.runNativeJS(code);
                 this.showRunResult(res.stdout, res.stderr, lang, { errName: res.errName, errStack: res.errStack });
                 return;
             }
-            // ── Tier 2: SQL — sql.js WASM (no network) ────────────────────────
+
+            // ── Tier 2: TypeScript — in-browser tsc (offline-capable) ─────────
+            if (lang === 'TypeScript') {
+                terminalViewBody.textContent = "⚙️ Compiling TypeScript (tsc)...";
+                try {
+                    const js = await this.compileTypeScript(code);
+                    const res = await this.runNativeJS(js);
+                    this.showRunResult(res.stdout, res.stderr, lang, { errName: res.errName, errStack: res.errStack, compiler: 'tsc (in-browser)' });
+                    return;
+                } catch (tsErr: any) {
+                    terminalViewBody.textContent += `\n  → ${tsErr.message}\n⚠️ tsc failed — falling back to Judge0...`;
+                }
+            }
+
+            // ── Tier 3: SQL — SQLite WASM (offline-capable) ──────────────────
             if (lang === 'SQL') {
                 await this.runSqlJs(code);
                 return;
             }
-            // ── Tier 3: Language-specific WASM runtimes ────────────────────────
-            const wasmRunner: Record<string, () => Promise<RunResult>> = {
-                'Python': () => this.runPyodide(code),
-                'PHP':    () => this.runPhpWasm(code),
-                'Lua':    () => this.runLuaWasm(code),
-                'Ruby':   () => this.runRubyOpal(code),
+
+            // ── Tier 4: Judge0 CE — real compilers, online ────────────────────
+            terminalViewBody.textContent = `🌐 ${actionLabel}\n   Connecting to Judge0...`;
+            const j0 = await this.runJudge0(lang, code);
+            if (j0) {
+                this.showRunResult(j0.stdout, j0.stderr, lang, { compiler: meta.runtime });
+                return;
+            }
+
+            // ── Tier 5: Piston cluster — compiled + interpreted, online ────────
+            terminalViewBody.textContent = `⚠️ Judge0 unreachable — trying Piston...\n   ${actionLabel}`;
+            const piston = await this.runPistonDirect(lang, code, p);
+            if (piston) {
+                this.showRunResult(piston.stdout, piston.stderr, lang);
+                return;
+            }
+
+            // ── Tier 6: WASM offline runtimes — last resort ───────────────────
+            const wasmKey = meta.wasm;
+            const wasmRunners: Record<string, () => Promise<RunResult>> = {
+                'pyodide':  () => this.runPyodide(code),
+                'php-wasm': () => this.runPhpWasm(code),
+                'wasmoon':  () => this.runLuaWasm(code),
+                'opal':     () => this.runRubyOpal(code),
             };
-            const runner = wasmRunner[lang];
-            if (runner) {
+            if (wasmKey && wasmRunners[wasmKey]) {
+                terminalViewBody.textContent = `⚠️ All APIs unreachable — loading offline WASM runtime...\n   ${actionLabel}`;
                 try {
-                    const res = await runner();
+                    const res = await wasmRunners[wasmKey]();
                     this.showRunResult(res.stdout, res.stderr, lang);
                     return;
                 } catch (e: any) {
-                    terminalViewBody.textContent += `\n⚠️ WASM runtime failed (${e.message}), trying API fallback...`;
+                    terminalViewBody.textContent += `\n⚠️ WASM runtime failed: ${e.message}`;
                 }
             }
-            // ── Tier 4: Judge0 CE (60+ languages, no auth) ────────────────────
-            terminalViewBody.textContent = "🌐 Connecting to Judge0 API...";
-            const j0 = await this.runJudge0(lang, code);
-            if (j0) { this.showRunResult(j0.stdout, j0.stderr, lang); return; }
-            // ── Tier 5: Piston + CORS proxy fallback chain ────────────────────
-            terminalViewBody.textContent = "⚠️ Judge0 unreachable, trying Piston cluster...";
-            await this.runPiston(lang, code, p);
+
+            // All tiers exhausted
+            terminalStatus.textContent = "ALL RUNTIMES OFFLINE";
+            terminalStatus.className = "text-rose-500 font-bold";
+            terminalViewBody.textContent = this.formatSimpleReport({
+                lineNo: "—", errorMsg: "All execution engines unreachable",
+                likelyCause: `JS/HTML run locally; TypeScript compiles in-browser; SQL uses SQLite WASM. All API endpoints (Judge0, Piston) are unreachable, and ${lang} has no offline WASM runtime.`,
+                suggestion: "Check network connectivity or try a different language. JavaScript, TypeScript, HTML, and SQL always work offline."
+            });
 
         } catch (globalErr: any) { this.handleGlobalFailure(globalErr); }
         terminalViewBody.scrollTop = terminalViewBody.scrollHeight;
     }
 
-    // ── Native JS execution via sandboxed iframe + postMessage ────────────────
+    // ── TypeScript in-browser compilation via CDN tsc ─────────────────────────
+    static async compileTypeScript(code: string): Promise<string> {
+        if (!(window as any).ts) {
+            await new Promise((res, rej) => {
+                const s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/typescript@5/lib/typescript.js';
+                s.onload = res; s.onerror = rej;
+                document.head.appendChild(s);
+            });
+        }
+        const ts = (window as any).ts;
+        const result = ts.transpileModule(code, {
+            compilerOptions: {
+                target: ts.ScriptTarget.ES2020,
+                module: ts.ModuleKind.None,
+                strict: false,
+                esModuleInterop: true,
+            },
+            reportDiagnostics: true,
+        });
+        if (result.diagnostics && result.diagnostics.length > 0) {
+            const errs = result.diagnostics.map((d: any) => {
+                const pos = d.file ? d.file.getLineAndCharacterOfPosition(d.start) : null;
+                const line = pos ? ` (line ${pos.line + 1})` : '';
+                return ts.flattenDiagnosticMessageText(d.messageText, '\n') + line;
+            }).join('\n');
+            throw new Error(errs);
+        }
+        return result.outputText;
+    }
+
+    // ── Native JS execution via sandboxed iframe + postMessage ─────────────────
     static runNativeJS(code: string): Promise<RunResult> {
         return new Promise(resolve => {
             const output: string[] = [];
@@ -128,7 +248,6 @@ class JungleRunner {
             iframe.style.display = 'none';
             document.body.appendChild(iframe);
             const wrap = (fn: string) => `(...a)=>{try{parent.postMessage({__jOut:true,t:[...a].map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' ')},'*')}catch(e){}}`;
-            // Catch both try/catch errors and uncaught errors (e.g. from async code)
             iframe.srcdoc = `<!DOCTYPE html><html><body><script>
 const console={log:${wrap('log')},info:${wrap('info')},warn:(...a)=>parent.postMessage({__jOut:true,t:'WARN: '+[...a].join(' ')},'*'),error:(...a)=>parent.postMessage({__jOut:true,t:'ERROR: '+[...a].join(' ')},'*'),dir:${wrap('dir')},table:${wrap('table')}};
 window.onerror=function(msg,src,line,col,err){parent.postMessage({__jDone:true,err:err?err.toString():msg,errName:err?err.name:'Error',errStack:err?err.stack:'',errLine:line,errCol:col},'*');return true;};
@@ -143,9 +262,9 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         });
     }
 
-    // ── Pyodide — Python WASM ─────────────────────────────────────────────────
+    // ── Pyodide — Python WASM (offline fallback) ──────────────────────────────
     static async runPyodide(code: string): Promise<RunResult> {
-        if (!window._pyodide) {
+        if (!(window as any)._pyodide) {
             terminalViewBody.textContent = "⏳ Loading Python WASM (~10 MB, cached after first load)...";
             await new Promise((res, rej) => {
                 const s = document.createElement('script');
@@ -153,9 +272,9 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
                 s.onload = res; s.onerror = rej;
                 document.head.appendChild(s);
             });
-            window._pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.0/full/' });
+            (window as any)._pyodide = await (window as any).loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.0/full/' });
         }
-        const py = window._pyodide;
+        const py = (window as any)._pyodide;
         const out: string[] = [], err: string[] = [];
         py.setStdout({ batched: (s: string) => out.push(s) });
         py.setStderr({ batched: (s: string) => err.push(s) });
@@ -164,15 +283,15 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         return { stdout: out.join('\n'), stderr: err.join('\n') };
     }
 
-    // ── php-wasm — PHP 8 WASM ─────────────────────────────────────────────────
+    // ── php-wasm — PHP 8 WASM (offline fallback) ──────────────────────────────
     static async runPhpWasm(code: string): Promise<RunResult> {
-        if (!window._phpWasm) {
+        if (!(window as any)._phpWasm) {
             terminalViewBody.textContent = "⏳ Loading PHP 8 WASM (~10 MB, cached after first load)...";
-            const mod = await import('https://cdn.jsdelivr.net/npm/php-wasm/PhpWeb.mjs');
-            window._phpWasm = mod.PhpWeb;
+            const mod = await import('https://cdn.jsdelivr.net/npm/php-wasm/PhpWeb.mjs' as any);
+            (window as any)._phpWasm = mod.PhpWeb;
         }
         return new Promise(async resolve => {
-            const php = new window._phpWasm();
+            const php = new (window as any)._phpWasm();
             const out: string[] = [], err: string[] = [];
             php.addEventListener('output', (e: any) => out.push(...e.detail));
             php.addEventListener('error',  (e: any) => err.push(...e.detail));
@@ -182,15 +301,15 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         });
     }
 
-    // ── wasmoon — Lua 5.4 WASM ───────────────────────────────────────────────
+    // ── wasmoon — Lua 5.4 WASM (offline fallback) ────────────────────────────
     static async runLuaWasm(code: string): Promise<RunResult> {
-        if (!window._luaFactory) {
+        if (!(window as any)._luaFactory) {
             terminalViewBody.textContent = "⏳ Loading Lua WASM (~1 MB, cached after first load)...";
-            const mod = await import('https://cdn.jsdelivr.net/npm/wasmoon@1.16.0/+esm');
-            window._luaFactory = new mod.LuaFactory('https://unpkg.com/wasmoon@1.16.0/dist/glue.wasm');
+            const mod = await import('https://cdn.jsdelivr.net/npm/wasmoon@1.16.0/+esm' as any);
+            (window as any)._luaFactory = new mod.LuaFactory('https://unpkg.com/wasmoon@1.16.0/dist/glue.wasm');
         }
         const out: string[] = [], err: string[] = [];
-        const lua = await window._luaFactory.createEngine();
+        const lua = await (window as any)._luaFactory.createEngine();
         lua.global.set('print', (...a: any[]) => out.push(a.map(String).join('\t')));
         try { await lua.doString(code); }
         catch (e: any) { err.push(e.message); }
@@ -198,9 +317,9 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         return { stdout: out.join('\n'), stderr: err.join('\n') };
     }
 
-    // ── Opal — Ruby → JS transpiler (in-browser, no WASM download) ───────────
+    // ── Opal — Ruby → JS transpiler (offline fallback) ───────────────────────
     static async runRubyOpal(code: string): Promise<RunResult> {
-        if (!window.Opal) {
+        if (!(window as any).Opal) {
             terminalViewBody.textContent = "⏳ Loading Ruby (Opal) runtime...";
             await new Promise((res, rej) => {
                 const s = document.createElement('script');
@@ -211,16 +330,15 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
             await new Promise((res, rej) => {
                 const s = document.createElement('script');
                 s.src = 'https://cdn.opalrb.com/opal/current/opal-parser.min.js';
-                s.onload = () => { Opal.load('opal-parser'); res(); };
+                s.onload = () => { (window as any).Opal.load('opal-parser'); res(); };
                 s.onerror = rej;
                 document.head.appendChild(s);
             });
         }
         const out: string[] = [];
-        const origWrite = Opal.gvars['$stdout'] && Opal.gvars['$stdout'].write;
         try {
-            Opal.gvars['$stdout'] = { write: (s: string) => { out.push(s); return s.length; }, puts: (s: string) => { out.push(s + '\n'); } };
-            Opal.eval(code);
+            (window as any).Opal.gvars['$stdout'] = { write: (s: string) => { out.push(s); return s.length; }, puts: (s: string) => { out.push(s + '\n'); } };
+            (window as any).Opal.eval(code);
         } catch(e: any) {
             return { stdout: out.join(''), stderr: e.message || String(e) };
         }
@@ -232,7 +350,7 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         switchView('terminal', false);
         terminalStatus.textContent = "RUNNING";
         terminalStatus.className = "text-[#74a896] font-bold animate-pulse";
-        if (!window._sqlJs) {
+        if (!(window as any)._sqlJs) {
             terminalViewBody.textContent = "⏳ Loading SQLite WASM (~1 MB, cached after first load)...";
             await new Promise((res, rej) => {
                 const s = document.createElement('script');
@@ -240,10 +358,10 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
                 s.onload = res; s.onerror = rej;
                 document.head.appendChild(s);
             });
-            window._sqlJs = await initSqlJs({ locateFile: (f: string) => `https://sql.js.org/dist/${f}` });
+            (window as any)._sqlJs = await (window as any).initSqlJs({ locateFile: (f: string) => `https://sql.js.org/dist/${f}` });
         }
         try {
-            const db = new window._sqlJs.Database();
+            const db = new (window as any)._sqlJs.Database();
             const results = db.exec(code);
             if (!results.length) {
                 terminalViewBody.textContent = "Query executed successfully (no rows returned).";
@@ -267,20 +385,10 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         }
     }
 
-    // ── Judge0 CE — 60+ languages, no auth ───────────────────────────────────
+    // ── Judge0 CE — real compilers, 35+ languages ─────────────────────────────
     static async runJudge0(lang: string, code: string): Promise<RunResult | null> {
-        const ids: Record<string, number> = {
-            'Javascript': 63, 'TypeScript': 74, 'Python': 71,
-            'Java': 62, 'C': 50, 'C++': 54, 'C#': 51,
-            'Go': 60, 'Rust': 73, 'Ruby': 72, 'PHP': 68,
-            'Swift': 83, 'Kotlin': 78, 'Scala': 81,
-            'R': 80, 'Perl': 85, 'Haskell': 61,
-            'Lua': 64, 'Bash': 46, 'Fortran': 59,
-            'Erlang': 58, 'Elixir': 57, 'Clojure': 86,
-            'OCaml': 65, 'D': 56, 'Assembly': 45,
-            'Lisp': 55, 'Prolog': 69, 'Pascal': 67,
-        };
-        const id = ids[lang];
+        const meta = this.LANG_META[lang];
+        const id = meta && meta.judge0;
         if (!id) return null;
         const base = 'https://ce.judge0.com';
         const enc = encodeURIComponent;
@@ -307,54 +415,39 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         return null;
     }
 
-    // ── Piston cluster — last resort fallback ─────────────────────────────────
-    static async runPiston(lang: string, code: string, p: Project): Promise<void> {
-        const langMap: Record<string, string> = { 'Javascript': 'javascript', 'Python': 'python', 'C++': 'cpp', 'Java': 'java', 'TypeScript': 'typescript', 'C': 'c', 'C#': 'csharp', 'Ruby': 'ruby', 'Go': 'go', 'Rust': 'rust', 'PHP': 'php', 'Swift': 'swift', 'Kotlin': 'kotlin', 'Scala': 'scala', 'R': 'r', 'Perl': 'perl', 'Haskell': 'haskell', 'Julia': 'julia', 'Lua': 'lua', 'Clojure': 'clojure', 'Elixir': 'elixir', 'Erlang': 'erlang', 'OCaml': 'ocaml', 'F#': 'fsharp', 'Dart': 'dart', 'Bash': 'bash', 'Fortran': 'fortran', 'COBOL': 'cobol', 'D': 'd', 'Zig': 'zig', 'Nim': 'nim', 'Assembly': 'nasm', 'Lisp': 'commonlisp', 'Prolog': 'prolog', 'Pascal': 'pascal' };
-        const pistonLang = langMap[lang] || 'javascript';
+    // ── Piston — returns {stdout, stderr} or null ─────────────────────────────
+    static async runPistonDirect(lang: string, code: string, p: Project): Promise<RunResult | null> {
+        const meta = this.LANG_META[lang];
+        const pistonLang = (meta && meta.piston) || lang.toLowerCase();
+        if (!pistonLang) return null;
         const filesArray: Array<{ name: string; content: string }> = [{ name: p.currentFile || 'main', content: code }];
         Object.keys(p.files).forEach(f => { if (f !== p.currentFile) filesArray.push({ name: f, content: p.files[f] }); });
         const payload = { language: pistonLang, version: '*', files: filesArray };
         const e1 = 'https://emkc.org/api/v2/piston/execute';
         const e2 = 'https://piston.engineering.purdue.edu/api/v2/piston/execute';
         const enc = encodeURIComponent;
-        const endpoints: Array<{ name: string; url: string; raw?: boolean; corssh?: boolean }> = [
-            { name: 'EMKC', url: e1 }, { name: 'Purdue', url: e2 },
-            { name: 'corsproxy→EMKC', url: `https://corsproxy.io/?${e1}` },
-            { name: 'corsproxy→Purdue', url: `https://corsproxy.io/?${e2}` },
-            { name: 'allorigins→EMKC', url: `https://api.allorigins.win/raw?url=${enc(e1)}`, raw: true },
-            { name: 'allorigins→Purdue', url: `https://api.allorigins.win/raw?url=${enc(e2)}`, raw: true },
-            { name: 'cors.sh→EMKC', url: `https://cors.sh/${e1}`, corssh: true },
-            { name: 'cors-anywhere→EMKC', url: `https://cors-anywhere.herokuapp.com/${e1}` },
-            { name: 'thingproxy→EMKC', url: `https://thingproxy.freeboard.io/fetch/${e1}` },
+        const endpoints: Array<{ url: string; raw?: boolean }> = [
+            { url: e1 },
+            { url: e2 },
+            { url: `https://corsproxy.io/?${e1}` },
+            { url: `https://corsproxy.io/?${e2}` },
+            { url: `https://api.allorigins.win/raw?url=${enc(e1)}`, raw: true },
+            { url: `https://cors-anywhere.herokuapp.com/${e1}` },
+            { url: `https://thingproxy.freeboard.io/fetch/${e1}` },
         ];
-        let result: any = null;
-        for (let i = 0; i < endpoints.length; i++) {
-            const ep = endpoints[i];
-            if (i > 0) terminalViewBody.textContent += `\n↳ Trying ${ep.name}...`;
+        for (const ep of endpoints) {
             try {
-                const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                if (ep.corssh) headers['x-cors-api-key'] = 'temp_' + Math.random().toString(36).slice(2);
-                const res = await fetch(ep.url, { method: 'POST', headers, body: JSON.stringify(payload) });
+                const res = await fetch(ep.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                result = ep.raw ? JSON.parse(await res.text()) : await res.json();
-                break;
+                const data = ep.raw ? JSON.parse(await res.text()) : await res.json();
+                if (data && data.run) return { stdout: data.run.stdout || '', stderr: data.run.stderr || '' };
             } catch(_) {}
         }
-        if (result && result.run) {
-            this.showRunResult(result.run.stdout || '', result.run.stderr || '', lang);
-        } else {
-            terminalStatus.textContent = "ALL RUNTIMES OFFLINE";
-            terminalStatus.className = "text-rose-500 font-bold";
-            terminalViewBody.textContent = this.formatSimpleReport({
-                lineNo: "—", errorMsg: "All execution engines unreachable",
-                likelyCause: "JS/HTML run locally. Python/PHP/Lua/Ruby/SQL load via WASM. All API endpoints (Judge0, Piston) are currently blocked or offline.",
-                suggestion: "Try a different network or browser extension blocker settings. JS and HTML always work offline."
-            });
-        }
+        return null;
     }
 
     // ── Shared result display ─────────────────────────────────────────────────
-    static showRunResult(stdout: string, stderr: string, lang: string, meta?: RunMeta): void {
+    static showRunResult(stdout: string, stderr: string, lang: string, meta: RunMeta = {}): void {
         const hasFail = stderr && stderr.trim();
         terminalViewBody.textContent = '';
         if (hasFail) {
@@ -364,12 +457,16 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
             terminalStatus.textContent = "FAILED TO RUN";
             terminalStatus.className = "text-rose-500 font-bold";
         } else {
-            terminalViewBody.textContent = stdout || "✓ Ran successfully — no output.";
+            const langMeta = this.LANG_META[lang] || {} as LangMeta;
+            const compiler = meta.compiler || langMeta.runtime || '';
+            const header = compiler ? `✓ ${langMeta.compiled ? 'Compiled & ran' : 'Ran'}  [${compiler}]\n${'─'.repeat(46)}\n` : '';
+            terminalViewBody.textContent = header + (stdout || "✓ Ran successfully — no output.");
             terminalStatus.textContent = "SUCCESS";
             terminalStatus.className = "text-emerald-400 font-bold";
         }
         terminalViewBody.scrollTop = terminalViewBody.scrollHeight;
     }
+
     static handleGlobalFailure(err: Error | string): void {
         switchView('terminal', false);
         terminalStatus.textContent = "FAILED TO RUN";
@@ -380,13 +477,13 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         });
         JungleUI.showToast("❌ Failed to run! Tap here to inspect terminal diagnostics.", () => { switchView('terminal', false); });
     }
+
     static parseError(stderr: string, stdout: string, lang: string, meta?: RunMeta): ErrorDetails {
         let errorMsg = "Execution anomaly detected.", lineNo: string | number = "Unknown line", file = "main";
         let column: string | number | null = null, likelyCause = "", suggestion = "", errorType = "";
         const combined = (stderr || "") + "\n" + (stdout || "");
         const lines = combined.trim().split('\n').filter(Boolean);
 
-        // ── Timeout detection (applies to any lang) ────────────────────────────
         if (/execution timed out/i.test(combined)) {
             errorMsg = "Execution timed out after 10 seconds.";
             errorType = "Timeout";
@@ -395,67 +492,58 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         }
 
         if (lang === 'Python') {
-            // Find the deepest traceback frame (last "File ..., line N")
             const frameMatches = [...combined.matchAll(/File\s+"([^"]+)",\s+line\s+(\d+)/gi)];
-            if (frameMatches.length > 0) {
-                const last = frameMatches[frameMatches.length - 1];
-                file = last[1]; lineNo = last[2];
-            }
-            // Extract the final error type+message (last line matching ErrorType: message)
+            if (frameMatches.length > 0) { const last = frameMatches[frameMatches.length - 1]; file = last[1]; lineNo = last[2]; }
             for (let i = lines.length - 1; i >= 0; i--) {
                 const l = lines[i].trim();
                 const errMatch = l.match(/^([A-Za-z][A-Za-z0-9_]*(?:Error|Exception|Warning|Interrupt|Stop))\s*:\s*(.*)/);
                 if (errMatch) { errorType = errMatch[1]; errorMsg = l; break; }
                 if (l.includes('Error:') || l.includes('Exception:')) { errorMsg = l; break; }
             }
-            if (errorMsg === "Execution anomaly detected." && lines.length > 0) { errorMsg = lines[lines.length - 1]; }
-            // Derive errorType from errorMsg if not set yet
-            if (!errorType) {
-                const tm = errorMsg.match(/^([A-Za-z][A-Za-z0-9_]*(?:Error|Exception))/);
-                if (tm) errorType = tm[1];
-            }
+            if (errorMsg === "Execution anomaly detected." && lines.length > 0) errorMsg = lines[lines.length - 1];
+            if (!errorType) { const tm = errorMsg.match(/^([A-Za-z][A-Za-z0-9_]*(?:Error|Exception))/); if (tm) errorType = tm[1]; }
         } else if (lang === 'Javascript' || lang === 'TypeScript') {
-            // Use richer data from iframe if available
             const errName = (meta && meta.errName) || '';
             const errStack = (meta && meta.errStack) || '';
             errorType = errName || '';
             if (lines[0]) errorMsg = lines[0];
-            // Parse line number from stack trace — prefer first frame pointing to user code
             const stackLines = (errStack || combined).split('\n');
             for (const sl of stackLines) {
                 const m = sl.match(/at\s+.*?(?:<anonymous>|evalmachine\.__toString__|eval):(\d+):(\d+)/) ||
                           sl.match(/at\s+.*?:(\d+):(\d+)/);
                 if (m) { lineNo = m[1]; column = m[2]; file = "main.js"; break; }
             }
-            // Fallback path-style match if stack didn't help
             if (lineNo === "Unknown line") {
                 const match = combined.match(/\/([^/:\s]+):(\d+):(\d+)/) || combined.match(/(?:^|\n)([^:\n]+):(\d+):(\d+)/);
                 if (match) { file = match[1] || "main.js"; lineNo = match[2]; column = match[3]; }
             }
-            // Build a clean errorMsg from errName + message portion
-            if (errName && errorMsg) {
-                const msgBody = errorMsg.replace(/^[A-Za-z][A-Za-z0-9_]*Error:\s*/i, '');
-                errorMsg = `${errName}: ${msgBody}`;
-            }
-        } else if (lang === 'C++' || lang === 'Java') {
-            const match = combined.match(/([^:\n]+):(\d+):(?:(\d+):)?\s+(?:fatal\s+)?error:\s+(.+)/i);
+            if (errName && errorMsg) { const msgBody = errorMsg.replace(/^[A-Za-z][A-Za-z0-9_]*Error:\s*/i, ''); errorMsg = `${errName}: ${msgBody}`; }
+        } else if (lang === 'C++' || lang === 'C' || lang === 'Rust' || lang === 'Go' || lang === 'Java' || lang === 'Kotlin' || lang === 'Swift') {
+            const match = combined.match(/([^:\n]+):(\d+):(?:(\d+):)?\s+(?:fatal\s+)?(?:error|Error):\s+(.+)/i);
             if (match) { file = match[1]; lineNo = match[2]; column = match[3] || null; errorMsg = match[4]; errorType = "CompileError"; }
-            if (lang === 'Java') {
+            if (lang === 'Java' || lang === 'Kotlin') {
                 const exception = combined.match(/Exception in thread "[^"]+"\s+([^\n]+)/i);
-                const javaFrame = combined.match(/\bat\s+.*\(([^():]+):(\d+)\)/);
+                const frame = combined.match(/\bat\s+.*\(([^():]+):(\d+)\)/);
                 if (exception) { errorMsg = exception[1].trim(); const em = errorMsg.match(/^([A-Za-z.]+Exception)/); if (em) errorType = em[1].split('.').pop() || ''; }
-                if (javaFrame) { file = javaFrame[1]; lineNo = javaFrame[2]; }
+                if (frame) { file = frame[1]; lineNo = frame[2]; }
+            }
+            if (lang === 'Rust') {
+                const rustMatch = combined.match(/error(?:\[E\d+\])?\s*:\s*([^\n]+)/);
+                if (rustMatch) { errorMsg = rustMatch[1]; errorType = "CompileError"; }
+                const rustLine = combined.match(/--> [^:]+:(\d+):(\d+)/);
+                if (rustLine) { lineNo = rustLine[1]; column = rustLine[2]; }
             }
         } else {
             const generic = combined.match(/([^:\n]+):(\d+):(?:(\d+):)?\s*(.+)/);
             if (generic) { file = generic[1]; lineNo = generic[2]; column = generic[3] || null; errorMsg = generic[4]; }
-            else if (lines.length > 0) { errorMsg = lines[0]; }
+            else if (lines.length > 0) errorMsg = lines[0];
         }
         const insight = this.explainError(errorMsg, lang, combined);
         likelyCause = insight.likelyCause;
         suggestion = insight.suggestion;
         return { errorMsg, lineNo, file, column, likelyCause, suggestion, rawOutput: combined.trim(), errorType };
     }
+
     static explainError(errorMsg: string, lang: string, rawOutput: string): { likelyCause: string; suggestion: string } {
         const text = `${errorMsg}\n${rawOutput || ""}`.toLowerCase();
         const rules: Array<{ test: RegExp; cause: string; fix: string }> = [
@@ -476,16 +564,22 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
             { test: /segmentation fault|core dumped/i, cause: "Native code accessed invalid memory.", fix: "Check pointer usage, array bounds, and object lifetimes around the reported location." },
             { test: /overflow|integer overflow/i, cause: "A numeric value exceeded the maximum allowed size.", fix: "Use a larger numeric type or add bounds checking before performing the arithmetic." },
             { test: /assertion.*failed|assertionerror/i, cause: "An assert statement in the code evaluated to false.", fix: "Check the condition being asserted and the values it compares at that point in the program." },
-            { test: /unicode|encoding|decode/i, cause: "A string or file contains characters that could not be decoded with the current encoding.", fix: "Specify an encoding explicitly (e.g. open(file, encoding='utf-8')) or sanitize the input." }
+            { test: /unicode|encoding|decode/i, cause: "A string or file contains characters that could not be decoded with the current encoding.", fix: "Specify an encoding explicitly (e.g. open(file, encoding='utf-8')) or sanitize the input." },
+            { test: /borrow|lifetime|ownership/i, cause: "Rust's borrow checker rejected an ownership or lifetime constraint.", fix: "Review the borrow rules: only one mutable reference or many immutable references can exist at once." },
+            { test: /linker|undefined reference|unresolved external/i, cause: "The linker could not find a function or symbol referenced in the code.", fix: "Check that all required libraries are linked and all function definitions are present." },
+            { test: /null pointer|nullpointerexception/i, cause: "The program dereferenced a null or uninitialized pointer.", fix: "Initialize pointers before use and check for null before dereferencing." },
         ];
         const matched = rules.find(rule => rule.test.test(text));
         if (matched) return { likelyCause: matched.cause, suggestion: matched.fix };
         if (lang === 'Python') return { likelyCause: "Python raised an exception while executing the script.", suggestion: "Read the last traceback line first, then inspect the reported source line." };
         if (lang === 'Javascript' || lang === 'TypeScript') return { likelyCause: "The JavaScript runtime stopped on an exception.", suggestion: "Check the first error line and the top stack frame that points into your file." };
         if (lang === 'C++' || lang === 'C') return { likelyCause: "The compiler or runtime rejected the native program.", suggestion: "Start with the first compiler error; later errors are often side effects." };
-        if (lang === 'Java') return { likelyCause: "The Java compiler or JVM stopped because of the reported error.", suggestion: "Verify the class name, method signatures, and the first reported line." };
+        if (lang === 'Rust') return { likelyCause: "The Rust compiler rejected the program.", suggestion: "Read the first error carefully — Rust error messages include detailed explanations and fix suggestions." };
+        if (lang === 'Java' || lang === 'Kotlin') return { likelyCause: "The JVM compiler or runtime stopped because of the reported error.", suggestion: "Verify the class name, method signatures, and the first reported line." };
+        if (lang === 'Go') return { likelyCause: "The Go compiler rejected the program or the binary panicked at runtime.", suggestion: "Check the first compiler error; Go errors are precise and usually point directly at the issue." };
         return { likelyCause: "The selected runtime reported an execution error.", suggestion: "Inspect the raw output and confirm the file language matches the selected runtime." };
     }
+
     static getCodeFrame(file: string, lineNo: string | number, column: string | number | null = null): string {
         const p = JungleUI.getCurrentProject();
         if (!p || !p.files) return "";
@@ -499,52 +593,43 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         for (let i = start; i <= end; i++) {
             const marker = i === lineNumber ? ">" : " ";
             frame.push(`${marker} ${String(i).padStart(4, ' ')} | ${lines[i - 1]}`);
-            if (i === lineNumber && column) {
-                frame.push(`       | ${" ".repeat(Math.max(0, Number(column) - 1))}^`);
-            }
+            if (i === lineNumber && column) frame.push(`       | ${" ".repeat(Math.max(0, Number(column) - 1))}^`);
         }
         return frame.join('\n');
     }
+
     static severityIcon(sev: string): string {
         if (sev === 'warning') return '⚠️';
         if (sev === 'info') return 'ℹ️';
         return '⛔';
     }
+
     static formatSimpleReport(details: ErrorDetails): string {
         const lineNo = details.lineNo || "Unknown";
-        // Prefer explicit errorType from parsing, fall back to message-derived kind
         const errorKind = details.errorType || this.getSimpleErrorKind(details.errorMsg || "");
         const message = this.simplifyErrorMessage(details.errorMsg || "unknown error");
         const icon = this.severityIcon(details.severity || "");
-        // Show error type as a bracketed label if we have a specific one
         const typeLabel = details.errorType ? `[${details.errorType}] ` : '';
         let out = `${icon} ${typeLabel}Error on Line ${lineNo} — ${errorKind}\n   ${message}`;
         if (details.likelyCause) out += `\n\nLikely cause: ${details.likelyCause}`;
         if (details.suggestion) out += `\nSuggestion:   ${details.suggestion}`;
         return out;
     }
-    // ── Format Python/multi-line tracebacks more readably ─────────────────────
+
     static formatTraceback(stderr: string): string {
         if (!stderr || !stderr.trim()) return '';
         const lines = stderr.trim().split('\n');
         const out: string[] = [];
         for (const line of lines) {
             const trimmed = line.trim();
-            // Highlight "File ..., line N" frames
-            if (/^File\s+"[^"]+",\s+line\s+\d+/.test(trimmed)) {
-                out.push('  → ' + trimmed);
-            // Highlight the final error type line (e.g. "ValueError: invalid literal")
-            } else if (/^[A-Za-z][A-Za-z0-9_]*(?:Error|Exception|Warning|Interrupt|Stop)\s*:/.test(trimmed)) {
-                out.push('  !! ' + trimmed);
-            // De-emphasize "Traceback (most recent call last):"
-            } else if (/^Traceback\s+\(most recent call last\)/i.test(trimmed)) {
-                out.push('  ' + trimmed);
-            } else {
-                out.push('     ' + line);
-            }
+            if (/^File\s+"[^"]+",\s+line\s+\d+/.test(trimmed)) out.push('  → ' + trimmed);
+            else if (/^[A-Za-z][A-Za-z0-9_]*(?:Error|Exception|Warning|Interrupt|Stop)\s*:/.test(trimmed)) out.push('  !! ' + trimmed);
+            else if (/^Traceback\s+\(most recent call last\)/i.test(trimmed)) out.push('  ' + trimmed);
+            else out.push('     ' + line);
         }
         return out.join('\n');
     }
+
     static getSimpleErrorKind(message: string): string {
         const text = String(message).toLowerCase();
         if (/indentation|expected an indented block|unexpected indent/.test(text)) return "Indentation error";
@@ -558,18 +643,18 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         if (/zerodivision|divide by zero|division by zero/.test(text)) return "Math error";
         if (/nullpointer|null pointer|nullreference/.test(text)) return "Null error";
         if (/timeout|timed out|time limit/.test(text)) return "Timeout error";
+        if (/borrow|lifetime|ownership/.test(text)) return "Borrow error";
+        if (/linker|undefined reference|unresolved/.test(text)) return "Linker error";
         return "Error";
     }
+
     static simplifyErrorMessage(message: string): string {
         let text = String(message || "unknown error").trim();
         if (/Unexpected end of input/i.test(text)) return "unexpected end of input";
         const closingBracket = text.match(/(?:Unexpected token|unexpected|Mismatched closing bracket)\s*['"`]?([}\])])['"`]?/i);
         if (closingBracket) return `unexpected ${closingBracket[1]}`;
         const unclosed = text.match(/Unclosed bracket or delimiter\s*['"`]?([({[])['"`]?/i);
-        if (unclosed) {
-            const closers: Record<string, string> = { '(': ')', '[': ']', '{': '}' };
-            return `missing ${closers[unclosed[1]] || unclosed[1]}`;
-        }
+        if (unclosed) { const closers: Record<string, string> = { '(': ')', '[': ']', '{': '}' }; return `missing ${closers[unclosed[1]] || unclosed[1]}`; }
         const expected = text.match(/expected\s+['"`]?([^'"`.,\n]+)['"`]?/i);
         if (expected) return `expected ${expected[1].trim()}`;
         const notDefined = text.match(/([A-Za-z_$][\w$]*)\s+(?:is not defined|is undefined)/i);
@@ -582,32 +667,21 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         if (cannotRead) return cannotRead[2] ? `cannot read ${cannotRead[2]} of ${cannotRead[1]}` : `cannot read value of ${cannotRead[1]}`;
         const invalidLiteral = text.match(/invalid literal .*?:\s*['"]([^'"]+)['"]/i);
         if (invalidLiteral) return `invalid number ${invalidLiteral[1]}`;
-        text = text
-            .replace(/^syntaxerror:\s*/i, "")
-            .replace(/^error:\s*/i, "")
-            .replace(/^typeerror:\s*/i, "")
-            .replace(/^referenceerror:\s*/i, "")
-            .replace(/^nameerror:\s*/i, "")
-            .replace(/^valueerror:\s*/i, "")
-            .replace(/^attributeerror:\s*/i, "")
-            .replace(/\s+/g, " ")
-            .replace(/[.。]+$/, "");
+        text = text.replace(/^syntaxerror:\s*/i, "").replace(/^error:\s*/i, "").replace(/^typeerror:\s*/i, "").replace(/^referenceerror:\s*/i, "").replace(/^nameerror:\s*/i, "").replace(/^valueerror:\s*/i, "").replace(/^attributeerror:\s*/i, "").replace(/\s+/g, " ").replace(/[.。]+$/, "");
         return text || "unknown error";
     }
+
     static printCrashAnalysis(details: ErrorDetails, stdout: string, stderr: string): void {
         let output = this.formatSimpleReport(details);
         if (details.lineNo && details.lineNo !== "Unknown" && details.lineNo !== "—") {
             const frame = this.getCodeFrame(details.file || "", details.lineNo, details.column);
             if (frame) output += `\n\n${frame}`;
         }
-        // Show formatted traceback for Python/multi-line stderr
         if (stderr && stderr.includes('\n')) {
             const formatted = this.formatTraceback(stderr);
             if (formatted) output += `\n\n─── Traceback ───\n${formatted}`;
         }
-        if (stdout && stdout.trim()) {
-            output += `\n\n─── Program output before crash ───\n${stdout.trim()}`;
-        }
+        if (stdout && stdout.trim()) output += `\n\n─── Program output before crash ───\n${stdout.trim()}`;
         if (details.additionalErrors && details.additionalErrors.length > 0) {
             output += `\n\n─── Additional issues ───`;
             details.additionalErrors.forEach(e => {
