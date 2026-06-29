@@ -64,6 +64,7 @@ let wcCamTX=-999, wcCamTY=-999; // tile origin the cache was last built for
 let buildings=[];
 let docks=[];
 let chests=[];      // treasure chests inside houses; each drops 2 items when opened
+let bridges=[];     // wide railed bridges connecting nearby islands
 
 // Village centres — randomised per seed (8 centres spread across map)
 let CENTRES=[];
@@ -146,6 +147,67 @@ function carveJunkyard(seed){
     const px=jx+2+rnd(jw-4), py=jy+2+rnd(jh-4);
     junkPiles.push({x:px*TILE+TILE/2, y:py*TILE+TILE/2, kind:rnd(4), r:8+rnd(10)});
   }
+}
+// If two separate islands sit close together, span the narrow channel between
+// them with a wide (4-tile) wooden bridge that has railings.
+const isWaterTile=(t)=>t===T.DEEP_WATER||t===T.SHALLOW_WATER;
+function bridgeIslands(){
+  // label connected land masses (land = anything that isn't open water)
+  const lbl=new Int32Array(WW*WH).fill(0);
+  const sizes=[0];
+  let next=1;
+  const stack=[];
+  for(let i=0;i<WW*WH;i++){
+    if(lbl[i]||isWaterTile(tiles[i]))continue;
+    const id=next++; let count=0; stack.length=0; stack.push(i); lbl[i]=id;
+    while(stack.length){
+      const p=stack.pop(); count++;
+      const x=p%WW, y=(p/WW)|0;
+      const nb=[[x-1,y],[x+1,y],[x,y-1],[x,y+1]];
+      for(const [nx,ny] of nb){
+        if(nx<0||nx>=WW||ny<0||ny>=WH)continue;
+        const q=ny*WW+nx;
+        if(lbl[q]||isWaterTile(tiles[q]))continue;
+        lbl[q]=id; stack.push(q);
+      }
+    }
+    sizes[id]=count;
+  }
+  // need two sizeable masses
+  const big=[]; for(let id=1;id<next;id++) if(sizes[id]>150) big.push(id);
+  if(big.length<2)return;
+  big.sort((a,b)=>sizes[b]-sizes[a]);
+  const A=big[0], B=big[1];
+  // find the shortest straight water channel directly joining mass A and B
+  let best=null;
+  const consider=(x,y,dx,dy)=>{ // start scanning from a land tile of A or B
+    // walk over water, see what land mass is on the far side
+    let len=0, cx=x+dx, cy=y+dy;
+    while(cx>=0&&cx<WW&&cy>=0&&cy<WH&&isWaterTile(tiles[cy*WW+cx])&&len<26){cx+=dx;cy+=dy;len++;}
+    if(len<1||len>22)return;
+    if(cx<0||cx>=WW||cy<0||cy>=WH)return;
+    const here=lbl[y*WW+x], far=lbl[cy*WW+cx];
+    if((here===A&&far===B)||(here===B&&far===A)){
+      if(!best||len<best.len) best={x,y,dx,dy,len};
+    }
+  };
+  for(let y=2;y<WH-2;y++)for(let x=2;x<WW-2;x++){
+    const id=lbl[y*WW+x]; if(id!==A&&id!==B)continue;
+    if(isWaterTile(tiles[y*WW+(x+1)])) consider(x,y,1,0);
+    if(isWaterTile(tiles[(y+1)*WW+x])) consider(x,y,0,1);
+  }
+  if(!best)return;
+  // lay a 4-wide bridge across the channel (plus 1 tile onto each shore)
+  const {x,y,dx,dy,len}=best;
+  for(let i=-1;i<=len;i++){            // span the gap plus 1 tile onto each shore
+    const bx=x+dx*i, by=y+dy*i;
+    for(let w=-1;w<=2;w++){            // 4 tiles wide, perpendicular to travel
+      const px=bx+(dy!==0?w:0), py=by+(dx!==0?w:0);
+      if(px<0||px>=WW||py<0||py>=WH)continue;
+      if(isWaterTile(tiles[py*WW+px])||tiles[py*WW+px]===T.SAND) tiles[py*WW+px]=T.BRIDGE;
+    }
+  }
+  bridges.push({x,y,dx,dy,len,horizontal:dx!==0});
 }
 function canPlace(bx,by,bw,bh){
   if(bx<2||by<2||bx+bw>=WW-2||by+bh>=WH-2)return false;
@@ -438,6 +500,8 @@ const ITEM_DEF={
   HealOrb:    {cat:'ALLYHEAL', heal:30, color:'#55ffcc', icon:'🔮'},
   // ── Mythic flame sword — always Mythic; each swing shoots 4 fire winds ──────
   FlameSword: {cat:'MELEE', atk:6, color:'#ff6622', icon:'🔥', flame:true, alwaysMythic:true},
+  // ── Aqua boots — equip in the armor slot to move super fast through water ───
+  AquaBoots:  {cat:'ARMOUR', def:2, color:'#33bbdd', icon:'👢', aquatic:true},
 };
 const ITEM_KINDS=Object.keys(ITEM_DEF);
 // item kinds that can spawn on the ground (exclude special drops from generic
@@ -472,9 +536,26 @@ const DT={
   Innkeeper:['A traveler passed through with a {adj} {item} from the {place}.','I heard {cadj} {threat} were spotted near the {adj} road.','The last guest said the {place} is completely {adj} now.','A warm bed beats wandering near {adj} {threat}, I promise.','Trade has slowed. The {place} route is too {adj} these days.','The wizard who stayed here {verb} something {adj} in the {place}.','Two adventurers left for the {adj} {place} last week. One returned.','A {item} was left behind by a guest. Very {adj}, if you ask me.','The road was once safe. Now {cadj} {threat} own the {place}.','I feel {feeling} when armed folk head toward the {place}.','This inn has stood longer than the {adj} trouble out there.','Stories of the {adj} {place} bring adventurers every week.','The {place} road is {weather} and {adj} this time of year.','A traveler paid me with a {adj} {item} once. Unusual night.','I have heard every story about the {adj} {place}. Still surprised.'],
   Ally:['My blade is ready for whatever hides in that {adj} {place}.','I {verb} {cadj} {threat} before we met. No problem.','Together we can handle any {cadj} {threat} in the {place}.','Your back is safe with me, even in the {adj} {place}.','I feel {feeling} but ready. Let us face those {threat}.','A good {item} and a trusted ally — what more do we need?','The {adj} {place} ahead holds {threat}. I am not worried.','Stay close. The {place} looks {adj} from here.','We make a good team against {cadj} {threat}, you and I.','I sense {adj} danger near that {place}. Ready when you are.','That {cadj} {threat} will not know what hit them.','The {adj} {place} is risky, but adventure awaits.','I have your back through {weather} weather and {adj} enemies.','A scar from the {adj} {place} is just a story waiting to be told.','After this, I could use a rest and a good meal.'],
 };
+// lines an NPC uses when they recognise you from a previous visit
+const RETURNING=[
+  'Ah, you again! Good to see you.',
+  'Back so soon, traveller?',
+  'You keep passing through here, don\'t you?',
+  'I remember you. Welcome back.',
+  'Twice now you\'ve come by — must like it here.',
+  'Hello again, friend.',
+  'You returned! I had a feeling you would.',
+  'Still wandering these parts, I see.',
+  'Good to see a familiar face again.',
+  'We meet again, adventurer.',
+];
 function genDialogue(npc){
   let s=(npc.seed^((npc.msgCount||0)*0x9e3779b9))>>>0;
   function rnd(n){s=((s*1664525+1013904223)>>>0); return (s>>>16)%n;}
+  // if we've spoken before OR the player has wandered past more than once,
+  // sometimes greet with recognition
+  if(((npc.msgCount||0)>0 || (npc.cameByCount||0)>1) && rnd(100)<45)
+    return RETURNING[rnd(RETURNING.length)];
   const lines=DT[npc.job]||DT.Villager;
   return lines[rnd(lines.length)].replace(/\{(\w+)\}/g,(_,k)=>{
     const b=WB[k]; return b?b[rnd(b.length)]:k;
@@ -622,11 +703,12 @@ function advanceLevel(){
 function doGenerate(){
   // reset world data
   tiles=new Uint8Array(WW*WH);
-  buildings=[]; docks=[]; chests=[];
+  buildings=[]; docks=[]; chests=[]; bridges=[];
   enemies=[]; npcs=[]; items=[]; projs=[]; floats=[]; particles=[];
 
   CENTRES=makeCentres(worldSeed);
   generateWorld(worldSeed);
+  bridgeIslands();
   placeBuildings(worldSeed);
   // guarantee the mythic flame sword waits in one random chest each world
   if(chests.length) chests[(Math.random()*chests.length)|0].contents[0]='FlameSword';
@@ -729,7 +811,7 @@ function makeNPC(x,y,job,name,seed,extra={}){
   return {x,y,tx:x,ty:y,job,name,
     speech:'',speechTimer:0,idleTimer:2+Math.random()*3,
     moving:false,dir:0,frame:0,frameT:0,speed:45,
-    seed,fisherman:false,msgCount:0,
+    seed,fisherman:false,msgCount:0,cameByCount:0,wasNear:false,
     ally:false,following:false,hp:80,maxHp:80,atkTimer:0,dead:false,
     ...extra};
 }
@@ -1033,7 +1115,9 @@ function update(ts){
     if(keys['ArrowDown']||keys['KeyS']){dy=1; player.dir=0;}
     const wading=isWading(player.x,player.y);
     player.wading=wading;
-    const speed=wading?52:130;
+    // aqua boots (in the armor slot) make water travel super fast
+    const hasAqua=player.armorSlot&&ITEM_DEF[player.armorSlot.kind].aquatic;
+    const speed=wading?(hasAqua?165:52):130;
     if(dx!==0&&dy!==0){const s=1/Math.SQRT2; dx*=s; dy*=s;}
     player.moving=(dx!==0||dy!==0);
     if(player.moving){
@@ -1110,6 +1194,12 @@ function update(ts){
     if(n.dead)continue;
     n.speechTimer=Math.max(0,n.speechTimer-dt);
     if(n.speechTimer<=0)n.speech='';
+
+    // remember when the player walks by — count each fresh approach
+    const pdx=player.x-n.x, pdy=player.y-n.y;
+    const near=(pdx*pdx+pdy*pdy)<(3*TILE)**2;
+    if(near&&!n.wasNear) n.cameByCount=(n.cameByCount||0)+1;
+    n.wasNear=near;
 
     // ── fisherman ────────────────────────────────────────────────────────────
     if(n.fisherman){
@@ -1548,6 +1638,34 @@ function onScreen(wx,wy){
   return sx>-64&&sx<CW+64&&sy>-64&&sy<CH+64;
 }
 
+// wooden railings along the two long edges of each island bridge
+function drawBridgeRailings(){
+  for(const br of bridges){
+    const railPost=(x0,y0,x1,y1)=>{
+      // top rail
+      ctx.strokeStyle='#5a3a18'; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(x0-camX,y0-camY-9); ctx.lineTo(x1-camX,y1-camY-9); ctx.stroke();
+      ctx.strokeStyle='#7a5226'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(x0-camX,y0-camY-9); ctx.lineTo(x1-camX,y1-camY-9); ctx.stroke();
+      // posts every tile
+      ctx.fillStyle='#4a2f14';
+      const dist=Math.hypot(x1-x0,y1-y0), steps=Math.round(dist/TILE);
+      for(let i=0;i<=steps;i++){
+        const px=x0+(x1-x0)*i/steps, py=y0+(y1-y0)*i/steps;
+        ctx.fillRect(px-camX-1.5,py-camY-9,3,9);
+      }
+    };
+    if(br.horizontal){
+      const ax0=(br.x-1)*TILE, ax1=(br.x+br.len+1)*TILE;
+      railPost(ax0,(br.y-1)*TILE, ax1,(br.y-1)*TILE);          // top edge
+      railPost(ax0,(br.y+3)*TILE, ax1,(br.y+3)*TILE);          // bottom edge
+    } else {
+      const ay0=(br.y-1)*TILE, ay1=(br.y+br.len+1)*TILE;
+      railPost((br.x-1)*TILE,ay0, (br.x-1)*TILE,ay1);          // left edge
+      railPost((br.x+3)*TILE,ay0, (br.x+3)*TILE,ay1);          // right edge
+    }
+  }
+}
 function drawWorld(){
   const tx0=Math.floor(camX/TILE), ty0=Math.floor(camY/TILE);
   const tx1=Math.ceil((camX+CW)/TILE)+1, ty1=Math.ceil((camY+CH)/TILE)+1;
@@ -1575,6 +1693,7 @@ function drawWorld(){
       if(t===T.DEEP_WATER||t===T.SHALLOW_WATER)
         drawTile(t,tx,ty,(tx*TILE-camX)|0,(ty*TILE-camY)|0,ctx);
     }
+  drawBridgeRailings();
   // scrap piles in the junkyard
   for(const p of junkPiles){
     const sx=p.x-camX, sy=p.y-camY;
@@ -1654,6 +1773,14 @@ function drawTile(t,tx,ty,px,py,c=ctx){const ctx=c;
   }
   ctx.fillStyle=TCOLOR[t]; ctx.fillRect(px,py,TILE,TILE);
 
+  if(t===T.BRIDGE){
+    // sturdy wooden deck — planks run across, with shaded gaps
+    ctx.fillStyle='#9a6e34'; ctx.fillRect(px,py,TILE,TILE);
+    ctx.fillStyle='#7a5526';
+    for(let i=0;i<4;i++) ctx.fillRect(px,py+i*8+6,TILE,2);
+    ctx.fillStyle='rgba(255,220,150,0.12)'; ctx.fillRect(px,py,TILE,3);
+    return;
+  }
   if(t===T.DOCK){
     ctx.fillStyle='#2e8fc0'; ctx.fillRect(px,py,TILE,TILE);
     ctx.fillStyle='#7a5a20'; ctx.fillRect(px+1,py+1,TILE-2,TILE-2);
@@ -2041,6 +2168,137 @@ function drawParticles(){
   ctx.globalAlpha=1;
 }
 
+// ── Unique item sprites ─────────────────────────────────────────────────────
+// Every item kind draws its own little vector texture, centred at (cx,cy) and
+// sized to roughly s pixels. Family shapes differ; within a family the colour
+// and a per-kind hash vary the proportions so no two items look the same.
+function itemHash(kind){let h=2166136261;for(let i=0;i<kind.length;i++){h^=kind.charCodeAt(i);h=(h*16777619)>>>0;}return h;}
+function drawItemSprite(c,kind,cx,cy,s){
+  const def=ITEM_DEF[kind]; if(!def){return;}
+  const col=def.color||'#ccc';
+  const h=itemHash(kind);
+  const v=(n)=>((h>>>(n*3))&7)/7;        // pseudo-random 0..1 per kind
+  const u=s/16;
+  c.save(); c.translate(cx,cy);
+  const blade=(len,w,bladeCol,guardCol,pommelCol)=>{
+    c.strokeStyle='#5a3a1a'; c.lineWidth=2*u; c.lineCap='round';
+    c.beginPath(); c.moveTo(0,len*0.5); c.lineTo(0,len*0.5-4*u); c.stroke(); // handle
+    c.fillStyle=guardCol||'#caa645'; c.fillRect(-4*u,len*0.5-5*u,8*u,2*u);    // guard
+    c.fillStyle=bladeCol||col;                                                // blade
+    c.beginPath(); c.moveTo(-w,len*0.5-6*u); c.lineTo(w,len*0.5-6*u); c.lineTo(w*0.6,-len*0.5); c.lineTo(0,-len*0.5-2*u); c.lineTo(-w*0.6,-len*0.5); c.closePath(); c.fill();
+    c.fillStyle='rgba(255,255,255,0.5)'; c.fillRect(-1*u,-len*0.4,1.2*u,len*0.8); // shine
+    if(pommelCol){c.fillStyle=pommelCol; c.beginPath(); c.arc(0,len*0.5,2*u,0,7); c.fill();}
+  };
+  switch(kind){
+    // ── swords & blades ──
+    case 'Sword':      blade(13*u,3*u,col,'#bbbbcc','#dd4'); break;
+    case 'Longsword':  blade(16*u,2.6*u,col,'#ccd','#ddd'); break;
+    case 'Broadsword': blade(13*u,4.2*u,col,'#aab','#dd6'); break;
+    case 'Claymore':   blade(17*u,3.6*u,col,'#99a','#cce'); break;
+    case 'Zweihander': blade(18*u,4*u,col,'#bcd','#eef'); break;
+    case 'Katana':     c.rotate(0.2); blade(16*u,2.2*u,col,'#caa','#a55'); break;
+    case 'Rapier':     blade(16*u,1.4*u,col,'#9ad','#ccd'); break;
+    case 'Estoc':      blade(15*u,1.6*u,col,'#abc','#bcd'); break;
+    case 'Scimitar':   c.rotate(0.3); blade(13*u,3.4*u,col,'#db5','#fd8'); break;
+    case 'Falchion':   blade(12*u,4.4*u,col,'#da7','#fc8'); break;
+    case 'Cutlass':    c.rotate(0.15); blade(12*u,3.8*u,col,'#dc8','#fe9'); break;
+    case 'Sabre':      c.rotate(0.25); blade(13*u,2.8*u,col,'#cb7','#ed8'); break;
+    case 'Scythe':     // curved blade on a pole
+      c.strokeStyle='#6a4a2a'; c.lineWidth=2.5*u; c.beginPath(); c.moveTo(0,9*u); c.lineTo(0,-9*u); c.stroke();
+      c.strokeStyle=col; c.lineWidth=3*u; c.beginPath(); c.arc(-6*u,-9*u,7*u,-0.2,1.6); c.stroke(); break;
+    case 'Flail':
+      c.strokeStyle='#6a4a2a'; c.lineWidth=2.5*u; c.beginPath(); c.moveTo(0,9*u); c.lineTo(0,-2*u); c.stroke();
+      c.strokeStyle='#888'; c.lineWidth=1*u; c.beginPath(); c.moveTo(0,-2*u); c.lineTo(4*u,-7*u); c.stroke();
+      c.fillStyle=col; c.beginPath(); c.arc(5*u,-8*u,4*u,0,7); c.fill();
+      c.fillStyle='#555'; for(let a=0;a<6;a++){c.beginPath(); c.arc(5*u+Math.cos(a)*5*u,-8*u+Math.sin(a)*5*u,1*u,0,7); c.fill();} break;
+    case 'FlameSword': // glowing mythic flame blade
+      c.shadowColor='#ff6a11'; c.shadowBlur=10*u;
+      blade(16*u,3.4*u,'#ff7722','#a33','#fd4'); c.shadowBlur=0;
+      c.fillStyle='rgba(255,200,60,0.7)'; c.beginPath(); c.moveTo(0,-10*u); c.lineTo(3*u,-4*u); c.lineTo(-3*u,-4*u); c.closePath(); c.fill(); break;
+    // ── daggers ──
+    case 'Dagger': case 'Dirk': case 'Kukri': {
+      const bend=kind==='Kukri'?0.4:0; if(bend)c.rotate(bend);
+      blade(9*u,2.4*u,col,'#999','#bbb'); break; }
+    // ── axes ──
+    case 'Axe': case 'WarAxe': case 'BattleAxe': {
+      const big=kind==='Axe'?1:1.3;
+      c.strokeStyle='#6a4a2a'; c.lineWidth=2.5*u; c.beginPath(); c.moveTo(0,10*u); c.lineTo(0,-10*u); c.stroke();
+      c.fillStyle=col; c.beginPath();
+      c.moveTo(0,-9*u); c.quadraticCurveTo(9*u*big,-9*u,8*u*big,-1*u); c.quadraticCurveTo(4*u,-4*u,0,-4*u); c.closePath(); c.fill();
+      if(big>1){c.beginPath(); c.moveTo(0,-9*u); c.quadraticCurveTo(-9*u,-9*u,-8*u,-1*u); c.quadraticCurveTo(-4*u,-4*u,0,-4*u); c.closePath(); c.fill();}
+      break; }
+    // ── hammers / maces ──
+    case 'Mace': case 'Warhammer': {
+      c.strokeStyle='#6a4a2a'; c.lineWidth=2.5*u; c.beginPath(); c.moveTo(0,10*u); c.lineTo(0,-6*u); c.stroke();
+      c.fillStyle=col;
+      if(kind==='Warhammer'){c.fillRect(-7*u,-11*u,14*u,7*u);}
+      else{c.beginPath(); c.arc(0,-8*u,5*u,0,7); c.fill(); c.fillStyle='#666'; for(let a=0;a<8;a++){c.beginPath();c.arc(Math.cos(a)*6*u,-8*u+Math.sin(a)*6*u,1.2*u,0,7);c.fill();}}
+      break; }
+    // ── polearms ──
+    case 'Spear': case 'Trident': case 'Halberd': case 'Naginata': case 'Glaive': {
+      c.strokeStyle='#6a4a2a'; c.lineWidth=2*u; c.beginPath(); c.moveTo(0,12*u); c.lineTo(0,-6*u); c.stroke();
+      c.fillStyle=col;
+      if(kind==='Trident'){c.fillRect(-5*u,-11*u,1.6*u,6*u); c.fillRect(-0.8*u,-13*u,1.6*u,8*u); c.fillRect(3.4*u,-11*u,1.6*u,6*u);}
+      else if(kind==='Halberd'||kind==='Glaive'){c.beginPath(); c.moveTo(0,-12*u); c.lineTo(7*u,-7*u); c.lineTo(0,-4*u); c.closePath(); c.fill();}
+      else{c.beginPath(); c.moveTo(0,-13*u); c.lineTo(3*u,-6*u); c.lineTo(-3*u,-6*u); c.closePath(); c.fill();}
+      break; }
+    // ── bows & slings ──
+    case 'Bow': case 'Longbow': case 'Shortbow': case 'GreatBow': case 'Quiver': {
+      if(kind==='Quiver'){c.fillStyle='#7a4a22'; c.fillRect(-4*u,-8*u,8*u,16*u); c.strokeStyle=col; c.lineWidth=1.5*u; for(let i=0;i<3;i++){c.beginPath();c.moveTo(-2*u+i*2*u,-8*u);c.lineTo(-2*u+i*2*u,-13*u);c.stroke();}break;}
+      const r=(kind==='Longbow'||kind==='GreatBow')?12*u:9*u;
+      c.strokeStyle=col; c.lineWidth=2*u; c.beginPath(); c.arc(2*u,0,r,2.0,4.28); c.stroke();
+      c.strokeStyle='#eee'; c.lineWidth=0.8*u; c.beginPath(); c.moveTo(2*u-r*0.42,-r*0.9); c.lineTo(2*u-r*0.42,r*0.9); c.stroke(); break; }
+    case 'Sling':
+      c.strokeStyle=col; c.lineWidth=1.5*u; c.beginPath(); c.moveTo(-6*u,-8*u); c.lineTo(0,4*u); c.lineTo(6*u,-8*u); c.stroke();
+      c.fillStyle='#888'; c.beginPath(); c.arc(0,5*u,2.5*u,0,7); c.fill(); break;
+    case 'Boomerang':
+      c.strokeStyle=col; c.lineWidth=3*u; c.lineJoin='round'; c.beginPath(); c.moveTo(-7*u,2*u); c.lineTo(0,-7*u); c.lineTo(7*u,2*u); c.stroke(); break;
+    // ── crossbows ──
+    case 'Crossbow': case 'HandCrossbow': case 'HeavyCrossbow': {
+      const sc=kind==='HeavyCrossbow'?1.2:kind==='HandCrossbow'?0.8:1;
+      c.strokeStyle=col; c.lineWidth=2.5*u*sc; c.beginPath(); c.moveTo(-8*u*sc,-4*u); c.lineTo(8*u*sc,-4*u); c.stroke();
+      c.fillStyle='#6a4a2a'; c.fillRect(-1.5*u,-6*u,3*u,12*u);
+      c.strokeStyle='#ddd'; c.lineWidth=0.8*u; c.beginPath(); c.moveTo(-8*u*sc,-4*u); c.lineTo(0,2*u); c.lineTo(8*u*sc,-4*u); c.stroke(); break; }
+    // ── firearms ──
+    case 'Pistol': case 'Flintlock': case 'Musket': case 'Blunderbuss': case 'Repeater': case 'Carbine': case 'Arquebus': {
+      const long=(kind==='Musket'||kind==='Arquebus'||kind==='Carbine'||kind==='Repeater');
+      c.fillStyle=col; c.fillRect(-9*u,-3*u,long?18*u:12*u,3*u);          // barrel
+      if(kind==='Blunderbuss'){c.beginPath();c.moveTo(9*u,-4*u);c.lineTo(13*u,-6*u);c.lineTo(13*u,1*u);c.lineTo(9*u,1*u);c.closePath();c.fill();}
+      c.fillStyle='#5a3a1a'; c.fillRect(-9*u,0,5*u,7*u);                   // grip
+      c.fillStyle='#333'; c.fillRect(-5*u,0,3*u,4*u); break; }            // trigger guard
+    case 'ThrowingKnife':
+      blade(7*u,1.8*u,col,'#888','#aaa'); break;
+    case 'Shuriken':
+      c.fillStyle=col; for(let a=0;a<4;a++){c.save();c.rotate(a*Math.PI/2);c.beginPath();c.moveTo(0,-7*u);c.lineTo(2*u,-2*u);c.lineTo(-2*u,-2*u);c.closePath();c.fill();c.restore();}
+      c.fillStyle='#333'; c.beginPath(); c.arc(0,0,1.5*u,0,7); c.fill(); break;
+    // ── magic ──
+    case 'Wand': case 'Staff': {
+      const len=kind==='Staff'?12*u:8*u;
+      c.strokeStyle='#6a4a2a'; c.lineWidth=2*u; c.beginPath(); c.moveTo(-len*0.5,len*0.6); c.lineTo(len*0.5,-len*0.6); c.stroke();
+      c.shadowColor=col; c.shadowBlur=8*u; c.fillStyle=col; c.beginPath(); c.arc(len*0.5,-len*0.6,3.5*u,0,7); c.fill(); c.shadowBlur=0; break; }
+    // ── food ──
+    case 'Apple': c.fillStyle=col; c.beginPath(); c.arc(0,1*u,6*u,0,7); c.fill(); c.strokeStyle='#5a3a1a'; c.lineWidth=1.5*u; c.beginPath(); c.moveTo(0,-5*u); c.lineTo(1*u,-9*u); c.stroke(); c.fillStyle='#4a4'; c.beginPath(); c.ellipse(3*u,-8*u,2.5*u,1.4*u,0.6,0,7); c.fill(); break;
+    case 'Berry': c.fillStyle=col; for(const[ox,oy]of[[-2,0],[2,0],[0,3]]){c.beginPath();c.arc(ox*u,oy*u,3*u,0,7);c.fill();} break;
+    case 'Bread': c.fillStyle=col; c.beginPath(); c.ellipse(0,0,7*u,5*u,0,0,7); c.fill(); c.strokeStyle='#a8702a'; c.lineWidth=1*u; for(let i=-1;i<2;i++){c.beginPath();c.moveTo(i*3*u,-3*u);c.lineTo(i*3*u,3*u);c.stroke();} break;
+    case 'Mushroom': c.fillStyle=col; c.beginPath(); c.arc(0,-1*u,6*u,Math.PI,0); c.fill(); c.fillStyle='#eee'; c.fillRect(-2*u,-1*u,4*u,6*u); c.fillStyle='#fff'; c.beginPath(); c.arc(-2*u,-3*u,1*u,0,7); c.arc(2*u,-2*u,1*u,0,7); c.fill(); break;
+    case 'Fish': c.fillStyle=col; c.beginPath(); c.ellipse(-1*u,0,6*u,3.5*u,0,0,7); c.fill(); c.beginPath(); c.moveTo(5*u,0); c.lineTo(9*u,-3*u); c.lineTo(9*u,3*u); c.closePath(); c.fill(); c.fillStyle='#fff'; c.beginPath(); c.arc(-4*u,-1*u,1*u,0,7); c.fill(); break;
+    case 'Stew': c.fillStyle='#777'; c.beginPath(); c.arc(0,2*u,6*u,0,Math.PI); c.fill(); c.fillStyle=col; c.beginPath(); c.ellipse(0,2*u,6*u,2*u,0,0,7); c.fill(); c.fillStyle='rgba(255,255,255,0.4)'; c.beginPath(); c.arc(-2*u,1*u,1.4*u,0,7); c.fill(); break;
+    case 'Potion': case 'MegaPotion': { const big=kind==='MegaPotion'?1.25:1; c.fillStyle='#cce'; c.fillRect(-2*u*big,-8*u*big,4*u*big,3*u*big); c.fillStyle=col; c.beginPath(); c.moveTo(-2*u*big,-5*u*big); c.lineTo(2*u*big,-5*u*big); c.lineTo(5*u*big,7*u*big); c.lineTo(-5*u*big,7*u*big); c.closePath(); c.fill(); c.fillStyle='rgba(255,255,255,0.5)'; c.fillRect(-3*u*big,0,1.5*u*big,4*u*big); break; }
+    // ── armour ──
+    case 'Shield': c.fillStyle=col; c.beginPath(); c.moveTo(0,-7*u); c.lineTo(6*u,-4*u); c.lineTo(5*u,5*u); c.lineTo(0,8*u); c.lineTo(-5*u,5*u); c.lineTo(-6*u,-4*u); c.closePath(); c.fill(); c.strokeStyle='rgba(255,255,255,0.4)'; c.lineWidth=1*u; c.stroke(); c.beginPath(); c.moveTo(0,-6*u); c.lineTo(0,7*u); c.stroke(); break;
+    case 'Helmet': c.fillStyle=col; c.beginPath(); c.arc(0,0,6*u,Math.PI,0); c.fill(); c.fillRect(-6*u,0,12*u,3*u); c.fillStyle='#333'; c.fillRect(-1*u,-2*u,2*u,5*u); break;
+    case 'Chainmail': case 'Breastplate': c.fillStyle=col; c.beginPath(); c.moveTo(-6*u,-6*u); c.lineTo(6*u,-6*u); c.lineTo(5*u,7*u); c.lineTo(-5*u,7*u); c.closePath(); c.fill(); c.strokeStyle='rgba(0,0,0,0.3)'; c.lineWidth=0.7*u; for(let y=-4;y<6;y+=2)for(let x=-4;x<5;x+=2){c.beginPath();c.arc(x*u,y*u,0.9*u,0,7);c.stroke();} break;
+    case 'Boots': case 'AquaBoots': c.fillStyle=col; c.fillRect(-4*u,-7*u,5*u,10*u); c.beginPath(); c.moveTo(-4*u,3*u); c.lineTo(6*u,3*u); c.lineTo(6*u,6*u); c.lineTo(-4*u,6*u); c.closePath(); c.fill(); if(kind==='AquaBoots'){c.fillStyle='rgba(255,255,255,0.6)'; c.beginPath(); c.moveTo(2*u,-3*u);c.lineTo(4*u,0);c.lineTo(2*u,3*u); c.stroke?c.stroke():0; c.fillStyle='#bff'; c.fillRect(-3*u,-2*u,7*u,1.5*u);} break;
+    case 'Gauntlets': c.fillStyle=col; c.fillRect(-4*u,-5*u,8*u,7*u); for(let i=0;i<4;i++){c.fillRect(-4*u+i*2*u,2*u,1.4*u,4*u);} break;
+    case 'Cape': c.fillStyle=col; c.beginPath(); c.moveTo(-5*u,-6*u); c.lineTo(5*u,-6*u); c.lineTo(7*u,7*u); c.lineTo(0,4*u); c.lineTo(-7*u,7*u); c.closePath(); c.fill(); break;
+    case 'Ring': c.strokeStyle=col; c.lineWidth=2*u; c.beginPath(); c.arc(0,2*u,4.5*u,0,7); c.stroke(); c.fillStyle='#8ef'; c.beginPath(); c.arc(0,-3*u,2.2*u,0,7); c.fill(); break;
+    // ── special ──
+    case 'HealOrb': c.shadowColor=col; c.shadowBlur=10*u; c.fillStyle=col; c.beginPath(); c.arc(0,0,6*u,0,7); c.fill(); c.shadowBlur=0; c.fillStyle='rgba(255,255,255,0.7)'; c.beginPath(); c.arc(-2*u,-2*u,2*u,0,7); c.fill(); c.strokeStyle='#fff'; c.lineWidth=1.4*u; c.beginPath(); c.moveTo(0,-3*u); c.lineTo(0,3*u); c.moveTo(-3*u,0); c.lineTo(3*u,0); c.stroke(); break;
+    default: c.fillStyle=col; c.beginPath(); c.arc(0,0,5*u,0,7); c.fill();
+  }
+  c.restore();
+}
+
 function drawItems(){
   const nearR=(1.8*TILE)**2;
   for(const it of items){
@@ -2052,10 +2310,10 @@ function drawItems(){
       ctx.shadowColor=glowColor;
       ctx.shadowBlur=it.rarity==='Mythic'?18:it.rarity==='Legendary'?12:8;
     }
-    ctx.fillStyle=glowColor; ctx.beginPath();ctx.arc(sx,sy+bob,7,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.beginPath();ctx.ellipse(sx,sy+8,8,3,0,0,Math.PI*2);ctx.fill();
     ctx.shadowBlur=0;
-    ctx.font='12px serif'; ctx.textAlign='center'; ctx.fillText(d.icon,sx,sy+4+bob);
-    ctx.font='8px monospace'; ctx.fillStyle=glowColor; ctx.fillText(it.rarity,sx,sy-18+bob);
+    drawItemSprite(ctx,it.kind,sx,sy+bob,18);
+    ctx.font='8px monospace'; ctx.fillStyle=glowColor; ctx.textAlign='center'; ctx.fillText(it.rarity,sx,sy-18+bob);
     ctx.fillStyle='#fff'; ctx.fillText(it.kind,sx,sy-10+bob);
     // E prompt if nearby
     const ddx=it.x-player.x, ddy=it.y-player.y;
@@ -2147,9 +2405,8 @@ function drawInventoryBar(){
   ctx.strokeStyle=player.armorSlot?(player.armorSlot.rarColor||'#446699'):'#334466'; ctx.lineWidth=1.5; ctx.strokeRect(arX,arY,slotW,slotH);
   ctx.font='8px monospace'; ctx.fillStyle='#5577aa'; ctx.textAlign='center'; ctx.fillText('ARM',arX+slotW/2,arY+slotH-3);
   if(player.armorSlot){
-    const ad=ITEM_DEF[player.armorSlot.kind];
-    ctx.font='16px serif'; ctx.fillText(ad.icon,arX+slotW/2,arY+22);
-    ctx.font='6px monospace'; ctx.fillStyle=player.armorSlot.rarColor||'#aaa'; ctx.fillText('+'+((player.armorSlot.def)||0)+' DEF',arX+slotW/2,arY+10);
+    drawItemSprite(ctx,player.armorSlot.kind,arX+slotW/2,arY+20,18);
+    ctx.font='6px monospace'; ctx.fillStyle=player.armorSlot.rarColor||'#aaa'; ctx.textAlign='center'; ctx.fillText('+'+((player.armorSlot.def)||0)+' DEF',arX+slotW/2,arY+10);
   } else {
     ctx.font='18px serif'; ctx.fillStyle='rgba(60,100,180,0.2)'; ctx.fillText('🛡',arX+slotW/2,arY+24);
   }
@@ -2163,9 +2420,8 @@ function drawInventoryBar(){
     ctx.lineWidth=player.equip===i?2:1; ctx.strokeRect(x,y,slotW,slotH);
     ctx.font='8px monospace'; ctx.fillStyle='#666'; ctx.textAlign='center'; ctx.fillText(i+1,x+slotW/2,y+slotH-3);
     if(it){
-      const d=ITEM_DEF[it.kind];
-      ctx.font='16px serif'; ctx.fillText(d.icon,x+slotW/2,y+22);
-      ctx.font='6px monospace'; ctx.fillStyle=it.rarColor||'#ddd'; ctx.fillText(it.rarity,x+slotW/2,y+10);
+      drawItemSprite(ctx,it.kind,x+slotW/2,y+20,18);
+      ctx.font='6px monospace'; ctx.fillStyle=it.rarColor||'#ddd'; ctx.textAlign='center'; ctx.fillText(it.rarity,x+slotW/2,y+10);
     }
   }
   // hint
@@ -2187,9 +2443,8 @@ function drawBigInventory(){
   ctx.strokeStyle='#3355aa'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.roundRect(aX,aY,aW,aH,8); ctx.stroke();
   ctx.font='8px monospace'; ctx.fillStyle='#6688bb'; ctx.textAlign='center'; ctx.fillText('ARMOR SLOT',aX+aW/2,aY+9);
   if(player.armorSlot){
-    const ad=ITEM_DEF[player.armorSlot.kind];
-    ctx.font='26px serif'; ctx.fillText(ad.icon,aX+aW/2,aY+44);
-    ctx.font='7px monospace'; ctx.fillStyle=player.armorSlot.rarColor; ctx.fillText(player.armorSlot.rarity,aX+aW/2,aY+57);
+    drawItemSprite(ctx,player.armorSlot.kind,aX+aW/2,aY+38,28);
+    ctx.font='7px monospace'; ctx.fillStyle=player.armorSlot.rarColor; ctx.textAlign='center'; ctx.fillText(player.armorSlot.rarity,aX+aW/2,aY+57);
     // drop button
     ctx.fillStyle='rgba(180,40,40,0.75)'; ctx.beginPath(); ctx.roundRect(aX+4,aY+aH+4,aW-8,15,4); ctx.fill();
     ctx.font='8px monospace'; ctx.fillStyle='#fff'; ctx.fillText('DROP',aX+aW/2,aY+aH+14);
@@ -2215,9 +2470,8 @@ function drawBigInventory(){
     if(it){
       ctx.strokeStyle=player.equip===i?it.rarColor:'#666'; ctx.lineWidth=player.equip===i?2:1;
       ctx.beginPath(); ctx.roundRect(x,y,sW,sH,5); ctx.stroke();
-      const d=ITEM_DEF[it.kind];
-      ctx.font='20px serif'; ctx.textAlign='center'; ctx.fillText(d.icon,x+sW/2,y+30);
-      ctx.font='6px monospace'; ctx.fillStyle=it.rarColor||'#ccc'; ctx.fillText(it.rarity,x+sW/2,y+10);
+      drawItemSprite(ctx,it.kind,x+sW/2,y+24,22);
+      ctx.font='6px monospace'; ctx.fillStyle=it.rarColor||'#ccc'; ctx.textAlign='center'; ctx.fillText(it.rarity,x+sW/2,y+10);
       ctx.fillStyle='#888'; ctx.fillText(it.kind.slice(0,8),x+sW/2,y+sH-4);
     } else {
       ctx.strokeStyle='#2a2a2a'; ctx.lineWidth=1; ctx.beginPath(); ctx.roundRect(x,y,sW,sH,5); ctx.stroke();
