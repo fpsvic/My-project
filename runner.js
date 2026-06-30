@@ -40,13 +40,35 @@ class JungleRunner {
         'SQL':        { compiled: false, runtime: 'SQLite 3.43',         judge0: null, piston: null },
     };
 
+    // Returns all project files of the same language concatenated, with the active file last
+    static bundleFiles(lang, code, files, currentFile) {
+        if (!files || Object.keys(files).length <= 1) return code;
+        const extMap = {
+            'Javascript': ['js', 'mjs'], 'TypeScript': ['ts'], 'Python': ['py'],
+            'Java': ['java'], 'C': ['c', 'h'], 'C++': ['cpp', 'cc', 'cxx', 'h', 'hpp'],
+            'C#': ['cs'], 'Go': ['go'], 'Rust': ['rs'], 'Ruby': ['rb'],
+            'PHP': ['php'], 'Lua': ['lua'], 'Bash': ['sh', 'bash'],
+            'Kotlin': ['kt'], 'Swift': ['swift'], 'R': ['r'],
+        };
+        const exts = extMap[lang];
+        if (!exts) return code;
+        const siblings = Object.entries(files)
+            .filter(([name]) => name !== currentFile && exts.includes(name.split('.').pop().toLowerCase()))
+            .map(([name, content]) => `// ── ${name} ──\n${content || ''}`);
+        if (siblings.length === 0) return code;
+        return siblings.join('\n\n') + '\n\n// ── ' + currentFile + ' ──\n' + code;
+    }
+
     static async execute(lang, code, files) {
         try {
+            const p0 = JungleUI.getCurrentProject();
+            const fname = (p0 && p0.currentFile) || 'file';
+            // Merge sibling files of the same language into one bundle for execution
+            const bundled = this.bundleFiles(lang, code, files, fname);
+
             const scanIssues = JungleScanner.scan(lang, code);
             const scanErrors = scanIssues.filter(i => i.severity === 'error');
             const scanWarnings = scanIssues.filter(i => i.severity !== 'error');
-            const p0 = JungleUI.getCurrentProject();
-            const fname = (p0 && p0.currentFile) || 'file';
             if (scanErrors.length > 0) {
                 showConsoleIssues(scanIssues, fname);
                 switchView('console');
@@ -63,6 +85,9 @@ class JungleRunner {
             terminalStatus.className = "text-[#74a896] font-bold animate-pulse";
             const p = JungleUI.getCurrentProject();
             if (!p) return;
+
+            // Use bundled code for all tiers (replaces single-file `code`)
+            code = bundled;
 
             const meta = this.LANG_META[lang] || { compiled: false, runtime: lang };
             const actionLabel = meta.compiled
