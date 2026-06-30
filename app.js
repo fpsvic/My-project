@@ -269,6 +269,7 @@ ${tokenCSS}
     doc.open(); doc.write(html); doc.close();
     switchView('preview');
     tabPreview.classList.remove('active');
+    projectTitleBtn.classList.add('active');
     terminalStatus.textContent = "PROJECT VIEW";
     terminalStatus.style.color = "#74a896";
 };
