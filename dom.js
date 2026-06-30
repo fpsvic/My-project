@@ -78,8 +78,6 @@
             <div class="editor-header">
                 <div class="header-left">
                     <button class="exit-hub-btn" id="exit-to-hub-header-btn" title="Return to Projects Hub">← Exit to Hub</button>
-                    <h2 class="ml-2" id="current-file-label">index.html</h2>
-                    <span id="loc-display">LOC: 0</span>
                     <div class="language-selector-wrapper">
                         <button class="language-btn" id="language-btn">
                             <span id="current-language-text">Language: Javascript</span>
@@ -89,6 +87,8 @@
                             <ul id="language-list-dropdown"></ul>
                         </div>
                     </div>
+                    <h2 class="ml-2" id="current-file-label">index.html</h2>
+                    <span id="loc-display">LOC: 0</span>
                 </div>
                 <div class="header-right flex items-center gap-2">
                     <button class="exit-hub-btn" id="template-panel-toggle" title="Show starter templates">⚡ Templates <span id="template-toggle-arrow">▼</span></button>
@@ -120,9 +120,10 @@
                 <div id="editor-container">
                     <pre id="highlight-overlay"></pre>
                     <textarea id="code-editor" spellcheck="false"></textarea>
-                    <div style="position:absolute;top:12px;right:30px;z-index:10;display:flex;gap:16px;align-items:center;">
-                        <span id="header-copy-code-btn" title="Copy Current File Contents to Clipboard" style="color:#74a896;font-size:0.78rem;cursor:pointer;opacity:0.6;transition:opacity 0.2s;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.6'">📋 Copy Code</span>
-                        <span id="download-code-btn" title="Download Current File" style="color:#74a896;font-size:0.78rem;cursor:pointer;opacity:0.6;transition:opacity 0.2s;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.6'">⬇️ Download</span>
+                    <div style="position:absolute;top:12px;right:30px;z-index:10;display:flex;gap:14px;align-items:center;">
+                        <span id="select-all-code-btn" title="Select All Code" style="color:#aed9cb;font-size:0.78rem;cursor:pointer;">☰ Select All</span>
+                        <span id="header-copy-code-btn" title="Copy Current File Contents to Clipboard" style="color:#aed9cb;font-size:0.78rem;cursor:pointer;">📋 Copy Code</span>
+                        <span id="download-code-btn" title="Download Current File" style="color:#aed9cb;font-size:0.78rem;cursor:pointer;">⬇️ Download</span>
                     </div>
                 </div>
             </div>

@@ -398,6 +398,10 @@ headerCopyCodeBtn.onclick = () => {
     document.body.removeChild(textareaBackup);
     JungleUI.showToast(`Copied ${p.currentFile} content to clipboard!`);
 };
+document.getElementById('select-all-code-btn').onclick = () => {
+    editor.focus();
+    editor.select();
+};
 document.getElementById('download-code-btn').onclick = () => {
     const p = JungleUI.getCurrentProject();
     if (!p || !p.currentFile) return;
