@@ -45,38 +45,18 @@ class JungleRunner {
             const scanIssues = JungleScanner.scan(lang, code);
             const scanErrors = scanIssues.filter(i => i.severity === 'error');
             const scanWarnings = scanIssues.filter(i => i.severity !== 'error');
+            const p0 = JungleUI.getCurrentProject();
+            const fname = (p0 && p0.currentFile) || 'file';
             if (scanErrors.length > 0) {
-                const primaryError = scanErrors[0];
-                switchView('terminal', false);
-                terminalStatus.textContent = "FAILED TO RUN";
-                terminalStatus.className = "text-rose-500 font-bold";
-                const p = JungleUI.getCurrentProject();
-                const errorDetails = {
-                    file: (p && p.currentFile) || "main",
-                    lineNo: primaryError.line,
-                    column: primaryError.column,
-                    errorMsg: primaryError.msg,
-                    likelyCause: primaryError.kind,
-                    suggestion: primaryError.hint,
-                    severity: primaryError.severity,
-                    additionalErrors: scanIssues.slice(1, 5)
-                };
-                this.printCrashAnalysis(errorDetails, "", "");
+                showConsoleIssues(scanIssues, fname);
+                switchView('console');
                 const extra = scanIssues.length > 1 ? ` (+${scanIssues.length - 1} more)` : "";
-                JungleUI.showToast(`⛔ ${scanErrors.length} error${scanErrors.length > 1 ? 's' : ''} found${extra}. Tap to inspect.`, () => {
-                    switchView('terminal', false);
-                    this.printCrashAnalysis(errorDetails, "", "");
-                });
+                JungleUI.showToast(`⛔ ${scanErrors.length} error${scanErrors.length > 1 ? 's' : ''} — see Console.`, () => switchView('console'));
                 return;
             }
             if (scanWarnings.length > 0) {
-                const warnLines = scanWarnings.map(w => {
-                    const icon = w.severity === 'info' ? 'ℹ️' : '⚠️';
-                    return `${icon} Line ${w.line} [${w.kind}]: ${w.msg}`;
-                }).join('\n');
-                switchView('terminal', false);
-                terminalViewBody.textContent = `Warnings detected (code will still run):\n\n${warnLines}\n\n${'─'.repeat(50)}\n`;
-                JungleUI.showToast(`⚠️ ${scanWarnings.length} warning${scanWarnings.length > 1 ? 's' : ''} — running anyway.`, null);
+                showConsoleIssues(scanIssues, fname);
+                JungleUI.showToast(`⚠️ ${scanWarnings.length} warning${scanWarnings.length > 1 ? 's' : ''} in Console — running anyway.`, () => switchView('console'));
             }
             switchView('terminal', false);
             terminalStatus.textContent = "RUNNING";

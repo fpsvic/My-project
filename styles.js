@@ -32,7 +32,7 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .workspace-container { display: flex; width: 100vw; height: 100vh; overflow: hidden; }
 .sidebar { width: 260px; background-color: #111413; border-right: 1px solid #1c2321; display: flex; flex-direction: column; }
 .sidebar-tabs { display: flex; background-color: #161a19; }
-.sidebar-tab { flex: 1; padding: 12px 15px; font-size: 0.75rem; color: #727e8c; cursor: pointer; text-transform: uppercase; letter-spacing: 1.2px; border-top: 2px solid transparent; text-align: center; transition: all 0.2s; }
+.sidebar-tab { flex: 1; padding: 10px 6px; font-size: 0.68rem; color: #727e8c; cursor: pointer; text-transform: uppercase; letter-spacing: 0.8px; border-top: 2px solid transparent; text-align: center; transition: all 0.2s; }
 .sidebar-tab.active { color: #ffffff; border-top: 2px solid #528b74; background-color: #111413; }
 .sidebar-section-header { padding: 10px 15px; font-size: 0.75rem; color: #849690; text-transform: uppercase; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #1c2321; background-color: #141917; font-weight: 700; }
 .sidebar-section-header button { background: none; border: none; color: #74a896; font-size: 1.2rem; cursor: pointer; padding: 0; display: flex; align-items: center; line-height: 1; transition: color 0.15s, transform 0.1s; }

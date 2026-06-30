@@ -63,6 +63,7 @@
             <div class="sidebar-tabs">
                 <div class="sidebar-tab active" id="project-title-btn">Whole Project</div>
                 <div class="sidebar-tab" id="tab-preview">Preview / Run</div>
+                <div class="sidebar-tab" id="tab-console">Console</div>
             </div>
             <div class="sidebar-section-header">
                 <span>Files</span>
@@ -130,14 +131,21 @@
             <iframe id="preview-frame" style="display: none; flex: 1; width: 100%; height: 100%; border: none; background: #ffffff;"></iframe>
             <div id="terminal-view-container">
                 <div id="terminal-view-header">
-                    <span>Terminal Console</span>
+                    <span>Terminal</span>
                     <span id="terminal-status" style="color: #74a896;">READY</span>
                 </div>
-                <pre id="terminal-view-body">No output logs collected yet. Press "Run" to process the current file.</pre>
-                <div id="terminal-input-row" class="flex items-center gap-2 mt-2 border-t border-[#14201b] pt-2 shrink-0 hidden">
-                    <span class="text-[#74a896] font-mono text-sm select-none">jungle:~#</span>
-                    <input type="text" id="terminal-input" class="flex-1 bg-transparent border-none outline-none text-[#aed9cb] font-mono text-sm" placeholder="Type run, ls, help, clear..." disabled>
+                <pre id="terminal-view-body">Jungle Terminal — type 'help' for commands.</pre>
+                <div id="terminal-input-row" class="flex items-center gap-2 mt-2 border-t border-[#14201b] pt-2 shrink-0">
+                    <span class="text-[#74a896] font-mono text-sm select-none">jungle:~$</span>
+                    <input type="text" id="terminal-input" class="flex-1 bg-transparent border-none outline-none text-[#aed9cb] font-mono text-sm" placeholder="Type a command..." disabled>
                 </div>
+            </div>
+            <div id="console-view-container" style="display:none;flex-direction:column;flex:1;overflow:hidden;font-family:'Fira Code',monospace;">
+                <div id="terminal-view-header" style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:#0d1512;border-bottom:1px solid #1c2321;flex-shrink:0;">
+                    <span style="font-size:0.8rem;color:#74a896;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Console</span>
+                    <span id="console-status" style="color:#74a896;font-size:0.75rem;font-weight:700;">CLEAR</span>
+                </div>
+                <div id="console-view-body" style="flex:1;overflow-y:auto;padding:14px 16px;font-size:12.5px;line-height:1.7;color:#aed9cb;white-space:pre-wrap;word-break:break-word;">No issues detected.</div>
             </div>
         </div>
     </div>`;
