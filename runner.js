@@ -232,7 +232,7 @@ class JungleRunner {
     }
 
     static isVisualPython(code) {
-        return /\b(matplotlib|pyplot|plt\s*\.|seaborn|plotly|bokeh|turtle\s*\.|Turtle|pygame|PIL|Image\.open|cv2\.|imshow|savefig|show\(\)|scatter\(|plot\(|bar\(|pie\(|hist\()\b/.test(code);
+        return /\b(import\s+turtle|import\s+pygame|matplotlib|pyplot|plt\s*\.|seaborn|plotly|bokeh|turtle\s*\.|Turtle\b|pygame|PIL|Image\.open|cv2\.|imshow|savefig|show\(\)|scatter\(|plot\(|bar\(|pie\(|hist\()\b/.test(code);
     }
 
     // ── Render JS/TS in preview iframe with full DOM access ──────────────────
@@ -269,13 +269,18 @@ ${escaped}
         const out = [], err = [];
         py.setStdout({ batched: s => out.push(s) });
         py.setStderr({ batched: s => err.push(s) });
+
+        // Patch out blocking turtle calls — exitonclick/mainloop hang in browser
+        const patchedCode = code.replace(
+            /\b(?:screen|turtle|t|wn)\s*\.\s*(?:exitonclick|done|mainloop|listen)\s*\(\s*\)/g,
+            'pass  # browser: event loop disabled'
+        );
+
         const wrapper = `
-import sys as _sys_j
 import io as _io_j, base64 as _b64_j
 _jngl_imgs = []
 _jngl_stderr = []
 
-# Patch turtle to render to SVG string via canvasvg or capture screen
 try:
     import matplotlib as _mpl_j
     _mpl_j.use('agg')
@@ -283,7 +288,7 @@ try:
 except Exception: pass
 
 try:
-${code.split('\n').map(l => '    ' + l).join('\n')}
+${patchedCode.split('\n').map(l => '    ' + l).join('\n')}
 except Exception as _e_j:
     _jngl_stderr.append(str(_e_j))
 
@@ -302,10 +307,19 @@ except Exception: pass
             await py.runPythonAsync(wrapper);
             const rawImgs = py.globals.get('_jngl_imgs');
             const rawErrs = py.globals.get('_jngl_stderr');
-            const images = rawImgs ? rawImgs.toJs() : [];
+            let images = rawImgs ? rawImgs.toJs() : [];
             const pyErrs = rawErrs ? rawErrs.toJs().join('\n') : '';
             rawImgs && rawImgs.destroy && rawImgs.destroy();
             rawErrs && rawErrs.destroy && rawErrs.destroy();
+
+            // Capture turtle canvas if turtle ran but produced no matplotlib figures
+            if (images.length === 0) {
+                const tc = document.getElementById('turtle-canvas');
+                if (tc) {
+                    try { images = [tc.toDataURL('image/png').split(',')[1]]; } catch(_) {}
+                }
+            }
+
             return { images, stdout: out.join('\n'), stderr: pyErrs || err.join('\n') };
         } catch(e) {
             return { images: [], stdout: out.join('\n'), stderr: e.message || String(e) };
