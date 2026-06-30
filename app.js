@@ -252,16 +252,18 @@ projectTitleBtn.onclick = () => {
         </div>`;
     }).join('');
 
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0f0d;color:#aed9cb;font-family:'Fira Code',monospace;font-size:13px;padding:20px;line-height:1.6;}
+body{background:#0a0f0d;color:#aed9cb;font-family:'Fira Code',monospace;font-size:13.5px;padding:20px;line-height:1.6;}
 ${tokenCSS}
 .file-block{margin-bottom:28px;border:1px solid #1e2e28;border-radius:8px;overflow:hidden;}
 .file-header{display:flex;align-items:center;gap:10px;background:#111a16;padding:8px 14px;border-bottom:1px solid #1e2e28;}
 .file-icon{font-size:14px}
-.file-name{color:#aed9cb;font-weight:700;font-size:13px;}
-.file-lang{color:#4a6057;font-size:11px;margin-left:auto;}
-.file-code{padding:14px 16px;overflow-x:auto;background:#080e0b;white-space:pre;tab-size:4;}
+.file-name{color:#aed9cb;font-weight:700;font-size:13px;font-family:'Fira Code',monospace;}
+.file-lang{color:#4a6057;font-size:11px;margin-left:auto;font-family:'Fira Code',monospace;}
+.file-code{padding:14px 16px;overflow-x:auto;background:#080e0b;white-space:pre;tab-size:4;font-family:'Fira Code',monospace;font-size:13.5px;line-height:1.6;}
 </style></head><body>${sections}</body></html>`;
 
     const doc = previewFrame.contentDocument || previewFrame.contentWindow.document;
@@ -269,8 +271,6 @@ ${tokenCSS}
     switchView('preview');
     terminalStatus.textContent = "PROJECT VIEW";
     terminalStatus.style.color = "#74a896";
-    projectTitleBtn.classList.add('active');
-    tabPreview.classList.remove('active');
 };
 const langPickerScreen = document.getElementById('lang-picker-screen');
 const langPickerBack = document.getElementById('lang-picker-back');
