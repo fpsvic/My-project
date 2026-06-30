@@ -339,7 +339,14 @@ function executeTerminalCommand(cmdLine) {
             terminalPrint(`${command}: command not found — type 'help' for a list of commands\n`);
     }
 }
-terminalViewContainer.onclick = () => { if (activeView === 'terminal') terminalInput.focus(); };
+terminalViewContainer.onclick = () => {
+    if (activeView === 'terminal') {
+        const row = document.getElementById('terminal-input-row');
+        row.classList.remove('hidden');
+        terminalInput.removeAttribute('disabled');
+        terminalInput.focus();
+    }
+};
 terminalInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         const cmd = terminalInput.value.trim();
@@ -385,6 +392,8 @@ function switchView(view, showInput = false) {
     tabConsoleBtn.classList.remove('active');
     tabTerminalBtn.classList.remove('bg-[#1c2522]', 'text-[#74a896]', 'border-[#528b74]');
     terminalInput.setAttribute('disabled', 'true');
+    const terminalInputRow = document.getElementById('terminal-input-row');
+    terminalInputRow.classList.add('hidden');
     if (view === 'editor') {
         editorWrapper.style.display = 'flex';
     } else if (view === 'preview') {
@@ -393,8 +402,12 @@ function switchView(view, showInput = false) {
     } else if (view === 'terminal') {
         terminalViewContainer.style.display = 'flex';
         tabTerminalBtn.classList.add('bg-[#1c2522]', 'text-[#74a896]', 'border-[#528b74]');
-        terminalInput.removeAttribute('disabled');
-        setTimeout(() => terminalInput.focus(), 50);
+        // Only show interactive input when explicitly opened via the Terminal button
+        if (showInput !== false) {
+            terminalInputRow.classList.remove('hidden');
+            terminalInput.removeAttribute('disabled');
+            setTimeout(() => terminalInput.focus(), 50);
+        }
     } else if (view === 'console') {
         consoleViewContainer.style.display = 'flex';
         tabConsoleBtn.classList.add('active');
@@ -488,7 +501,7 @@ runBtn.onclick = () => {
     } else { JungleRunner.execute(selectedLanguages[0], p.files[p.currentFile], p.files); }
 };
 tabPreview.onclick = runBtn.onclick;
-tabTerminalBtn.onclick = () => { switchView('terminal'); };
+tabTerminalBtn.onclick = () => { switchView('terminal', true); };
 tabConsoleBtn.onclick = () => { switchView('console'); };
 projectTitleBtn.onclick = () => {
     const p = JungleUI.getCurrentProject();
