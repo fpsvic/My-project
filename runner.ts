@@ -316,21 +316,26 @@ except Exception: pass
 
     // ── Render matplotlib PNG images + stdout in preview iframe ──────────────
     static renderPyVisualOutput(images: string[], stdout: string, stderr: string): void {
-        const imgTags = images.map(b64 =>
-            `<img src="data:image/png;base64,${b64}" style="max-width:100%;display:block;margin:20px auto;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,0.4);">`
-        ).join('');
         const stdoutHtml = stdout.trim()
-            ? `<pre style="margin:16px;padding:14px 16px;background:#111b16;color:#aed9cb;font-family:monospace;font-size:13px;border-radius:6px;white-space:pre-wrap;">${stdout.trim().replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>`
+            ? `<pre style="margin:0 0 14px 0;padding:12px 14px;background:#0a1410;color:#aed9cb;font-family:'Fira Code',monospace;font-size:13px;border-radius:6px;border:1px solid #1e2e28;white-space:pre-wrap;word-break:break-word;">${stdout.trim().replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>`
             : '';
         const stderrHtml = stderr.trim()
-            ? `<pre style="margin:16px;padding:14px 16px;background:#1c0d0d;color:#ff9999;font-family:monospace;font-size:13px;border-radius:6px;white-space:pre-wrap;">${stderr.trim().replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>`
+            ? `<pre style="margin:0 0 14px 0;padding:12px 14px;background:#160a0a;color:#ff9999;font-family:'Fira Code',monospace;font-size:13px;border-radius:6px;border:1px solid #3a1010;white-space:pre-wrap;word-break:break-word;">${stderr.trim().replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>`
             : '';
+        const imgBoxes = images.map(b64 =>
+            `<div style="border:1px solid #1e2e28;border-radius:8px;overflow:hidden;background:#060e0a;">
+                <img src="data:image/png;base64,${b64}" style="width:100%;display:block;">
+            </div>`
+        ).join('<div style="height:14px;"></div>');
         const doc = (previewFrame as HTMLIFrameElement).contentDocument || ((previewFrame as HTMLIFrameElement).contentWindow as any).document;
         doc.open();
-        doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;background:#0f1a15;min-height:100vh;}h4{color:#74a896;font-family:sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:2px;margin:20px 20px 8px;opacity:0.6;}</style></head><body>
-${images.length > 0 ? '<h4>Plot Output</h4>' + imgTags : ''}
-${stdoutHtml ? '<h4>Print Output</h4>' + stdoutHtml : ''}
-${stderrHtml ? '<h4>Errors</h4>' + stderrHtml : ''}
+        doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#0f1a15;font-family:'Fira Code',monospace;padding:16px;min-height:100vh;}
+</style></head><body>
+${stdoutHtml}
+${stderrHtml}
+${imgBoxes}
 </body></html>`);
         doc.close();
         switchView('preview');
