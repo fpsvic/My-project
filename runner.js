@@ -38,6 +38,12 @@ class JungleRunner {
         'Lisp':       { compiled: false, runtime: 'SBCL 2.3',            judge0: 55,   piston: 'commonlisp' },
         'Prolog':     { compiled: false, runtime: 'SWI-Prolog 9',        judge0: 69,   piston: 'prolog' },
         'SQL':        { compiled: false, runtime: 'SQLite 3.43',         judge0: null, piston: null },
+        'Groovy':     { compiled: true,  runtime: 'Groovy 4 + JVM',      judge0: 88,   piston: 'groovy' },
+        'Objective-C':{ compiled: true,  runtime: 'clang + Objective-C', judge0: 79,   piston: 'objective-c' },
+        'Crystal':    { compiled: true,  runtime: 'Crystal 1.10',        judge0: null, piston: 'crystal' },
+        'PowerShell': { compiled: false, runtime: 'PowerShell 7.4',      judge0: null, piston: 'powershell' },
+        'V':          { compiled: true,  runtime: 'V compiler 0.4',      judge0: null, piston: 'v' },
+        'Brainfuck':  { compiled: false, runtime: 'Brainfuck interp.',   judge0: 11,   piston: 'brainfuck' },
     };
 
     // Returns all project files of the same language concatenated, with the active file last
@@ -49,6 +55,8 @@ class JungleRunner {
             'C#': ['cs'], 'Go': ['go'], 'Rust': ['rs'], 'Ruby': ['rb'],
             'PHP': ['php'], 'Lua': ['lua'], 'Bash': ['sh', 'bash'],
             'Kotlin': ['kt'], 'Swift': ['swift'], 'R': ['r'],
+            'Groovy': ['groovy', 'gvy'], 'Objective-C': ['m', 'mm'], 'Crystal': ['cr'],
+            'PowerShell': ['ps1', 'psm1'], 'V': ['v'], 'Brainfuck': ['bf'],
         };
         const exts = extMap[lang];
         if (!exts) return code;

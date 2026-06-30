@@ -618,8 +618,105 @@ class JungleScanner {
                 if (/\brescue\s*$/.test(trimmed)) {
                     e(lineNum, "Bare 'rescue' catches all exceptions including system errors.", "Rescue a specific exception class: rescue SomeError => e.", "Ruby style", "warning");
                 }
+            } else if (lang === 'Groovy') {
+                if (/\bdef\s+\w+\s*\([^)]*\)/.test(trimmed) && !/\{/.test(trimmed) && !/=\s*$/.test(trimmed)) {
+                    e(lineNum, "Groovy method definition may be missing a body.", "Add a '{...}' block after the parameter list.", "Groovy syntax");
+                }
+                if (/\beval\s*\(/.test(trimmed)) {
+                    e(lineNum, "eval() is a security risk in Groovy — it executes arbitrary code.", "Avoid eval(); use explicit logic instead.", "Groovy security", "warning");
+                }
+                if (/\bnew\s+\w+\s*\(\s*\)\s*$/.test(trimmed) && !/[=;,)]/.test(trimmed.slice(-2))) {
+                    e(lineNum, "Object instantiation result is discarded.", "Assign the result: def obj = new Foo().", "Groovy style", "warning");
+                }
+                if (/^import\s+static\s+\S+\.\*/.test(trimmed)) {
+                    e(lineNum, "Wildcard static import makes it hard to trace where symbols come from.", "Import only the specific members you need.", "Groovy style", "info");
+                }
+            } else if (lang === 'Objective-C') {
+                if (/^\s*@interface\b/.test(line) && !lines.slice(idx).some(l => /^\s*@end\b/.test(l))) {
+                    e(lineNum, "@interface block is missing a closing @end.", "Add '@end' after the interface declaration.", "Objective-C syntax");
+                }
+                if (/^\s*@implementation\b/.test(line) && !lines.slice(idx).some(l => /^\s*@end\b/.test(l))) {
+                    e(lineNum, "@implementation block is missing a closing @end.", "Add '@end' after the implementation.", "Objective-C syntax");
+                }
+                if (/\[.*\]/.test(trimmed) && !/;\s*$/.test(trimmed) && /^\s*\[/.test(line)) {
+                    e(lineNum, "Message send statement may be missing a semicolon.", "Add ';' at the end of the statement.", "Objective-C syntax", "warning");
+                }
+                if (/\balloc\]\s*init/.test(trimmed) && !/autorelease\]/.test(trimmed) && !/=/.test(trimmed.split('alloc]')[0])) {
+                    e(lineNum, "alloc/init result is not assigned.", "Assign to a variable: Type *obj = [[Type alloc] init];", "Objective-C style", "warning");
+                }
+                if (/\bNSString\s*\*\s*\w+\s*=\s*"/.test(trimmed)) {
+                    e(lineNum, "NSString literal should use the @ prefix.", "Use @\"...\" instead of a plain C string for NSString.", "Objective-C syntax");
+                }
+            } else if (lang === 'Crystal') {
+                if (/^(if|unless|while|until|def|class|module|struct|do)\b/.test(trimmed) && !lines.slice(idx, idx + 50).some(l => /^\s*end\b/.test(l))) {
+                    e(lineNum, "Crystal block opened here may be missing a closing 'end'.", "Add 'end' to close the block.", "Crystal syntax");
+                }
+                if (/^def\s+\w+/.test(trimmed) && !trimmed.includes('(') && !trimmed.endsWith('end')) {
+                    e(lineNum, "Crystal method missing parameter list parentheses.", "Add parentheses even when there are no parameters: def foo().", "Crystal syntax", "warning");
+                }
+                if (/\bnil\s*==/.test(trimmed) || /==\s*nil\b/.test(trimmed)) {
+                    e(lineNum, "Use .nil? instead of == nil in Crystal.", "Replace '== nil' with '.nil?' for idiomatic Crystal.", "Crystal style", "info");
+                }
+                if (/\bp\s+/.test(trimmed) && /\bp\s+[^(]/.test(trimmed)) {
+                    e(lineNum, "'p value' in Crystal prints and returns the value — use 'puts' for plain output.", "Use 'puts' if you only want to print without the return side-effect.", "Crystal style", "info");
+                }
+            } else if (lang === 'PowerShell') {
+                if (/\$\w+\s*=\s*$/.test(trimmed)) {
+                    e(lineNum, "Variable assignment has no right-hand side value.", "Provide a value: $var = expression.", "PowerShell syntax");
+                }
+                if (/^\s*if\s+[^(]/.test(line) && !/^\s*if\s*\(/.test(line)) {
+                    e(lineNum, "PowerShell 'if' condition must be wrapped in parentheses.", "Use: if (condition) { ... }", "PowerShell syntax");
+                }
+                if (/\bInvoke-Expression\b/.test(trimmed) || /\bIEX\b/.test(trimmed)) {
+                    e(lineNum, "Invoke-Expression (IEX) executes arbitrary strings — a major security risk.", "Avoid IEX; use explicit calls or safe cmdlets instead.", "PowerShell security", "warning");
+                }
+                if (/\bWrite-Host\b/.test(trimmed)) {
+                    e(lineNum, "Write-Host outputs only to the host and cannot be piped or redirected.", "Use Write-Output (or just output the value) when piping matters.", "PowerShell style", "info");
+                }
+                if (/^\s*function\s+\w+/.test(line) && !/\{/.test(trimmed)) {
+                    e(lineNum, "PowerShell function declaration is missing an opening brace.", "Add '{' after the function name: function Name {", "PowerShell syntax");
+                }
+            } else if (lang === 'V') {
+                if (/^fn\s+\w+/.test(trimmed) && !trimmed.includes('{') && !/\)$/.test(trimmed)) {
+                    e(lineNum, "V function declaration may be missing a body or closing brace.", "Add a '{...}' block after the signature.", "V syntax");
+                }
+                if (/^mut\s+\w+\s*:=/.test(trimmed)) {
+                    e(lineNum, "'mut' is a declaration modifier in V, not a statement keyword.", "Declare inside a block: mut x := value.", "V syntax", "warning");
+                }
+                if (/\bprintln\s+[^(]/.test(trimmed)) {
+                    e(lineNum, "V's println requires parentheses.", "Use println(value) with parentheses.", "V syntax");
+                }
+                if (/\bvar\s+\w+/.test(trimmed)) {
+                    e(lineNum, "V does not use 'var' — use ':=' for declaration.", "Use x := value instead of var x.", "V syntax");
+                }
+                if (/^import\s+\w+/.test(trimmed) && idx !== 0 && lines.slice(0, idx).some(l => /^fn\b|^struct\b|^pub\b/.test(l.trim()))) {
+                    e(lineNum, "V imports should be at the top of the file before any declarations.", "Move all import statements to the top.", "V style", "warning");
+                }
+            } else if (lang === 'Brainfuck') {
+                // Brainfuck only has 8 valid chars; anything else is a comment but flag if user seems confused
+                const validChars = new Set(['+', '-', '>', '<', '[', ']', '.', ',']);
+                const suspiciousWords = trimmed.match(/\b(print|output|hello|while|for|if)\b/i);
+                if (suspiciousWords) {
+                    e(lineNum, `'${suspiciousWords[0]}' is not a Brainfuck instruction — it will be ignored.`, "Brainfuck only recognises: + - > < [ ] . ,", "Brainfuck syntax", "info");
+                }
             }
         });
+        // Brainfuck bracket balance check (whole-file)
+        if (lang === 'Brainfuck') {
+            const bfPush = (ln, msg, hint, kind, sev = 'error') => issues.push(this.makeIssue(ln, msg, hint, kind, null, sev));
+            let depth = 0;
+            let openLine = 1;
+            lines.forEach((line, idx) => {
+                for (const ch of line) {
+                    if (ch === '[') { depth++; openLine = idx + 1; }
+                    else if (ch === ']') {
+                        depth--;
+                        if (depth < 0) { bfPush(idx + 1, "Unmatched ']' — no corresponding '['.", "Remove this ']' or add an opening '[' earlier.", "Brainfuck syntax"); depth = 0; }
+                    }
+                }
+            });
+            if (depth > 0) bfPush(openLine, "Unmatched '[' — loop opened here is never closed.", "Add ']' to close the loop.", "Brainfuck syntax");
+        }
         return issues;
     }
     // Universal checks that apply to all languages
