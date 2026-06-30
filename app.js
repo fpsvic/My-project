@@ -241,7 +241,7 @@ projectTitleBtn.onclick = () => {
         return map[ext] || 'Javascript';
     }
 
-    const tokenCSS = `.token-keyword{color:#FFB86C}.token-string{color:#06CF7A}.token-comment{color:#6272A4;font-style:italic}.token-number{color:#FF79C6}.token-type{color:#8BE9FD}.token-fn{color:#f1fa8c}.token-builtin{color:#bd93f9}.token-op{color:#FF5555}.token-punct{color:#7f848e}.token-attr{color:#FFB86C}.token-tag{color:#FF79C6}.token-property{color:#FFB86C}.token-decorator{color:#bd93f9;font-style:italic}`;
+    const tokenCSS = `.token-keyword{color:#FFB86C}.token-string{color:#06CF7A}.token-comment{color:#6272A4;font-style:italic}.token-number{color:#FF79C6}.token-type{color:#8BE9FD}.token-fn{color:#f1fa8c}.token-builtin{color:#4d9de0}.token-op{color:#FF5555}.token-punct{color:#7f848e}.token-attr{color:#FFB86C}.token-tag{color:#FF79C6}.token-property{color:#FFB86C}.token-decorator{color:#bd93f9;font-style:italic}`;
 
     const sections = Object.entries(p.files).map(([name, content]) => {
         const lang = langFromFilename(name);

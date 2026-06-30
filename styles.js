@@ -87,7 +87,7 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .token-number { color: #FF79C6; }
 .token-type { color: #8BE9FD; }
 .token-fn { color: #f1fa8c; }
-.token-builtin { color: #bd93f9; }
+.token-builtin { color: #4d9de0; }
 .token-op { color: #FF5555; }
 .token-punct { color: #7f848e; }
 .token-attr { color: #FFB86C; }
