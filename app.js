@@ -228,7 +228,17 @@ runBtn.onclick = () => {
 };
 tabPreview.onclick = runBtn.onclick;
 tabTerminalBtn.onclick = () => { switchView('terminal', true); JungleUI.showToast("Switched output channel to Terminal Console view."); };
-projectTitleBtn.onclick = () => { switchView('editor'); };
+projectTitleBtn.onclick = () => {
+    const p = JungleUI.getCurrentProject();
+    if (!p || Object.keys(p.files).length === 0) { switchView('editor'); return; }
+    switchView('terminal', false);
+    terminalStatus.textContent = "PROJECT VIEW";
+    terminalStatus.style.color = "#74a896";
+    const parts = Object.entries(p.files).map(([name, content]) =>
+        `${'═'.repeat(52)}\n  📄 ${name}\n${'═'.repeat(52)}\n${content || '(empty file)'}`
+    );
+    terminalViewBody.textContent = parts.join('\n\n');
+};
 const langPickerScreen = document.getElementById('lang-picker-screen');
 const langPickerBack = document.getElementById('lang-picker-back');
 const langPickerSearch = document.getElementById('lang-picker-search');

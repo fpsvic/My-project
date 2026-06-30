@@ -128,7 +128,13 @@ class JungleRunner {
                 return;
             }
 
-            // ── Tier 5: Visual Python — matplotlib/turtle via Pyodide → preview ─
+            // ── Tier 5a: Turtle Python — Skulpt renders natively in preview iframe ─
+            if (lang === 'Python' && this.isTurtleCode(code)) {
+                this.renderSkulptPreview(code);
+                return;
+            }
+
+            // ── Tier 5b: Visual Python — matplotlib/turtle via Pyodide → preview ─
             if (lang === 'Python' && this.isVisualPython(code)) {
                 switchView('terminal', false);
                 terminalViewBody.textContent = "⏳ Loading Python + graphics packages (~15 MB first load)...";
@@ -233,6 +239,51 @@ class JungleRunner {
 
     static isVisualPython(code) {
         return /\b(import\s+turtle|import\s+pygame|matplotlib|pyplot|plt\s*\.|seaborn|plotly|bokeh|turtle\s*\.|Turtle\b|pygame|PIL|Image\.open|cv2\.|imshow|savefig|show\(\)|scatter\(|plot\(|bar\(|pie\(|hist\()\b/.test(code);
+    }
+
+    static isTurtleCode(code) {
+        return /\bimport\s+turtle\b/.test(code) || /\bturtle\s*\./.test(code) || /\bTurtle\s*\(/.test(code);
+    }
+
+    // ── Skulpt turtle: render Python turtle graphics in preview iframe ─────────
+    static renderSkulptPreview(code) {
+        const patchedCode = code
+            .replace(/\b(?:screen|turtle|t|wn|ts)\s*\.\s*(?:exitonclick|done|mainloop|listen)\s*\(\s*\)/g, '# patched')
+            .replace(/^(import\s+turtle.*)$/m, '$1\nturtle.TurtleScreen._RUNNING = True');
+        const escaped = patchedCode.replace(/`/g, '\\`').replace(/\\/g, '\\\\').replace(/\$/g, '\\$');
+        const doc = previewFrame.contentDocument || previewFrame.contentWindow.document;
+        doc.open();
+        doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>body{margin:0;background:#060e0a;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;}
+#output{color:#aed9cb;font-family:'Fira Code',monospace;font-size:13px;white-space:pre-wrap;margin-bottom:10px;padding:10px;max-width:98%;}
+canvas{border:1px solid #1e2e28;border-radius:8px;background:#fff;}</style>
+</head><body>
+<div id="output"></div>
+<div id="mycanvas"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/skulpt/1.2.0/skulpt.min.js"><\/script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/skulpt/1.2.0/skulpt-stdlib.js"><\/script>
+<script>
+Sk.configure({
+    output: function(text) {
+        document.getElementById('output').textContent += text;
+    },
+    read: function(x) {
+        if (Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined)
+            throw "File not found: '" + x + "'";
+        return Sk.builtinFiles["files"][x];
+    }
+});
+Sk.TurtleGraphics = { target: 'mycanvas', width: 500, height: 400 };
+const code = \`${escaped}\`;
+Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("<stdin>", false, code, true))
+  .catch(e => { document.getElementById('output').textContent += '\\nError: ' + e.toString(); });
+<\/script>
+</body></html>`);
+        doc.close();
+        switchView('preview');
+        terminalStatus.textContent = "TURTLE";
+        terminalStatus.className = "text-emerald-400 font-bold";
+        JungleUI.showToast("Turtle graphics rendered in Preview panel.", null);
     }
 
     // ── Render JS/TS in preview iframe with full DOM access ──────────────────
