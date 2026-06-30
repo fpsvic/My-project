@@ -461,6 +461,24 @@ class JungleUI {
         this.updateLineNumbers();
     }
 
+    // Returns syntax-highlighted HTML for arbitrary lang+code (used by Whole Project view)
+    static highlightCode(lang, code) {
+        let escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const spans = [];
+        function tok(cls, content) { const id = spans.length; spans.push(`<span class="${cls}">${content}</span>`); return `\x00${id}\x00`; }
+        function finalize(s) { return s.replace(/\x00(\d+)\x00/g, (_, i) => spans[+i]); }
+        // Reuse updateCodeHighlight's logic by temporarily swapping editor value
+        const savedValue = editor.value, savedLangs = selectedLanguages.slice();
+        editor.value = code;
+        selectedLanguages[0] = lang;
+        JungleUI.updateCodeHighlight();
+        const html = highlightOverlay.innerHTML;
+        editor.value = savedValue;
+        selectedLanguages[0] = savedLangs[0];
+        JungleUI.updateCodeHighlight();
+        return html;
+    }
+
     static _highlightJS(escaped, tok) {
         return escaped.replace(
             /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(\/(?:[^/\\\n]|\\.)+\/[gimsuy]*)|(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|\b((?:async\s+)?function\*?\s+(\w+)|(\w+)\s*(?==\s*(?:async\s+)?(?:function|\([^)]*\)\s*=>|\w+\s*=>)))|(\b(\w+)\s*\()|\b(const|let|var|return|if|else|while|for|of|in|import|export|default|class|extends|new|this|super|async|await|void|typeof|instanceof|delete|try|catch|finally|throw|switch|case|break|continue|do|yield|static|get|set|from|as|debugger)\b|\b(type|interface|enum|implements|declare|readonly|abstract|override|keyof|infer|never|unknown|any|namespace|satisfies|asserts|is|out|accessor)\b|\b(true|false|null|undefined|NaN|Infinity)\b|\b(console|Math|JSON|Object|Array|String|Number|Boolean|Promise|Map|Set|WeakMap|WeakSet|Date|Error|RegExp|Symbol|Proxy|Reflect|globalThis|window|document|navigator|fetch|setTimeout|setInterval|clearTimeout|clearInterval|queueMicrotask|requestAnimationFrame|localStorage|sessionStorage|performance|URL|FormData|Headers|Request|Response)\b|\b([A-Z][A-Za-z0-9_]*)\b|\b(\d+\.?\d*(?:[eE][+-]?\d+)?n?|0x[\da-fA-F]+|0b[01]+|0o[0-7]+)\b/g,

@@ -231,13 +231,46 @@ tabTerminalBtn.onclick = () => { switchView('terminal', true); JungleUI.showToas
 projectTitleBtn.onclick = () => {
     const p = JungleUI.getCurrentProject();
     if (!p || Object.keys(p.files).length === 0) { switchView('editor'); return; }
-    switchView('terminal', false);
+
+    // Detect language per file by extension
+    function langFromFilename(name) {
+        const ext = name.split('.').pop().toLowerCase();
+        const map = { js: 'Javascript', ts: 'TypeScript', py: 'Python', html: 'HTML', htm: 'HTML', css: 'CSS',
+            java: 'Java', c: 'C', cpp: 'C++', cs: 'C#', go: 'Go', rs: 'Rust', rb: 'Ruby', php: 'PHP',
+            lua: 'Lua', sh: 'Bash', bash: 'Bash', r: 'R', swift: 'Swift', kt: 'Kotlin', sql: 'SQL' };
+        return map[ext] || 'Javascript';
+    }
+
+    const tokenCSS = `.token-keyword{color:#FFB86C}.token-string{color:#06CF7A}.token-comment{color:#6272A4;font-style:italic}.token-number{color:#FF79C6}.token-type{color:#8BE9FD}.token-fn{color:#f1fa8c}.token-builtin{color:#bd93f9}.token-op{color:#FF5555}.token-punct{color:#7f848e}.token-attr{color:#FFB86C}.token-tag{color:#FF79C6}.token-property{color:#FFB86C}.token-decorator{color:#bd93f9;font-style:italic}`;
+
+    const sections = Object.entries(p.files).map(([name, content]) => {
+        const lang = langFromFilename(name);
+        const hlHtml = JungleUI.highlightCode(lang, content || '');
+        return `<div class="file-block">
+            <div class="file-header"><span class="file-icon">📄</span><span class="file-name">${name.replace(/</g,'&lt;')}</span><span class="file-lang">${lang}</span></div>
+            <pre class="file-code">${hlHtml || '(empty file)'}</pre>
+        </div>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0f0d;color:#aed9cb;font-family:'Fira Code',monospace;font-size:13px;padding:20px;line-height:1.6;}
+${tokenCSS}
+.file-block{margin-bottom:28px;border:1px solid #1e2e28;border-radius:8px;overflow:hidden;}
+.file-header{display:flex;align-items:center;gap:10px;background:#111a16;padding:8px 14px;border-bottom:1px solid #1e2e28;}
+.file-icon{font-size:14px}
+.file-name{color:#aed9cb;font-weight:700;font-size:13px;}
+.file-lang{color:#4a6057;font-size:11px;margin-left:auto;}
+.file-code{padding:14px 16px;overflow-x:auto;background:#080e0b;white-space:pre;tab-size:4;}
+</style></head><body>${sections}</body></html>`;
+
+    const doc = previewFrame.contentDocument || previewFrame.contentWindow.document;
+    doc.open(); doc.write(html); doc.close();
+    switchView('preview');
     terminalStatus.textContent = "PROJECT VIEW";
     terminalStatus.style.color = "#74a896";
-    const parts = Object.entries(p.files).map(([name, content]) =>
-        `${'═'.repeat(52)}\n  📄 ${name}\n${'═'.repeat(52)}\n${content || '(empty file)'}`
-    );
-    terminalViewBody.textContent = parts.join('\n\n');
+    projectTitleBtn.classList.add('active');
+    tabPreview.classList.remove('active');
 };
 const langPickerScreen = document.getElementById('lang-picker-screen');
 const langPickerBack = document.getElementById('lang-picker-back');

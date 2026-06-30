@@ -248,35 +248,46 @@ class JungleRunner {
     // ── Skulpt turtle: render Python turtle graphics in preview iframe ─────────
     static renderSkulptPreview(code) {
         const patchedCode = code
-            .replace(/\b(?:screen|turtle|t|wn|ts)\s*\.\s*(?:exitonclick|done|mainloop|listen)\s*\(\s*\)/g, '# patched')
-            .replace(/^(import\s+turtle.*)$/m, '$1\nturtle.TurtleScreen._RUNNING = True');
-        const escaped = patchedCode.replace(/`/g, '\\`').replace(/\\/g, '\\\\').replace(/\$/g, '\\$');
+            .replace(/\b(?:screen|turtle|t|wn|ts)\s*\.\s*(?:exitonclick|done|mainloop|listen)\s*\(\s*\)/g, '# patched');
+        // JSON.stringify safely encodes the Python source as a JS string — no manual escaping needed
+        const codeJson = JSON.stringify(patchedCode);
         const doc = previewFrame.contentDocument || previewFrame.contentWindow.document;
         doc.open();
         doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-<style>body{margin:0;background:#060e0a;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;}
-#output{color:#aed9cb;font-family:'Fira Code',monospace;font-size:13px;white-space:pre-wrap;margin-bottom:10px;padding:10px;max-width:98%;}
-canvas{border:1px solid #1e2e28;border-radius:8px;background:#fff;}</style>
+<style>
+body{margin:0;background:#060e0a;display:flex;flex-direction:column;align-items:center;padding:20px;min-height:100vh;box-sizing:border-box;}
+#output{color:#aed9cb;font-family:'Fira Code',monospace;font-size:13px;white-space:pre-wrap;margin-bottom:14px;padding:10px 14px;background:#0a1410;border:1px solid #1e2e28;border-radius:6px;width:100%;max-width:540px;box-sizing:border-box;display:none;}
+#mycanvas canvas{border:1px solid #1e2e28;border-radius:8px;background:#fff;}
+#err{color:#FF5555;font-family:'Fira Code',monospace;font-size:12px;margin-top:10px;white-space:pre-wrap;}
+</style>
 </head><body>
 <div id="output"></div>
 <div id="mycanvas"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/skulpt/1.2.0/skulpt.min.js"><\/script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/skulpt/1.2.0/skulpt-stdlib.js"><\/script>
+<div id="err"></div>
+<script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"><\/script>
 <script>
+var outputEl = document.getElementById('output');
+var errEl = document.getElementById('err');
 Sk.configure({
     output: function(text) {
-        document.getElementById('output').textContent += text;
+        outputEl.style.display = 'block';
+        outputEl.textContent += text;
     },
     read: function(x) {
-        if (Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined)
-            throw "File not found: '" + x + "'";
-        return Sk.builtinFiles["files"][x];
-    }
+        if (Sk.builtinFiles === undefined || Sk.builtinFiles['files'][x] === undefined)
+            throw 'File not found: ' + x;
+        return Sk.builtinFiles['files'][x];
+    },
+    __future__: Sk.python3
 });
-Sk.TurtleGraphics = { target: 'mycanvas', width: 500, height: 400 };
-const code = \`${escaped}\`;
-Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("<stdin>", false, code, true))
-  .catch(e => { document.getElementById('output').textContent += '\\nError: ' + e.toString(); });
+Sk.TurtleGraphics = { target: 'mycanvas', width: 500, height: 420, background: 'white' };
+var src = ${codeJson};
+Sk.misceval.asyncToPromise(function() {
+    return Sk.importMainWithBody('<stdin>', false, src, true);
+}).catch(function(e) {
+    errEl.textContent = 'Error: ' + (e.toString ? e.toString() : String(e));
+});
 <\/script>
 </body></html>`);
         doc.close();
