@@ -107,7 +107,6 @@ function switchView(view, showInput = false) {
     tabTerminalBtn.classList.remove('bg-[#1c2522]', 'text-[#74a896]', 'border-[#528b74]');
     if (view === 'editor') {
         editorWrapper.style.display = 'flex';
-        projectTitleBtn.classList.add('active');
         terminalInput.setAttribute('disabled', 'true');
         terminalInputRow.classList.add('hidden');
     } else if (view === 'preview') {
