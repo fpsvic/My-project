@@ -631,92 +631,113 @@ class JungleScanner {
                 if (/^import\s+static\s+\S+\.\*/.test(trimmed)) {
                     e(lineNum, "Wildcard static import makes it hard to trace where symbols come from.", "Import only the specific members you need.", "Groovy style", "info");
                 }
-            } else if (lang === 'Objective-C') {
-                if (/^\s*@interface\b/.test(line) && !lines.slice(idx).some(l => /^\s*@end\b/.test(l))) {
-                    e(lineNum, "@interface block is missing a closing @end.", "Add '@end' after the interface declaration.", "Objective-C syntax");
+            } else if (lang === 'Apex') {
+                if (/\bSystem\.debug\s*\(/.test(trimmed)) {
+                    e(lineNum, "System.debug() left in production code.", "Remove debug statements before deploying to production.", "Apex style", "warning");
                 }
-                if (/^\s*@implementation\b/.test(line) && !lines.slice(idx).some(l => /^\s*@end\b/.test(l))) {
-                    e(lineNum, "@implementation block is missing a closing @end.", "Add '@end' after the implementation.", "Objective-C syntax");
+                if (/\bSOQL\b/.test(trimmed) || /\[\s*SELECT\b/i.test(trimmed)) {
+                    if (/^\s*for\s*\(/.test(lines[idx - 1] || '') === false && /^\s*(for|while)\b/.test(lines[idx - 1] || '')) {
+                        e(lineNum, "SOQL query inside a loop can hit governor limits.", "Move the query outside the loop and process results with a collection.", "Apex governor limits", "warning");
+                    }
                 }
-                if (/\[.*\]/.test(trimmed) && !/;\s*$/.test(trimmed) && /^\s*\[/.test(line)) {
-                    e(lineNum, "Message send statement may be missing a semicolon.", "Add ';' at the end of the statement.", "Objective-C syntax", "warning");
+                if (/\[\s*SELECT\b/i.test(trimmed) && /^\s*(for|while)\b/.test(lines[idx > 0 ? idx - 1 : 0] || '')) {
+                    e(lineNum, "SOQL query inside a loop will hit Salesforce governor limits.", "Bulkify: query once outside the loop and iterate the result list.", "Apex governor limits", "warning");
                 }
-                if (/\balloc\]\s*init/.test(trimmed) && !/autorelease\]/.test(trimmed) && !/=/.test(trimmed.split('alloc]')[0])) {
-                    e(lineNum, "alloc/init result is not assigned.", "Assign to a variable: Type *obj = [[Type alloc] init];", "Objective-C style", "warning");
+                if (/\bwithout\s+sharing\b/i.test(trimmed)) {
+                    e(lineNum, "'without sharing' bypasses Salesforce record-level security.", "Use 'with sharing' unless you have a specific reason to bypass sharing rules.", "Apex security", "warning");
                 }
-                if (/\bNSString\s*\*\s*\w+\s*=\s*"/.test(trimmed)) {
-                    e(lineNum, "NSString literal should use the @ prefix.", "Use @\"...\" instead of a plain C string for NSString.", "Objective-C syntax");
+                if (/\bDML\b/.test(trimmed) || /\b(insert|update|delete|upsert)\s+\w/i.test(trimmed)) {
+                    if (/^\s*(for|while)\b/.test(lines[idx > 0 ? idx - 1 : 0] || '')) {
+                        e(lineNum, "DML inside a loop will hit Salesforce governor limits.", "Collect records in a List and perform DML once outside the loop.", "Apex governor limits", "warning");
+                    }
                 }
-            } else if (lang === 'Crystal') {
-                if (/^(if|unless|while|until|def|class|module|struct|do)\b/.test(trimmed) && !lines.slice(idx, idx + 50).some(l => /^\s*end\b/.test(l))) {
-                    e(lineNum, "Crystal block opened here may be missing a closing 'end'.", "Add 'end' to close the block.", "Crystal syntax");
+                if (/\bcatch\s*\(\s*Exception\s+e\s*\)/.test(trimmed)) {
+                    const next = (lines[idx + 1] || '').trim();
+                    if (next === '' || next === '}') {
+                        e(lineNum, "Caught exception is silently swallowed.", "Log or rethrow the exception so failures are visible.", "Apex error handling", "warning");
+                    }
                 }
-                if (/^def\s+\w+/.test(trimmed) && !trimmed.includes('(') && !trimmed.endsWith('end')) {
-                    e(lineNum, "Crystal method missing parameter list parentheses.", "Add parentheses even when there are no parameters: def foo().", "Crystal syntax", "warning");
+            } else if (lang === 'GDScript') {
+                if (/^(if|elif|else|for|while|func|class|match)\b/.test(trimmed) && !trimmed.endsWith(':') && !trimmed.endsWith('\\')) {
+                    e(lineNum, "GDScript block statement is missing a trailing colon.", "Add ':' at the end of the line.", "GDScript syntax");
                 }
-                if (/\bnil\s*==/.test(trimmed) || /==\s*nil\b/.test(trimmed)) {
-                    e(lineNum, "Use .nil? instead of == nil in Crystal.", "Replace '== nil' with '.nil?' for idiomatic Crystal.", "Crystal style", "info");
+                if (/^func\s+\w+/.test(trimmed) && !trimmed.endsWith(':')) {
+                    e(lineNum, "GDScript function definition is missing a trailing colon.", "End the func line with ':'.", "GDScript syntax");
                 }
-                if (/\bp\s+/.test(trimmed) && /\bp\s+[^(]/.test(trimmed)) {
-                    e(lineNum, "'p value' in Crystal prints and returns the value — use 'puts' for plain output.", "Use 'puts' if you only want to print without the return side-effect.", "Crystal style", "info");
+                if (/\bprint\s*\(/.test(trimmed)) {
+                    e(lineNum, "print() is fine for debugging but should be removed in released builds.", "Remove or replace with push_warning() / push_error() for production.", "GDScript style", "info");
                 }
-            } else if (lang === 'PowerShell') {
-                if (/\$\w+\s*=\s*$/.test(trimmed)) {
-                    e(lineNum, "Variable assignment has no right-hand side value.", "Provide a value: $var = expression.", "PowerShell syntax");
+                if (/\bsetget\b/.test(trimmed)) {
+                    e(lineNum, "'setget' is Godot 3 syntax — use @export and property setter/getter in Godot 4.", "Replace setget with a Godot 4 property: var x: int: get: return _x", "GDScript version", "warning");
                 }
-                if (/^\s*if\s+[^(]/.test(line) && !/^\s*if\s*\(/.test(line)) {
-                    e(lineNum, "PowerShell 'if' condition must be wrapped in parentheses.", "Use: if (condition) { ... }", "PowerShell syntax");
+                if (/\bonready\b/.test(trimmed)) {
+                    e(lineNum, "'onready' is Godot 3 syntax — use @onready in Godot 4.", "Replace 'onready var' with '@onready var'.", "GDScript version", "warning");
                 }
-                if (/\bInvoke-Expression\b/.test(trimmed) || /\bIEX\b/.test(trimmed)) {
-                    e(lineNum, "Invoke-Expression (IEX) executes arbitrary strings — a major security risk.", "Avoid IEX; use explicit calls or safe cmdlets instead.", "PowerShell security", "warning");
+                if (/^\s*var\s+\w+\s*=\s*(null|0|false|"")\s*$/.test(line)) {
+                    e(lineNum, "Variable initialised to a zero value — consider adding a type hint.", "Use 'var x: Type = value' for clearer, type-safe code.", "GDScript style", "info");
                 }
-                if (/\bWrite-Host\b/.test(trimmed)) {
-                    e(lineNum, "Write-Host outputs only to the host and cannot be piped or redirected.", "Use Write-Output (or just output the value) when piping matters.", "PowerShell style", "info");
+            } else if (lang === 'Solidity') {
+                if (/\bpragma\s+solidity\b/i.test(trimmed) && /\^\s*0\.[1-7]\./.test(trimmed)) {
+                    e(lineNum, "Pragma targets a Solidity version older than 0.8 — lacking built-in overflow checks.", "Upgrade to pragma solidity ^0.8.0 or newer.", "Solidity version", "warning");
                 }
-                if (/^\s*function\s+\w+/.test(line) && !/\{/.test(trimmed)) {
-                    e(lineNum, "PowerShell function declaration is missing an opening brace.", "Add '{' after the function name: function Name {", "PowerShell syntax");
+                if (/\btx\.origin\b/.test(trimmed)) {
+                    e(lineNum, "tx.origin is vulnerable to phishing attacks — it identifies the original EOA, not the direct caller.", "Use msg.sender for authorization checks instead of tx.origin.", "Solidity security", "error");
                 }
-            } else if (lang === 'V') {
-                if (/^fn\s+\w+/.test(trimmed) && !trimmed.includes('{') && !/\)$/.test(trimmed)) {
-                    e(lineNum, "V function declaration may be missing a body or closing brace.", "Add a '{...}' block after the signature.", "V syntax");
+                if (/\.call\s*\{[^}]*\}\s*\(/.test(trimmed) || /\.call\s*\(/.test(trimmed)) {
+                    e(lineNum, "Low-level .call() forwards all gas and can enable reentrancy attacks.", "Check return value, use reentrancy guards, or prefer transfer()/send().", "Solidity security", "warning");
                 }
-                if (/^mut\s+\w+\s*:=/.test(trimmed)) {
-                    e(lineNum, "'mut' is a declaration modifier in V, not a statement keyword.", "Declare inside a block: mut x := value.", "V syntax", "warning");
+                if (/\bsuicide\s*\(/.test(trimmed)) {
+                    e(lineNum, "'suicide()' is deprecated — use 'selfdestruct()' instead.", "Replace suicide() with selfdestruct(addr).", "Solidity syntax");
                 }
-                if (/\bprintln\s+[^(]/.test(trimmed)) {
-                    e(lineNum, "V's println requires parentheses.", "Use println(value) with parentheses.", "V syntax");
+                if (/\bblock\.timestamp\b/.test(trimmed) || /\bnow\b/.test(trimmed)) {
+                    e(lineNum, "block.timestamp can be manipulated by miners within ~15 seconds.", "Avoid using block.timestamp for randomness or exact timing logic.", "Solidity security", "warning");
                 }
-                if (/\bvar\s+\w+/.test(trimmed)) {
-                    e(lineNum, "V does not use 'var' — use ':=' for declaration.", "Use x := value instead of var x.", "V syntax");
+                if (/\bpublic\b/.test(trimmed) && /\bfunction\b/.test(trimmed) && !/\b(view|pure|returns|payable)\b/.test(trimmed)) {
+                    e(lineNum, "Public function with no visibility modifier on state mutation.", "Add 'view', 'pure', or 'payable' as appropriate, or restrict to 'external'.", "Solidity style", "info");
                 }
-                if (/^import\s+\w+/.test(trimmed) && idx !== 0 && lines.slice(0, idx).some(l => /^fn\b|^struct\b|^pub\b/.test(l.trim()))) {
-                    e(lineNum, "V imports should be at the top of the file before any declarations.", "Move all import statements to the top.", "V style", "warning");
+                if (/\bfloat\b|\bdouble\b/.test(trimmed)) {
+                    e(lineNum, "Solidity has no floating-point types.", "Use uint/int with fixed-point arithmetic or a library like PRBMath.", "Solidity syntax");
                 }
-            } else if (lang === 'Brainfuck') {
-                // Brainfuck only has 8 valid chars; anything else is a comment but flag if user seems confused
-                const validChars = new Set(['+', '-', '>', '<', '[', ']', '.', ',']);
-                const suspiciousWords = trimmed.match(/\b(print|output|hello|while|for|if)\b/i);
-                if (suspiciousWords) {
-                    e(lineNum, `'${suspiciousWords[0]}' is not a Brainfuck instruction — it will be ignored.`, "Brainfuck only recognises: + - > < [ ] . ,", "Brainfuck syntax", "info");
+            } else if (lang === 'Nix') {
+                if (/\blet\b/.test(trimmed) && !lines.slice(idx, idx + 40).some(l => /^\s*in\b/.test(l))) {
+                    e(lineNum, "'let' expression is missing a corresponding 'in'.", "Add 'in <expression>' after the let bindings.", "Nix syntax");
+                }
+                if (/^\s*with\s+\w/.test(line) && !trimmed.endsWith(';')) {
+                    e(lineNum, "'with' expression should end with a semicolon before the body.", "Use: with pkgs; <body>  — note the semicolon.", "Nix syntax", "warning");
+                }
+                if (/\bimport\s+<nixpkgs>/.test(trimmed) && /fetchurl\s*\{/.test(fullCode)) {
+                    e(lineNum, "Pinning nixpkgs with <nixpkgs> produces impure, non-reproducible builds.", "Pin nixpkgs to a specific revision using a lock file or fetchTarball with a hash.", "Nix reproducibility", "warning");
+                }
+                if (/\bfetchurl\s*\{/.test(trimmed) && !/sha256\s*=/.test(trimmed) && !lines.slice(idx, idx + 8).some(l => /sha256\s*=/.test(l))) {
+                    e(lineNum, "fetchurl is missing a sha256 hash.", "Add 'sha256 = \"...\";' to pin the download and ensure reproducibility.", "Nix security");
+                }
+                if (/\b(mkDerivation|buildPackage)\b/.test(trimmed) && !lines.slice(idx, idx + 30).some(l => /version\s*=/.test(l))) {
+                    e(lineNum, "Derivation is missing a 'version' attribute.", "Add 'version = \"1.0.0\";' so Nix can track and upgrade the package.", "Nix style", "info");
+                }
+                if (/==/.test(trimmed) && !/!=/.test(trimmed)) {
+                    e(lineNum, "Nix uses '==' for equality but it is only valid in assertions and conditions, not in attribute sets.", "Use '=' for attribute assignment inside { }.", "Nix syntax", "warning");
+                }
+            } else if (lang === 'HCL') {
+                if (/\bresource\s+"[^"]+"\s+"[^"]+"\s*$/.test(trimmed)) {
+                    e(lineNum, "Resource block declaration is missing an opening brace.", "Add '{' at the end of the resource line.", "HCL syntax");
+                }
+                if (/\$\{[^}]*\}/.test(trimmed) && /"\s*\+\s*"/.test(trimmed)) {
+                    e(lineNum, "String concatenation with '+' is not valid in HCL — use template interpolation.", "Use \"${var.a}${var.b}\" instead of \"${var.a}\" + \"${var.b}\".", "HCL syntax");
+                }
+                if (/\bcount\s*=\s*\d/.test(trimmed) && /\bfor_each\b/.test(fullCode)) {
+                    e(lineNum, "Mixing 'count' and 'for_each' in the same configuration can cause index drift.", "Use one meta-argument consistently per resource.", "HCL style", "warning");
+                }
+                if (/\bhardcoded\b|password\s*=\s*"[^"]{3,}"|secret\s*=\s*"[^"]{3,}"/i.test(trimmed)) {
+                    e(lineNum, "Hardcoded secret or password detected in HCL.", "Use a variable or a secrets manager reference instead of a literal value.", "HCL security", "error");
+                }
+                if (/\baws_access_key\b|\baws_secret_key\b/.test(trimmed)) {
+                    e(lineNum, "AWS credentials should never be hardcoded in Terraform files.", "Use environment variables, IAM roles, or AWS Secrets Manager.", "HCL security", "error");
+                }
+                if (/^\s*#\s*TODO\b/i.test(line) === false && /terraform\s+\{/.test(trimmed) && !lines.some(l => /required_version\s*=/.test(l))) {
+                    e(lineNum, "Terraform block is missing 'required_version'.", "Pin the Terraform CLI version: required_version = \">= 1.6\".", "HCL style", "info");
                 }
             }
         });
-        // Brainfuck bracket balance check (whole-file)
-        if (lang === 'Brainfuck') {
-            const bfPush = (ln, msg, hint, kind, sev = 'error') => issues.push(this.makeIssue(ln, msg, hint, kind, null, sev));
-            let depth = 0;
-            let openLine = 1;
-            lines.forEach((line, idx) => {
-                for (const ch of line) {
-                    if (ch === '[') { depth++; openLine = idx + 1; }
-                    else if (ch === ']') {
-                        depth--;
-                        if (depth < 0) { bfPush(idx + 1, "Unmatched ']' — no corresponding '['.", "Remove this ']' or add an opening '[' earlier.", "Brainfuck syntax"); depth = 0; }
-                    }
-                }
-            });
-            if (depth > 0) bfPush(openLine, "Unmatched '[' — loop opened here is never closed.", "Add ']' to close the loop.", "Brainfuck syntax");
-        }
         return issues;
     }
     // Universal checks that apply to all languages

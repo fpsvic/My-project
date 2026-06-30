@@ -513,8 +513,8 @@ projectTitleBtn.onclick = () => {
         const map = { js: 'Javascript', ts: 'TypeScript', py: 'Python', html: 'HTML', htm: 'HTML', css: 'CSS',
             java: 'Java', c: 'C', cpp: 'C++', cs: 'C#', go: 'Go', rs: 'Rust', rb: 'Ruby', php: 'PHP',
             lua: 'Lua', sh: 'Bash', bash: 'Bash', r: 'R', swift: 'Swift', kt: 'Kotlin', sql: 'SQL',
-            groovy: 'Groovy', gvy: 'Groovy', m: 'Objective-C', mm: 'Objective-C',
-            cr: 'Crystal', ps1: 'PowerShell', psm1: 'PowerShell', v: 'V', bf: 'Brainfuck' };
+            groovy: 'Groovy', gvy: 'Groovy', cls: 'Apex', apex: 'Apex', trigger: 'Apex',
+            gd: 'GDScript', sol: 'Solidity', nix: 'Nix', tf: 'HCL', hcl: 'HCL', tfvars: 'HCL' };
         return map[ext] || 'Javascript';
     }
 
@@ -800,9 +800,9 @@ const LANG_ICONS = {
     'Lisp': '🌀', 'Lua': '🌙', 'Nim': '👑', 'OCaml': '🐪', 'Pascal': '🏛️',
     'Perl': '🐪', 'PHP': '🐘', 'Prolog': '🧠', 'Python': '🐍', 'R': '📊',
     'Ruby': '💎', 'Rust': '🦀', 'Scala': '⚖️', 'Swift': '🕊️', 'TypeScript': '🔷',
-    'Zig': '⚡', 'Groovy': '🎵', 'Objective-C': '🍏', 'Crystal': '🔮', 'PowerShell': '💠', 'V': '🔱', 'Brainfuck': '🧩'
+    'Zig': '⚡', 'Groovy': '🎵', 'Apex': '☁️', 'GDScript': '🎮', 'Solidity': '🪙', 'Nix': '❄️', 'HCL': '🏗️'
 };
-const ALL_LANGS = ["Assembly","Bash","Brainfuck","C","C#","C++","Clojure","COBOL","Crystal","D","Dart","Elixir","Erlang","F#","Fortran","Go","Groovy","Haskell","HTML","Java","Javascript","Julia","Kotlin","Lisp","Lua","Nim","OCaml","Objective-C","Pascal","Perl","PHP","PowerShell","Prolog","Python","R","Ruby","Rust","Scala","SQL","Swift","TypeScript","V","Zig"];
+const ALL_LANGS = ["Apex","Assembly","Bash","C","C#","C++","Clojure","COBOL","D","Dart","Elixir","Erlang","F#","Fortran","GDScript","Go","Groovy","HCL","Haskell","HTML","Java","Javascript","Julia","Kotlin","Lisp","Lua","Nim","Nix","OCaml","Pascal","Perl","PHP","Prolog","Python","R","Ruby","Rust","Scala","Solidity","SQL","Swift","TypeScript","Zig"];
 function renderLangPickerGrid(filter) {
     const current = selectedLanguages[0] || '';
     const filtered = filter ? ALL_LANGS.filter(l => l.toLowerCase().includes(filter)) : ALL_LANGS;

@@ -39,11 +39,11 @@ class JungleRunner {
         'Prolog':     { compiled: false, runtime: 'SWI-Prolog 9',        judge0: 69,   piston: 'prolog' },
         'SQL':        { compiled: false, runtime: 'SQLite 3.43',         judge0: null, piston: null },
         'Groovy':     { compiled: true,  runtime: 'Groovy 4 + JVM',      judge0: 88,   piston: 'groovy' },
-        'Objective-C':{ compiled: true,  runtime: 'clang + Objective-C', judge0: 79,   piston: 'objective-c' },
-        'Crystal':    { compiled: true,  runtime: 'Crystal 1.10',        judge0: null, piston: 'crystal' },
-        'PowerShell': { compiled: false, runtime: 'PowerShell 7.4',      judge0: null, piston: 'powershell' },
-        'V':          { compiled: true,  runtime: 'V compiler 0.4',      judge0: null, piston: 'v' },
-        'Brainfuck':  { compiled: false, runtime: 'Brainfuck interp.',   judge0: 11,   piston: 'brainfuck' },
+        'Apex':       { compiled: true,  runtime: 'Salesforce Apex',     judge0: null, piston: null },
+        'GDScript':   { compiled: false, runtime: 'Godot 4 Engine',      judge0: null, piston: null },
+        'Solidity':   { compiled: true,  runtime: 'solc 0.8',            judge0: null, piston: null },
+        'Nix':        { compiled: false, runtime: 'nix-instantiate',     judge0: null, piston: null },
+        'HCL':        { compiled: false, runtime: 'Terraform / OpenTofu',judge0: null, piston: null },
     };
 
     // Returns all project files of the same language concatenated, with the active file last
@@ -55,8 +55,8 @@ class JungleRunner {
             'C#': ['cs'], 'Go': ['go'], 'Rust': ['rs'], 'Ruby': ['rb'],
             'PHP': ['php'], 'Lua': ['lua'], 'Bash': ['sh', 'bash'],
             'Kotlin': ['kt'], 'Swift': ['swift'], 'R': ['r'],
-            'Groovy': ['groovy', 'gvy'], 'Objective-C': ['m', 'mm'], 'Crystal': ['cr'],
-            'PowerShell': ['ps1', 'psm1'], 'V': ['v'], 'Brainfuck': ['bf'],
+            'Groovy': ['groovy', 'gvy'], 'Apex': ['cls', 'apex', 'trigger'],
+            'GDScript': ['gd'], 'Solidity': ['sol'], 'Nix': ['nix'], 'HCL': ['tf', 'hcl', 'tfvars'],
         };
         const exts = extMap[lang];
         if (!exts) return code;
