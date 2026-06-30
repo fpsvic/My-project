@@ -187,7 +187,7 @@ window.handleIframeError = (message, source, lineno, colno) => {
 runBtn.onclick = () => {
     const p = JungleUI.getCurrentProject();
     if (!p) return;
-    const isHtml = p.currentFile.endsWith('.html') || p.currentFile.endsWith('.htm');
+    const isHtml = (p.currentFile.endsWith('.html') || p.currentFile.endsWith('.htm')) && selectedLanguages[0] === 'HTML';
     if (isHtml) {
         try {
             const missingAssets = JungleIntelligence.findMissingHtmlAssets(p.files[p.currentFile], p.files);
@@ -401,6 +401,7 @@ headerCopyCodeBtn.onclick = () => {
 document.getElementById('select-all-code-btn').onclick = () => {
     editor.focus();
     editor.select();
+    editor.scrollTop = 0;
 };
 document.getElementById('download-code-btn').onclick = () => {
     const p = JungleUI.getCurrentProject();
