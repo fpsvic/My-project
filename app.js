@@ -269,6 +269,7 @@ ${tokenCSS}
     const doc = previewFrame.contentDocument || previewFrame.contentWindow.document;
     doc.open(); doc.write(html); doc.close();
     switchView('preview');
+    tabPreview.classList.remove('active');
     terminalStatus.textContent = "PROJECT VIEW";
     terminalStatus.style.color = "#74a896";
 };
