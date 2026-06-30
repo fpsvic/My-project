@@ -89,7 +89,19 @@ class JungleRunner {
                 ? `⚙️ Compiling with ${meta.runtime}...`
                 : `▶ Running with ${meta.runtime}...`;
 
-            // ── Tier 1: Native JS (always works, no network) ─────────────────
+            // ── Tier 1: Visual JS/TS — DOM/canvas code rendered in preview iframe ─
+            if ((lang === 'Javascript' || lang === 'TypeScript') && this.isVisualCode(code)) {
+                let jsCode = code;
+                if (lang === 'TypeScript') {
+                    terminalViewBody.textContent = "⚙️ Compiling TypeScript (tsc)...";
+                    try { jsCode = await this.compileTypeScript(code); }
+                    catch (tsErr) { terminalViewBody.textContent += `\n  → ${tsErr.message}`; }
+                }
+                this.renderJSPreview(jsCode);
+                return;
+            }
+
+            // ── Tier 2: Native JS console output (always works, no network) ─────
             if (lang === 'Javascript') {
                 terminalViewBody.textContent = "";
                 const res = await this.runNativeJS(code);
@@ -97,7 +109,7 @@ class JungleRunner {
                 return;
             }
 
-            // ── Tier 2: TypeScript — in-browser tsc (offline-capable) ─────────
+            // ── Tier 3: TypeScript — in-browser tsc (offline-capable) ─────────
             if (lang === 'TypeScript') {
                 terminalViewBody.textContent = "⚙️ Compiling TypeScript (tsc)...";
                 try {
@@ -110,13 +122,33 @@ class JungleRunner {
                 }
             }
 
-            // ── Tier 3: SQL — SQLite WASM (offline-capable) ──────────────────
+            // ── Tier 4: SQL — SQLite WASM (offline-capable) ──────────────────
             if (lang === 'SQL') {
                 await this.runSqlJs(code);
                 return;
             }
 
-            // ── Tier 4: Judge0 CE — real compilers, online ────────────────────
+            // ── Tier 5: Visual Python — matplotlib/turtle via Pyodide → preview ─
+            if (lang === 'Python' && this.isVisualPython(code)) {
+                switchView('terminal', false);
+                terminalViewBody.textContent = "⏳ Loading Python + graphics packages (~15 MB first load)...";
+                terminalStatus.textContent = "RUNNING";
+                terminalStatus.className = "text-[#74a896] font-bold animate-pulse";
+                try {
+                    const result = await this.runPyodideVisual(code);
+                    if (result.images.length > 0) {
+                        this.renderPyVisualOutput(result.images, result.stdout, result.stderr);
+                        return;
+                    }
+                    // No images — fall through to show stdout/stderr as text
+                    this.showRunResult(result.stdout, result.stderr, lang);
+                    return;
+                } catch(e) {
+                    terminalViewBody.textContent += `\n⚠️ Visual Python failed: ${e.message}\n   Falling back to API execution...`;
+                }
+            }
+
+            // ── Tier 6: Judge0 CE — real compilers, online ────────────────────
             terminalViewBody.textContent = `🌐 ${actionLabel}\n   Connecting to Judge0...`;
             const j0 = await this.runJudge0(lang, code);
             if (j0) {
@@ -124,7 +156,7 @@ class JungleRunner {
                 return;
             }
 
-            // ── Tier 5: Piston cluster — compiled + interpreted, online ────────
+            // ── Tier 7: Piston cluster — compiled + interpreted, online ────────
             terminalViewBody.textContent = `⚠️ Judge0 unreachable — trying Piston...\n   ${actionLabel}`;
             const piston = await this.runPistonDirect(lang, code, p);
             if (piston) {
@@ -132,7 +164,7 @@ class JungleRunner {
                 return;
             }
 
-            // ── Tier 6: WASM offline runtimes — last resort ───────────────────
+            // ── Tier 8: WASM offline runtimes — last resort ───────────────────
             const wasmKey = meta.wasm;
             const wasmRunners = {
                 'pyodide':  () => this.runPyodide(code),
@@ -192,6 +224,117 @@ class JungleRunner {
             throw new Error(errs);
         }
         return result.outputText;
+    }
+
+    // ── Visual output detection ───────────────────────────────────────────────
+    static isVisualCode(code) {
+        return /\b(document\.|window\.(onload|addEventListener)|getElementById|querySelector|innerHTML|appendChild|createElement|canvas|getContext|ctx\.|requestAnimationFrame|body\.style|drawImage|fillRect|clearRect|strokeRect|beginPath|arc\(|lineTo|moveTo)\b/.test(code);
+    }
+
+    static isVisualPython(code) {
+        return /\b(matplotlib|pyplot|plt\s*\.|seaborn|plotly|bokeh|turtle\s*\.|Turtle|pygame|PIL|Image\.open|cv2\.|imshow|savefig|show\(\)|scatter\(|plot\(|bar\(|pie\(|hist\()\b/.test(code);
+    }
+
+    // ── Render JS/TS in preview iframe with full DOM access ──────────────────
+    static renderJSPreview(jsCode) {
+        const doc = previewFrame.contentDocument || previewFrame.contentWindow.document;
+        const escaped = jsCode.replace(/<\/script>/gi, '<\\/script>');
+        doc.open();
+        doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;background:#fff;font-family:sans-serif;}</style></head><body>
+<script>
+window.onerror=function(m,s,l,c,e){if(window.parent&&window.parent.handleIframeError)window.parent.handleIframeError(m,s,l,c);return true;};
+${escaped}
+<\/script></body></html>`);
+        doc.close();
+        switchView('preview');
+        terminalStatus.textContent = "PREVIEW";
+        terminalStatus.className = "text-emerald-400 font-bold";
+        JungleUI.showToast("Visual output shown in Preview panel.", null);
+    }
+
+    // ── Pyodide visual: run matplotlib/turtle code, capture PNG images ────────
+    static async runPyodideVisual(code) {
+        if (!window._pyodide) {
+            await new Promise((res, rej) => {
+                const s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/pyodide/v0.26.0/full/pyodide.js';
+                s.onload = res; s.onerror = rej;
+                document.head.appendChild(s);
+            });
+            window._pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.0/full/' });
+        }
+        const py = window._pyodide;
+        terminalViewBody.textContent = "⏳ Installing graphics packages...";
+        await py.loadPackagesFromImports(code);
+        const out = [], err = [];
+        py.setStdout({ batched: s => out.push(s) });
+        py.setStderr({ batched: s => err.push(s) });
+        const wrapper = `
+import sys as _sys_j
+import io as _io_j, base64 as _b64_j
+_jngl_imgs = []
+_jngl_stderr = []
+
+# Patch turtle to render to SVG string via canvasvg or capture screen
+try:
+    import matplotlib as _mpl_j
+    _mpl_j.use('agg')
+    import matplotlib.pyplot as _plt_j
+except Exception: pass
+
+try:
+${code.split('\n').map(l => '    ' + l).join('\n')}
+except Exception as _e_j:
+    _jngl_stderr.append(str(_e_j))
+
+try:
+    import matplotlib.pyplot as _plt_j2
+    for _fig_i in _plt_j2.get_fignums():
+        _fig = _plt_j2.figure(_fig_i)
+        _buf = _io_j.BytesIO()
+        _fig.savefig(_buf, format='png', bbox_inches='tight', dpi=120)
+        _buf.seek(0)
+        _jngl_imgs.append(_b64_j.b64encode(_buf.read()).decode('utf-8'))
+    _plt_j2.close('all')
+except Exception: pass
+`;
+        try {
+            await py.runPythonAsync(wrapper);
+            const rawImgs = py.globals.get('_jngl_imgs');
+            const rawErrs = py.globals.get('_jngl_stderr');
+            const images = rawImgs ? rawImgs.toJs() : [];
+            const pyErrs = rawErrs ? rawErrs.toJs().join('\n') : '';
+            rawImgs && rawImgs.destroy && rawImgs.destroy();
+            rawErrs && rawErrs.destroy && rawErrs.destroy();
+            return { images, stdout: out.join('\n'), stderr: pyErrs || err.join('\n') };
+        } catch(e) {
+            return { images: [], stdout: out.join('\n'), stderr: e.message || String(e) };
+        }
+    }
+
+    // ── Render matplotlib PNG images + stdout in preview iframe ──────────────
+    static renderPyVisualOutput(images, stdout, stderr) {
+        const imgTags = images.map(b64 =>
+            `<img src="data:image/png;base64,${b64}" style="max-width:100%;display:block;margin:20px auto;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,0.4);">`
+        ).join('');
+        const stdoutHtml = stdout.trim()
+            ? `<pre style="margin:16px;padding:14px 16px;background:#111b16;color:#aed9cb;font-family:monospace;font-size:13px;border-radius:6px;white-space:pre-wrap;">${stdout.trim().replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>`
+            : '';
+        const stderrHtml = stderr.trim()
+            ? `<pre style="margin:16px;padding:14px 16px;background:#1c0d0d;color:#ff9999;font-family:monospace;font-size:13px;border-radius:6px;white-space:pre-wrap;">${stderr.trim().replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>`
+            : '';
+        const doc = previewFrame.contentDocument || previewFrame.contentWindow.document;
+        doc.open();
+        doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;background:#0f1a15;min-height:100vh;}h4{color:#74a896;font-family:sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:2px;margin:20px 20px 8px;opacity:0.6;}</style></head><body>
+${images.length > 0 ? '<h4>Plot Output</h4>' + imgTags : ''}
+${stdoutHtml ? '<h4>Print Output</h4>' + stdoutHtml : ''}
+${stderrHtml ? '<h4>Errors</h4>' + stderrHtml : ''}
+</body></html>`);
+        doc.close();
+        switchView('preview');
+        terminalStatus.textContent = "SUCCESS";
+        terminalStatus.className = "text-emerald-400 font-bold";
+        JungleUI.showToast("Plot rendered in Preview panel.", null);
     }
 
     // ── Native JS execution via sandboxed iframe + postMessage ─────────────────
