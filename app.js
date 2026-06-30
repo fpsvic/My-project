@@ -368,6 +368,15 @@ terminalInput.addEventListener('keydown', (e) => {
         }
     }
 });
+function highlightActiveFile() {
+    const p = JungleUI.getCurrentProject();
+    if (!p) return;
+    document.querySelectorAll('#file-list li').forEach(item => {
+        const name = item.querySelector('.file-item-name') ? item.querySelector('.file-item-name').textContent.trim() : item.textContent.replace('🗑️','').replace('📄','').trim();
+        if (name === p.currentFile) item.classList.add('active');
+        else item.classList.remove('active');
+    });
+}
 function switchView(view, showInput = false) {
     activeView = view;
     editorWrapper.style.display = previewFrame.style.display = terminalViewContainer.style.display = consoleViewContainer.style.display = 'none';
@@ -390,6 +399,8 @@ function switchView(view, showInput = false) {
         consoleViewContainer.style.display = 'flex';
         tabConsoleBtn.classList.add('active');
     }
+    // Always keep the active file highlighted in the file list
+    highlightActiveFile();
 }
 
 enterBtn.onclick = () => { splashScreen.classList.add('fade-out'); setTimeout(() => { splashScreen.style.display = 'none'; splashScreen.style.pointerEvents = 'none'; }, 400); projectsDashboard.classList.add('show'); JungleUI.renderProjectsDashboard(); };
@@ -685,30 +696,51 @@ document.querySelectorAll('.template-card').forEach(card => {
 });
 headerCopyCodeBtn.onclick = () => {
     const p = JungleUI.getCurrentProject();
-    if (!p || !p.currentFile) return;
-    const textareaBackup = document.createElement("textarea");
-    textareaBackup.value = p.files[p.currentFile];
-    document.body.appendChild(textareaBackup);
-    textareaBackup.select();
-    document.execCommand('copy');
-    document.body.removeChild(textareaBackup);
-    JungleUI.showToast(`Copied ${p.currentFile} content to clipboard!`);
+    if (!p) return;
+    let text, label;
+    if (activeView === 'preview' && projectTitleBtn.classList.contains('active')) {
+        // Whole Project view — copy all files
+        text = Object.entries(p.files).map(([name, content]) =>
+            `${'='.repeat(52)}\n// ${name}\n${'='.repeat(52)}\n${content || ''}`
+        ).join('\n\n');
+        label = `all files in ${p.name}`;
+    } else {
+        text = p.files[p.currentFile] || '';
+        label = p.currentFile;
+    }
+    navigator.clipboard ? navigator.clipboard.writeText(text) : (() => {
+        const ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    })();
+    JungleUI.showToast(`Copied ${label} to clipboard!`);
 };
 document.getElementById('select-all-code-btn').onclick = () => {
-    editor.focus();
-    editor.select();
-    editor.scrollTop = 0;
+    if (activeView === 'preview' && projectTitleBtn.classList.contains('active')) {
+        // Select all text inside whole project iframe
+        const iwin = previewFrame.contentWindow;
+        if (iwin) { iwin.focus(); iwin.document.execCommand('selectAll'); }
+    } else {
+        editor.focus(); editor.select(); editor.scrollTop = 0;
+    }
 };
 document.getElementById('download-code-btn').onclick = () => {
     const p = JungleUI.getCurrentProject();
-    if (!p || !p.currentFile) return;
-    const blob = new Blob([p.files[p.currentFile]], { type: 'text/plain' });
+    if (!p) return;
+    let text, filename;
+    if (activeView === 'preview' && projectTitleBtn.classList.contains('active')) {
+        text = Object.entries(p.files).map(([name, content]) =>
+            `${'='.repeat(52)}\n// ${name}\n${'='.repeat(52)}\n${content || ''}`
+        ).join('\n\n');
+        filename = p.name.replace(/\s+/g, '_') + '_all_files.txt';
+    } else {
+        if (!p.currentFile) return;
+        text = p.files[p.currentFile] || '';
+        filename = p.currentFile;
+    }
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = p.currentFile;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    JungleUI.showToast(`Downloaded ${p.currentFile}`);
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+    a.download = filename; a.click(); URL.revokeObjectURL(a.href);
+    JungleUI.showToast(`Downloaded ${filename}`);
 };
 editor.oninput = () => {
     const p = JungleUI.getCurrentProject();
