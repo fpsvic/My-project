@@ -106,6 +106,24 @@ def apply_update(query: str, history: list[dict]) -> dict:
     original_query = _find_original_build_query(history) or ""
     project = extract_last_project(history)
 
+    # Prefer a real LLM edit against the actual current files when available.
+    if project and project.get("files"):
+        try:
+            from services.llm_coder import llm_available, llm_update
+            if llm_available():
+                result = llm_update(query, project["files"])
+                if result is not None:
+                    return {
+                        "title": result.title,
+                        "kind": result.kind,
+                        "files": [
+                            {"name": f.name, "content": f.content, "language": f.language}
+                            for f in result.files
+                        ],
+                    }
+        except Exception:
+            pass
+
     if project or original_query:
         # Rebuild entire project combining original intent + modification
         if original_query:

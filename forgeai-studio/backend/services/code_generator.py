@@ -197,7 +197,20 @@ def _is_game_query(query: str) -> bool:
 
 
 def generate_project(query: str) -> ProjectResult:
-    """Main entry point. Returns a ProjectResult with title, kind, and files."""
+    """Main entry point. Returns a ProjectResult with title, kind, and files.
+
+    Prefers real LLM generation (Claude) when an API key is configured; falls
+    back to the offline template engine otherwise.
+    """
+    try:
+        from services.llm_coder import llm_available, llm_generate
+        if llm_available():
+            result = llm_generate(query)
+            if result is not None:
+                return result
+    except Exception:
+        pass
+
     if _is_game_query(query):
         return generate_game_project(query)
     return generate_app_project(query)
