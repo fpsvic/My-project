@@ -497,13 +497,13 @@ function promptLocation(kind) {
     const folders = getExistingFolders(p);
     const items = [
         { label: 'Where?' },
-        { text: '🌲 File Tree (root)', onClick: () => kind === 'file' ? promptCreateFile(null) : promptCreateFolder(null) },
+        { text: '🌲 File Tree (root)', onClick: () => promptCreateFile(null) },
     ];
     if (folders.length > 0) {
         items.push({ divider: true });
         folders.forEach(f => items.push({
             text: `📁 ${f}/`,
-            onClick: () => kind === 'file' ? promptCreateFile(f) : promptCreateFolder(f)
+            onClick: () => promptCreateFile(f)
         }));
     }
     showPopupMenu(items);
@@ -513,7 +513,7 @@ addFileBtn.onclick = (e) => {
     if (addItemMenu.classList.contains('show')) { closeAddItemMenu(); return; }
     showPopupMenu([
         { text: '📄 New File', onClick: () => promptLocation('file') },
-        { text: '📁 New Folder', onClick: () => promptLocation('folder') },
+        { text: '📁 New Folder', onClick: () => promptCreateFolder(null) },
     ]);
 };
 document.addEventListener('click', (e) => {
