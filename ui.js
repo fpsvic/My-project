@@ -207,31 +207,131 @@ class JungleUI {
         };
         grid.appendChild(createCard);
     }
+    static collapsedFolders = new Set();
+
     static renderFilesList() {
         fileListContainer.innerHTML = '';
         const p = this.getCurrentProject();
         if (!p) return;
+
+        const rootFiles = [];
+        const folderMap = {};
+
         Object.keys(p.files).forEach(filename => {
-            const li = document.createElement('li');
-            if (filename === p.currentFile) li.classList.add('active');
-            const title = document.createElement('span');
-            title.className = "flex-1 overflow-hidden truncate pointer-events-auto cursor-pointer";
-            title.textContent = '📄 ' + filename;
-            title.onclick = () => this.switchToFile(filename);
-            const actions = document.createElement('div');
-            actions.className = 'file-item-actions';
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'action-btn delete';
-            deleteBtn.innerHTML = '🗑️';
-            deleteBtn.onclick = (e) => {
-                e.stopPropagation();
-                this.deleteFile(filename);
-            };
-            actions.appendChild(deleteBtn);
-            li.appendChild(title);
-            li.appendChild(actions);
-            fileListContainer.appendChild(li);
+            const slash = filename.indexOf('/');
+            if (slash === -1) {
+                rootFiles.push(filename);
+            } else {
+                const folder = filename.slice(0, slash);
+                if (!folderMap[folder]) folderMap[folder] = [];
+                folderMap[folder].push(filename);
+            }
         });
+
+        // Explicit empty folders
+        (p.folders || []).forEach(f => { if (!folderMap[f]) folderMap[f] = []; });
+
+        rootFiles.forEach(fn => this._renderFileLi(fn, fileListContainer, p, false));
+        Object.keys(folderMap).sort().forEach(folder =>
+            this._renderFolder(folder, folderMap[folder], fileListContainer, p)
+        );
+    }
+
+    static renderFileList() { this.renderFilesList(); }
+
+    static _renderFileLi(filename, container, p, nested) {
+        const li = document.createElement('li');
+        li.dataset.file = filename;
+        if (nested) li.classList.add('nested');
+        if (filename === p.currentFile) li.classList.add('active');
+
+        const title = document.createElement('span');
+        title.className = 'flex-1 overflow-hidden truncate pointer-events-auto cursor-pointer';
+        title.textContent = '📄 ' + (nested ? filename.split('/').pop() : filename);
+        title.onclick = () => this.switchToFile(filename);
+
+        const actions = document.createElement('div');
+        actions.className = 'file-item-actions';
+        const del = document.createElement('button');
+        del.className = 'action-btn delete';
+        del.innerHTML = '🗑️';
+        del.onclick = e => { e.stopPropagation(); this.deleteFile(filename); };
+        actions.appendChild(del);
+
+        li.appendChild(title);
+        li.appendChild(actions);
+        container.appendChild(li);
+    }
+
+    static _renderFolder(folder, files, container, p) {
+        const collapsed = this.collapsedFolders.has(folder);
+        const li = document.createElement('li');
+        li.className = 'folder-item';
+
+        const row = document.createElement('div');
+        row.className = 'folder-row';
+        row.onclick = () => {
+            if (collapsed) this.collapsedFolders.delete(folder);
+            else this.collapsedFolders.add(folder);
+            this.renderFilesList();
+        };
+
+        const chevron = document.createElement('span');
+        chevron.className = 'folder-chevron';
+        chevron.textContent = collapsed ? '▶' : '▼';
+
+        const name = document.createElement('span');
+        name.className = 'folder-name';
+        name.textContent = '📁 ' + folder + '/';
+
+        const actions = document.createElement('div');
+        actions.className = 'file-item-actions';
+        const del = document.createElement('button');
+        del.className = 'action-btn delete';
+        del.innerHTML = '🗑️';
+        del.title = 'Delete folder and all contents';
+        del.onclick = e => { e.stopPropagation(); this.deleteFolder(folder, files); };
+        actions.appendChild(del);
+
+        row.appendChild(chevron);
+        row.appendChild(name);
+        row.appendChild(actions);
+        li.appendChild(row);
+
+        if (!collapsed) {
+            const inner = document.createElement('ul');
+            inner.className = 'folder-files';
+            if (files.length === 0) {
+                const empty = document.createElement('li');
+                empty.className = 'folder-empty';
+                empty.textContent = 'This folder is empty';
+                inner.appendChild(empty);
+            } else {
+                files.forEach(fn => this._renderFileLi(fn, inner, p, true));
+            }
+            li.appendChild(inner);
+        }
+
+        container.appendChild(li);
+    }
+
+    static deleteFolder(folder, files) {
+        const p = this.getCurrentProject();
+        if (!p) return;
+        if (files.length > 0) {
+            if (Object.keys(p.files).length - files.length <= 0) {
+                this.showToast('A project needs at least one file.');
+                return;
+            }
+            const wasActive = files.includes(p.currentFile);
+            files.forEach(f => delete p.files[f]);
+            if (wasActive) p.currentFile = Object.keys(p.files)[0];
+        }
+        p.folders = (p.folders || []).filter(f => f !== folder);
+        this.renderFilesList();
+        JungleStorage.saveProjects(projects);
+        this.showToast(`Deleted folder ${folder}/`);
+        if (files.length > 0) this.switchToFile(p.currentFile);
     }
     static deleteFile(name) {
         const p = this.getCurrentProject();
@@ -256,9 +356,8 @@ class JungleUI {
         p.currentFile = filename;
         currentFileLabel.textContent = filename;
         editor.value = p.files[filename] || '';
-        document.querySelectorAll('#file-list li').forEach(item => {
-            const cleanName = item.textContent.replace('📄 ', '').replace('🗑️', '').trim();
-            if (cleanName === filename) item.classList.add('active');
+        document.querySelectorAll('#file-list li[data-file]').forEach(item => {
+            if (item.dataset.file === filename) item.classList.add('active');
             else item.classList.remove('active');
         });
         selectedLanguages = [JungleIntelligence.languageFromFilename(filename, p.lang || selectedLanguages[0])];

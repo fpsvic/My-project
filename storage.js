@@ -71,6 +71,7 @@ class JungleStorage {
                 id: (project && project.id) || `proj_${Date.now()}_${index}`,
                 name: (project && project.name) || `Project ${index + 1}`,
                 files,
+                folders: Array.isArray(project && project.folders) ? project.folders : [],
                 currentFile,
                 lang
             };
@@ -171,10 +172,15 @@ class JungleIntelligence {
         return this.extensionLanguages[this.getExtension(filename)] || fallback;
     }
     static sanitizeFileName(input, lang = 'Javascript', existingFiles = {}) {
-        let name = String(input || '').trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-');
-        name = name.replace(/^-+|-+$/g, '');
-        if (!name) name = 'main';
-        if (!this.getExtension(name)) name += this.getDefaultExtension(lang);
+        // Support folder paths like "src/main.js" — sanitize each segment individually
+        const segments = String(input || '').trim().split('/').map(seg =>
+            seg.trim().replace(/[\\:*?"<>|]+/g, '-').replace(/\s+/g, '-').replace(/^-+|-+$/g, '')
+        ).filter(Boolean);
+        if (segments.length === 0) segments.push('main');
+        // Only add extension to the final (file) segment
+        const last = segments[segments.length - 1];
+        if (!this.getExtension(last)) segments[segments.length - 1] = last + this.getDefaultExtension(lang);
+        let name = segments.join('/');
         const base = name.replace(/(\.[^.]+)$/, '');
         const ext = this.getExtension(name);
         let candidate = name;

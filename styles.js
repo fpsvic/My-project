@@ -43,6 +43,17 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .file-list li.active { background-color: #1c2522; color: #ffffff; border-left: 3px solid #528b74; padding-left: 22px; }
 .file-item-actions { display: none; gap: 8px; }
 .file-list li:hover .file-item-actions { display: flex; }
+.file-list li.folder-item { padding: 0; background: none; cursor: default; display: block; }
+.file-list li.folder-item:hover { background: none; }
+.folder-row { padding: 7px 15px 7px 10px; display: flex; align-items: center; gap: 5px; cursor: pointer; color: #849690; font-size: 0.8rem; user-select: none; transition: all 0.15s; }
+.folder-row:hover { background-color: #161c1a; color: #e2f1ec; }
+.folder-row:hover .file-item-actions { display: flex; }
+.folder-chevron { font-size: 0.6rem; color: #528b74; width: 10px; flex-shrink: 0; }
+.folder-name { flex: 1; font-size: 0.82rem; font-weight: 600; }
+.folder-files { list-style: none; padding: 0; margin: 0; }
+.file-list li.nested { padding-left: 34px; }
+.file-list li.nested.active { padding-left: 31px; }
+.folder-empty { padding: 5px 14px 5px 34px !important; font-size: 0.75rem !important; color: #4a6057 !important; font-style: italic; cursor: default !important; pointer-events: none; display: block !important; }
 .action-btn { background: none; border: none; color: #5c6875; cursor: pointer; padding: 0 2px; font-size: 0.85rem; transition: color 0.15s, transform 0.1s; }
 .action-btn:hover { color: #ffffff; transform: scale(1.15); }
 .action-btn.delete:hover { color: #cf6679; }
