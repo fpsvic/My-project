@@ -65,12 +65,10 @@
                 <div class="sidebar-tab" id="tab-preview">Preview / Run</div>
                 <div class="sidebar-tab" id="tab-console">Console</div>
             </div>
-            <div class="sidebar-section-header">
+            <div class="sidebar-section-header" style="position:relative;">
                 <span>Files</span>
-                <div style="display:flex;gap:6px;align-items:center;">
-                    <button id="add-folder-btn" title="Add New Folder" style="font-size:0.9rem;">📁</button>
-                    <button id="add-file-btn" title="Add New File">+</button>
-                </div>
+                <button id="add-file-btn" title="Add File or Folder">+</button>
+                <div id="add-item-menu" class="popup-menu"></div>
             </div>
             <ul class="file-list" id="file-list"></ul>
             <div style="padding:8px 15px;font-size:0.72rem;color:#4a6057;border-top:1px solid #1c2321;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">

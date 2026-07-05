@@ -418,38 +418,47 @@ function switchView(view, showInput = false) {
 enterBtn.onclick = () => { splashScreen.classList.add('fade-out'); setTimeout(() => { splashScreen.style.display = 'none'; splashScreen.style.pointerEvents = 'none'; }, 400); projectsDashboard.classList.add('show'); JungleUI.renderProjectsDashboard(); };
 exitToSplashBtn.onclick = () => { splashScreen.style.display = 'flex'; splashScreen.style.pointerEvents = 'auto'; setTimeout(() => splashScreen.classList.remove('fade-out'), 50); projectsDashboard.classList.remove('show'); };
 exitToHubHeaderBtn.onclick = () => { workspaceContainer.style.display = 'none'; projectsDashboard.classList.add('show'); JungleUI.renderProjectsDashboard(); };
-const addFolderBtn = document.getElementById('add-folder-btn');
-addFolderBtn.onclick = () => {
-    JungleUI.showCustomModal({
-        title: "Create Folder",
-        placeholder: "e.g., src, lib, utils",
-        onConfirm: (name) => {
-            if (!name) return;
-            const p = JungleUI.getCurrentProject();
-            if (!p) return;
-            const folderName = name.trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-').replace(/^-+|-+$/g, '');
-            if (!folderName) return;
-            if (!p.folders) p.folders = [];
-            if (p.folders.includes(folderName) || Object.keys(p.files).some(f => f.startsWith(folderName + '/'))) {
-                JungleUI.showToast(`Folder "${folderName}" already exists`);
-                return;
-            }
-            p.folders.push(folderName);
-            JungleStorage.saveProjects(projects);
-            JungleUI.renderFilesList();
-            JungleUI.showToast(`Folder ${folderName}/ created`);
+const addItemMenu = document.getElementById('add-item-menu');
+function closeAddItemMenu() { addItemMenu.classList.remove('show'); addItemMenu.innerHTML = ''; }
+function showPopupMenu(items) {
+    addItemMenu.innerHTML = '';
+    items.forEach(item => {
+        if (item.divider) {
+            const div = document.createElement('div');
+            div.className = 'popup-menu-divider';
+            addItemMenu.appendChild(div);
+            return;
         }
+        if (item.label && !item.onClick) {
+            const lbl = document.createElement('div');
+            lbl.className = 'popup-menu-label';
+            lbl.textContent = item.label;
+            addItemMenu.appendChild(lbl);
+            return;
+        }
+        const el = document.createElement('div');
+        el.className = 'popup-menu-item';
+        el.textContent = item.text;
+        el.onclick = (e) => { e.stopPropagation(); closeAddItemMenu(); item.onClick(); };
+        addItemMenu.appendChild(el);
     });
-};
-addFileBtn.onclick = () => {
+    addItemMenu.classList.add('show');
+}
+function getExistingFolders(p) {
+    const folders = new Set(p.folders || []);
+    Object.keys(p.files).forEach(f => { const i = f.indexOf('/'); if (i !== -1) folders.add(f.slice(0, i)); });
+    return Array.from(folders).sort();
+}
+function promptCreateFile(folderPrefix) {
     JungleUI.showCustomModal({
-        title: "Create File",
-        placeholder: "e.g., helpers.py or src/utils.js",
+        title: folderPrefix ? `Create File in ${folderPrefix}/` : "Create File",
+        placeholder: "e.g., helpers.py",
         onConfirm: (name) => {
             if (!name) return;
             const p = JungleUI.getCurrentProject();
             if (!p) return;
-            const fileName = JungleIntelligence.sanitizeFileName(name, selectedLanguages[0], p.files);
+            const fullName = folderPrefix ? `${folderPrefix}/${name}` : name;
+            const fileName = JungleIntelligence.sanitizeFileName(fullName, selectedLanguages[0], p.files);
             p.files[fileName] = '';
             JungleUI.renderFilesList();
             JungleUI.switchToFile(fileName);
@@ -457,7 +466,59 @@ addFileBtn.onclick = () => {
             JungleUI.showToast(`File ${fileName} created`);
         }
     });
+}
+function promptCreateFolder(parentPrefix) {
+    JungleUI.showCustomModal({
+        title: parentPrefix ? `Create Folder in ${parentPrefix}/` : "Create Folder",
+        placeholder: "e.g., src, lib, utils",
+        onConfirm: (name) => {
+            if (!name) return;
+            const p = JungleUI.getCurrentProject();
+            if (!p) return;
+            const clean = name.trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-').replace(/^-+|-+$/g, '');
+            if (!clean) return;
+            const folderName = parentPrefix ? `${parentPrefix}/${clean}` : clean;
+            if (!p.folders) p.folders = [];
+            if (p.folders.includes(folderName) || Object.keys(p.files).some(f => f.startsWith(folderName + '/'))) {
+                JungleUI.showToast(`Folder "${folderName}" already exists`);
+                return;
+            }
+            p.folders.push(folderName);
+            JungleUI.collapsedFolders.add(folderName);
+            JungleStorage.saveProjects(projects);
+            JungleUI.renderFilesList();
+            JungleUI.showToast(`Folder ${folderName}/ created`);
+        }
+    });
+}
+function promptLocation(kind) {
+    const p = JungleUI.getCurrentProject();
+    if (!p) return;
+    const folders = getExistingFolders(p);
+    const items = [
+        { label: 'Where?' },
+        { text: '🌲 File Tree (root)', onClick: () => kind === 'file' ? promptCreateFile(null) : promptCreateFolder(null) },
+    ];
+    if (folders.length > 0) {
+        items.push({ divider: true });
+        folders.forEach(f => items.push({
+            text: `📁 ${f}/`,
+            onClick: () => kind === 'file' ? promptCreateFile(f) : promptCreateFolder(f)
+        }));
+    }
+    showPopupMenu(items);
+}
+addFileBtn.onclick = (e) => {
+    e.stopPropagation();
+    if (addItemMenu.classList.contains('show')) { closeAddItemMenu(); return; }
+    showPopupMenu([
+        { text: '📄 New File', onClick: () => promptLocation('file') },
+        { text: '📁 New Folder', onClick: () => promptLocation('folder') },
+    ]);
 };
+document.addEventListener('click', (e) => {
+    if (!addItemMenu.contains(e.target) && e.target !== addFileBtn) closeAddItemMenu();
+});
 addProjectBtnDash.onclick = () => {
     JungleUI.showCustomModal({
         title: "Create Project",

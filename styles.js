@@ -54,6 +54,12 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .file-list li.nested { padding-left: 34px; }
 .file-list li.nested.active { padding-left: 31px; }
 .folder-empty { padding: 5px 14px 5px 34px !important; font-size: 0.75rem !important; color: #4a6057 !important; font-style: italic; cursor: default !important; pointer-events: none; display: block !important; }
+.popup-menu { display: none; position: absolute; top: 100%; right: 10px; margin-top: 6px; background-color: #161c1a; border: 1px solid #232d2a; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 50; min-width: 190px; overflow: hidden; padding: 4px; }
+.popup-menu.show { display: block; }
+.popup-menu-item { padding: 9px 12px; font-size: 0.85rem; color: #c3cfca; cursor: pointer; border-radius: 5px; display: flex; align-items: center; gap: 8px; transition: all 0.12s; white-space: nowrap; }
+.popup-menu-item:hover { background-color: #1c2522; color: #ffffff; }
+.popup-menu-divider { height: 1px; background-color: #232d2a; margin: 4px 2px; }
+.popup-menu-label { padding: 6px 12px 3px; font-size: 0.68rem; color: #5c6875; text-transform: uppercase; letter-spacing: 0.6px; }
 .action-btn { background: none; border: none; color: #5c6875; cursor: pointer; padding: 0 2px; font-size: 0.85rem; transition: color 0.15s, transform 0.1s; }
 .action-btn:hover { color: #ffffff; transform: scale(1.15); }
 .action-btn.delete:hover { color: #cf6679; }
