@@ -426,8 +426,8 @@ ${imgBoxes}
 </body></html>`);
         doc.close();
         switchView('preview');
-        terminalStatus.textContent = "SUCCESS";
-        terminalStatus.className = "text-emerald-400 font-bold";
+        terminalStatus.textContent = "READY";
+        terminalStatus.className = "text-[#74a896] font-bold";
         JungleUI.showToast("Plot rendered in Preview panel.", null);
     }
 
@@ -578,8 +578,8 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
                 terminalViewBody.textContent = lines.join('\n');
             }
             db.close();
-            terminalStatus.textContent = "SUCCESS";
-            terminalStatus.className = "text-emerald-400 font-bold";
+            terminalStatus.textContent = "READY";
+            terminalStatus.className = "text-[#74a896] font-bold";
         } catch(e) {
             terminalViewBody.textContent = `SQL Error: ${e.message}`;
             terminalStatus.textContent = "FAILED TO RUN";
@@ -660,8 +660,8 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
             terminalStatus.className = "text-rose-500 font-bold";
         } else {
             terminalViewBody.textContent = stdout || "";
-            terminalStatus.textContent = "SUCCESS";
-            terminalStatus.className = "text-emerald-400 font-bold";
+            terminalStatus.textContent = "READY";
+            terminalStatus.className = "text-[#74a896] font-bold";
         }
         terminalViewBody.scrollTop = terminalViewBody.scrollHeight;
     }
