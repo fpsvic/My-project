@@ -277,11 +277,20 @@ class JungleScanner {
         }
         return { start: startDepths, end: endDepths };
     }
+    // First non-empty trimmed line strictly after `idx`, or '' if none remain.
+    static nextNonBlankTrimmed(lines, idx) {
+        for (let j = idx + 1; j < lines.length; j++) {
+            const t = lines[j].trim();
+            if (t) return t;
+        }
+        return '';
+    }
     static scanLanguagePatterns(lang, lines) {
         const issues = [];
         const fullCode = lines.join('\n');
         const e = (ln, msg, hint, kind, sev = "error") => issues.push(this.makeIssue(ln, msg, hint, kind, null, sev));
         const bracketDepths = this.computeBracketDepths(lines);
+        const nextNonBlank = (idx) => this.nextNonBlankTrimmed(lines, idx);
         lines.forEach((line, idx) => {
             const lineNum = idx + 1;
             const trimmed = line.trim();
@@ -411,7 +420,12 @@ class JungleScanner {
                     e(lineNum, "Possible assignment '=' inside a condition — did you mean '==='?", "Use '===' for comparison, or wrap '(x = val)' in extra parens if intentional.", "JavaScript logic", "warning");
                 }
                 if (/\b(const|let|var)\s+[A-Za-z_$][\w$]*\s*=$/.test(trimmed)) {
-                    e(lineNum, "Variable declaration is missing a value after '='.", "Add the assigned value or remove the '='.", "JavaScript syntax");
+                    const nt = nextNonBlank(idx);
+                    // A value continuing on the next line (e.g. "const x =\n  compute();") is valid —
+                    // only flag when nothing follows or the next line clearly starts a new statement.
+                    if (!nt || /^(const|let|var|function|class|if|for|while|switch|return|}|export|import)\b/.test(nt)) {
+                        e(lineNum, "Variable declaration is missing a value after '='.", "Add the assigned value or remove the '='.", "JavaScript syntax");
+                    }
                 }
                 if (/^\s*(if|while|for)\s+[^(\s]/.test(line)) {
                     e(lineNum, "Control statement condition must be wrapped in parentheses.", "Add ( ) around the condition.", "JavaScript syntax");
@@ -443,7 +457,9 @@ class JungleScanner {
                     e(lineNum, "Empty catch block silently swallows errors.", "Log or handle the error inside the catch block.", "JavaScript error handling", "warning");
                 }
                 // Unreachable code after return/throw/break on same block level (simple heuristic)
-                if (/^\s*(return|throw|break)\b/.test(line)) {
+                // Skip when this statement leaves a bracket open — e.g. "return (" continuing
+                // onto following lines is a multi-line return value, not a complete statement.
+                if (/^\s*(return|throw|break)\b/.test(line) && bracketDepths.end[idx] === bracketDepths.start[idx]) {
                     const nextLine = lines[idx + 1];
                     if (nextLine) {
                         const nextTrimmed = nextLine.trim();
@@ -579,7 +595,7 @@ class JungleScanner {
                     e(lineNum, "Object.assign() mutates the first argument — this may be unintentional.", "Pass {} as the first argument to create a new object: Object.assign({}, source).", "JavaScript logic", "warning");
                 }
             } else if (lang === 'Java') {
-                if (/public\s+class\s+[A-Za-z_]\w*/.test(trimmed) && !/[{;]/.test(trimmed)) {
+                if (/public\s+class\s+[A-Za-z_]\w*/.test(trimmed) && !/[{;]/.test(trimmed) && !/^(extends|implements)\b/.test(nextNonBlank(idx))) {
                     e(lineNum, "Java class declaration is missing an opening brace.", "Add '{' after the class name.", "Java syntax");
                 }
                 if (/System\.out\.print(?:ln)?\s+["']/.test(trimmed)) {
@@ -591,14 +607,14 @@ class JungleScanner {
                 if (/\bcatch\s*\(\s*Exception\s+\w+\s*\)/.test(trimmed)) {
                     e(lineNum, "Catching 'Exception' is too broad and hides real errors.", "Catch the specific exception type your code can throw.", "Java style", "info");
                 }
-                if (/\bnew\s+\w+\s*\(\s*\)\s*$/.test(trimmed) && !/^\s*(return|=)/.test(trimmed)) {
+                if (/\bnew\s+\w+\s*\(\s*\)\s*$/.test(trimmed) && !/^\s*(return|=)/.test(trimmed) && !/^\./.test(nextNonBlank(idx))) {
                     e(lineNum, "Object created with 'new' but result is not used.", "Assign the object to a variable or remove the statement.", "Java logic", "warning");
                 }
             } else if (lang === 'C++' || lang === 'C') {
                 if (/^\s*#include\s+[A-Za-z0-9_./]+\s*$/.test(line) && !/</.test(line) && !/"/.test(line)) {
                     e(lineNum, "Include directive is missing angle brackets or quotes.", "Use #include <header> for system headers or #include \"file.h\" for local files.", "C/C++ syntax");
                 }
-                if (/\b(int|float|double|char|bool|long|short|void)\s+\w+\s*\([^)]*\)\s*$/.test(trimmed)) {
+                if (/\b(int|float|double|char|bool|long|short|void)\s+\w+\s*\([^)]*\)\s*$/.test(trimmed) && nextNonBlank(idx) !== '{') {
                     e(lineNum, "Function declaration or definition is missing ';' or '{'.", "Add ';' for a prototype or '{...}' for a function body.", "C/C++ syntax");
                 }
                 if (/\bscanf\s*\(\s*["'][^"']*["']\s*,\s*[^&]/.test(trimmed)) {
@@ -615,7 +631,13 @@ class JungleScanner {
                 }
             } else if (lang === 'Go') {
                 if (/^\s*func\s+\w+\s*\([^)]*$/.test(line)) {
-                    e(lineNum, "Go function signature appears incomplete.", "Close the parameter list with ')' and add the opening brace.", "Go syntax");
+                    // Multi-line param lists are normal Go style — only flag if the
+                    // opened parenthesis never closes within a reasonable window.
+                    const startDepth = bracketDepths.start[idx];
+                    const closesSoon = lines.slice(idx + 1, Math.min(idx + 20, lines.length)).some((_, k) => bracketDepths.end[idx + 1 + k] <= startDepth);
+                    if (!closesSoon) {
+                        e(lineNum, "Go function signature appears incomplete.", "Close the parameter list with ')' and add the opening brace.", "Go syntax");
+                    }
                 }
                 if (/fmt\.Print(?:ln|f)?\s+["']/.test(trimmed)) {
                     e(lineNum, "Go print call is missing parentheses.", "Use fmt.Println(...).", "Go syntax");
@@ -636,7 +658,7 @@ class JungleScanner {
                 if (/\bpanic\s*\(/.test(trimmed) && !/\bpanic!\s*\(/.test(trimmed)) {
                     e(lineNum, "panic is a macro in Rust — use panic!(...).", "Add '!' after panic.", "Rust syntax");
                 }
-                if (/\bfn\s+\w+\s*\([^)]*\)\s*$/.test(trimmed)) {
+                if (/\bfn\s+\w+\s*\([^)]*\)\s*$/.test(trimmed) && !/^(->|\{)/.test(nextNonBlank(idx))) {
                     e(lineNum, "Rust function is missing a body.", "Add { ... } after the function signature.", "Rust syntax");
                 }
                 if (/\bunwrap\s*\(\s*\)/.test(trimmed)) {
@@ -650,7 +672,11 @@ class JungleScanner {
                     e(lineNum, "PHP variables must start with '$'.", "Change 'name' to '$name'.", "PHP syntax");
                 }
                 if (!/;\s*$/.test(trimmed) && /^\s*(echo|print|return|\$\w+\s*=)/.test(line)) {
-                    e(lineNum, "PHP statement may be missing a semicolon.", "Add ';' at the end of the line.", "PHP syntax");
+                    const selfContained = bracketDepths.end[idx] === bracketDepths.start[idx];
+                    const endsWithContinuation = /[.+\-*/&|,(\[]$/.test(trimmed);
+                    if (selfContained && !endsWithContinuation) {
+                        e(lineNum, "PHP statement may be missing a semicolon.", "Add ';' at the end of the line.", "PHP syntax");
+                    }
                 }
                 if (/\bmysql_/.test(trimmed)) {
                     e(lineNum, "mysql_*() functions are removed in PHP 7+.", "Use mysqli_*() or PDO instead.", "PHP syntax");
@@ -659,7 +685,9 @@ class JungleScanner {
                     e(lineNum, "eval() is dangerous in PHP and can lead to remote code execution.", "Avoid eval(); use safer alternatives.", "PHP security", "warning");
                 }
             } else if (lang === 'Ruby') {
-                if (/\bdef\s+\w+/.test(trimmed) && !lines.slice(idx, idx + 30).some(l => /^\s*end\b/.test(l))) {
+                // Ruby 3+ "endless method" (def foo(x) = x * 2) needs no 'end' at all.
+                const isEndlessMethod = /^def\s+[\w.]+\s*(\([^)]*\))?\s*=\s*.+$/.test(trimmed);
+                if (/\bdef\s+\w+/.test(trimmed) && !isEndlessMethod && !lines.slice(idx, idx + 30).some(l => /^\s*end\b/.test(l))) {
                     e(lineNum, "Ruby method defined with 'def' may be missing a closing 'end'.", "Add 'end' after the method body.", "Ruby syntax");
                 }
                 if (/\bputs\s*\(/.test(trimmed)) {
@@ -669,13 +697,13 @@ class JungleScanner {
                     e(lineNum, "Bare 'rescue' catches all exceptions including system errors.", "Rescue a specific exception class: rescue SomeError => e.", "Ruby style", "warning");
                 }
             } else if (lang === 'Groovy') {
-                if (/\bdef\s+\w+\s*\([^)]*\)/.test(trimmed) && !/\{/.test(trimmed) && !/=\s*$/.test(trimmed)) {
+                if (/\bdef\s+\w+\s*\([^)]*\)/.test(trimmed) && !/\{/.test(trimmed) && !/=\s*$/.test(trimmed) && nextNonBlank(idx) !== '{') {
                     e(lineNum, "Groovy method definition may be missing a body.", "Add a '{...}' block after the parameter list.", "Groovy syntax");
                 }
                 if (/\beval\s*\(/.test(trimmed)) {
                     e(lineNum, "eval() is a security risk in Groovy — it executes arbitrary code.", "Avoid eval(); use explicit logic instead.", "Groovy security", "warning");
                 }
-                if (/\bnew\s+\w+\s*\(\s*\)\s*$/.test(trimmed) && !/[=;,)]/.test(trimmed.slice(-2))) {
+                if (/\bnew\s+\w+\s*\(\s*\)\s*$/.test(trimmed) && !/[=;,)]/.test(trimmed.slice(-2)) && !/^\./.test(nextNonBlank(idx))) {
                     e(lineNum, "Object instantiation result is discarded.", "Assign the result: def obj = new Foo().", "Groovy style", "warning");
                 }
                 if (/^import\s+static\s+\S+\.\*/.test(trimmed)) {
@@ -708,10 +736,10 @@ class JungleScanner {
                     }
                 }
             } else if (lang === 'GDScript') {
-                if (/^(if|elif|else|for|while|func|class|match)\b/.test(trimmed) && !trimmed.endsWith(':') && !trimmed.endsWith('\\')) {
+                if (!insideBrackets && /^(if|elif|else|for|while|func|class|match)\b/.test(trimmed) && !trimmed.endsWith(':') && !trimmed.endsWith('\\')) {
                     e(lineNum, "GDScript block statement is missing a trailing colon.", "Add ':' at the end of the line.", "GDScript syntax");
                 }
-                if (/^func\s+\w+/.test(trimmed) && !trimmed.endsWith(':')) {
+                if (!insideBrackets && /^func\s+\w+/.test(trimmed) && !trimmed.endsWith(':')) {
                     e(lineNum, "GDScript function definition is missing a trailing colon.", "End the func line with ':'.", "GDScript syntax");
                 }
                 if (/\bprint\s*\(/.test(trimmed)) {
@@ -742,7 +770,7 @@ class JungleScanner {
                 if (/\bblock\.timestamp\b/.test(trimmed) || /\bnow\b/.test(trimmed)) {
                     e(lineNum, "block.timestamp can be manipulated by miners within ~15 seconds.", "Avoid using block.timestamp for randomness or exact timing logic.", "Solidity security", "warning");
                 }
-                if (/\bpublic\b/.test(trimmed) && /\bfunction\b/.test(trimmed) && !/\b(view|pure|returns|payable)\b/.test(trimmed)) {
+                if (!insideBrackets && /\bpublic\b/.test(trimmed) && /\bfunction\b/.test(trimmed) && !/\b(view|pure|returns|payable)\b/.test(trimmed)) {
                     e(lineNum, "Public function with no visibility modifier on state mutation.", "Add 'view', 'pure', or 'payable' as appropriate, or restrict to 'external'.", "Solidity style", "info");
                 }
                 if (/\bfloat\b|\bdouble\b/.test(trimmed)) {
@@ -768,7 +796,7 @@ class JungleScanner {
                     e(lineNum, "Nix uses '==' for equality but it is only valid in assertions and conditions, not in attribute sets.", "Use '=' for attribute assignment inside { }.", "Nix syntax", "warning");
                 }
             } else if (lang === 'HCL') {
-                if (/\bresource\s+"[^"]+"\s+"[^"]+"\s*$/.test(trimmed)) {
+                if (/\bresource\s+"[^"]+"\s+"[^"]+"\s*$/.test(trimmed) && nextNonBlank(idx) !== '{') {
                     e(lineNum, "Resource block declaration is missing an opening brace.", "Add '{' at the end of the resource line.", "HCL syntax");
                 }
                 if (/\$\{[^}]*\}/.test(trimmed) && /"\s*\+\s*"/.test(trimmed)) {
