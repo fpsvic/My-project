@@ -63,9 +63,10 @@ class JungleScanner {
 
     static scanPythonIndentation(lines) {
         const issues = [];
-        const indentStack = [0];
+        const depths = this.computeBracketDepths(lines);
         let prevIndent = 0;
         let expectIndent = false;
+        let continuation = false; // true while inside a multi-line bracket/backslash continuation
         for (let i = 0; i < lines.length; i++) {
             const raw = lines[i];
             const trimmed = raw.trim();
@@ -73,14 +74,25 @@ class JungleScanner {
             const indent = raw.match(/^(\s*)/)[1].length;
             const hasTabs = raw.match(/^\t+/);
             const hasSpaces = raw.match(/^ +/);
+            const isContinuation = depths.start[i] > 0 || continuation;
             if (hasTabs && hasSpaces) {
                 issues.push(this.makeIssue(i + 1, "Mixed tabs and spaces for indentation.", "Use only spaces (PEP 8 recommends 4 spaces per level).", "Python indentation", 1, "error"));
             }
-            if (expectIndent && indent <= prevIndent) {
-                issues.push(this.makeIssue(i + 1, "Expected an indented block after ':'.", "Indent the next line with 4 spaces to begin the block body.", "Python indentation", 1, "error"));
+            if (!isContinuation) {
+                if (expectIndent && indent <= prevIndent) {
+                    issues.push(this.makeIssue(i + 1, "Expected an indented block after ':'.", "Indent the next line with 4 spaces to begin the block body.", "Python indentation", 1, "error"));
+                }
+                prevIndent = indent;
             }
-            expectIndent = /:\s*(#.*)?$/.test(trimmed) && !/^#/.test(trimmed);
-            prevIndent = indent;
+            // A logical statement ends only once its brackets are balanced and it
+            // doesn't end with an explicit backslash line continuation.
+            const endsLogicalLine = depths.end[i] === 0 && !trimmed.endsWith('\\');
+            if (endsLogicalLine) {
+                expectIndent = /:\s*(#.*)?$/.test(trimmed);
+                continuation = false;
+            } else {
+                continuation = true;
+            }
         }
         return issues;
     }
@@ -232,16 +244,54 @@ class JungleScanner {
         }
         return errors;
     }
+    // Tracks running (paren/bracket/brace) nesting depth at the START of each line,
+    // honoring strings/triple-quotes/comments so multi-line comprehensions and
+    // continued conditions inside brackets aren't mistaken for fresh statements.
+    static computeBracketDepths(lines) {
+        const startDepths = [];
+        const endDepths = [];
+        let depth = 0;
+        let inTriple = null;
+        for (const line of lines) {
+            startDepths.push(depth);
+            let i = 0, inStr = null;
+            while (i < line.length) {
+                const ch = line[i];
+                if (inTriple) {
+                    if (line.slice(i, i + 3) === inTriple) { inTriple = null; i += 3; continue; }
+                    i++; continue;
+                }
+                if (inStr) {
+                    if (ch === '\\') { i += 2; continue; }
+                    if (ch === inStr) inStr = null;
+                    i++; continue;
+                }
+                if (line.slice(i, i + 3) === '"""' || line.slice(i, i + 3) === "'''") { inTriple = line.slice(i, i + 3); i += 3; continue; }
+                if (ch === '"' || ch === "'") { inStr = ch; i++; continue; }
+                if (ch === '#') break;
+                if (ch === '(' || ch === '[' || ch === '{') depth++;
+                else if (ch === ')' || ch === ']' || ch === '}') depth = Math.max(0, depth - 1);
+                i++;
+            }
+            endDepths.push(depth);
+        }
+        return { start: startDepths, end: endDepths };
+    }
     static scanLanguagePatterns(lang, lines) {
         const issues = [];
         const fullCode = lines.join('\n');
         const e = (ln, msg, hint, kind, sev = "error") => issues.push(this.makeIssue(ln, msg, hint, kind, null, sev));
+        const bracketDepths = this.computeBracketDepths(lines);
         lines.forEach((line, idx) => {
             const lineNum = idx + 1;
             const trimmed = line.trim();
             if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('#')) return;
+            // Skip bracket-sensitive checks if this line starts inside an open bracket
+            // (continuation of a comprehension/condition) or itself opens brackets
+            // that stay unclosed at line's end (multi-line def/if signature).
+            const insideBrackets = bracketDepths.start[idx] > 0 || bracketDepths.end[idx] > 0;
             if (lang === 'Python') {
-                if (/^(if|elif|else|for|while|def|class|try|except|finally|with)\b/.test(trimmed) && !trimmed.endsWith(':') && !trimmed.endsWith('\\') && !trimmed.includes('#')) {
+                if (!insideBrackets && /^(if|elif|else|for|while|def|class|try|except|finally|with)\b/.test(trimmed) && !trimmed.endsWith(':') && !trimmed.endsWith('\\') && !trimmed.includes('#')) {
                     e(lineNum, "Python block statement is missing a trailing colon.", "Add ':' at the end of the line.", "Python syntax");
                 }
                 if (/^print\s+[^(\s]/.test(trimmed)) {
@@ -256,7 +306,7 @@ class JungleScanner {
                 if (/\b(console\.log|let\s+\w+\s*=|const\s+\w+\s*=|var\s+\w+\s*=)\b/.test(trimmed)) {
                     e(lineNum, "This looks like JavaScript syntax inside a Python file.", "Switch to JavaScript or rewrite using Python syntax.", "Language mismatch");
                 }
-                if (/^\s*def\s+\w+\s*\([^)]*\)\s*$/.test(line)) {
+                if (!insideBrackets && /^\s*def\s+\w+\s*\([^)]*\)\s*$/.test(line)) {
                     e(lineNum, "Python function definition is missing a colon.", "Add ':' after the closing parenthesis.", "Python syntax");
                 }
                 if (/^except\s+\w+\s*,\s*\w+/.test(trimmed)) {
