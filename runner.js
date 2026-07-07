@@ -277,8 +277,8 @@ body{margin:0;background:#060e0a;display:flex;flex-direction:column;align-items:
 <div id="output"></div>
 <div id="mycanvas"></div>
 <div id="err"></div>
-<script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"><\/script>
-<script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"><\/script>
+<script src="https://skulpt.org/js/skulpt.min.js"><\/script>
+<script src="https://skulpt.org/js/skulpt-stdlib.js"><\/script>
 <script>
 var outputEl = document.getElementById('output');
 var errEl = document.getElementById('err');
@@ -659,10 +659,7 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
             terminalStatus.textContent = "FAILED TO RUN";
             terminalStatus.className = "text-rose-500 font-bold";
         } else {
-            const langMeta = this.LANG_META[lang] || {};
-            const compiler = meta.compiler || langMeta.runtime || '';
-            const header = compiler ? `✓ ${langMeta.compiled ? 'Compiled & ran' : 'Ran'}  [${compiler}]\n${'─'.repeat(46)}\n` : '';
-            terminalViewBody.textContent = header + (stdout || "✓ Ran successfully — no output.");
+            terminalViewBody.textContent = stdout || "";
             terminalStatus.textContent = "SUCCESS";
             terminalStatus.className = "text-emerald-400 font-bold";
         }
