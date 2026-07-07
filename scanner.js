@@ -159,8 +159,10 @@ class JungleScanner {
         const matchingPairs = { ')': '(', ']': '[', '}': '{' };
         let inBlockComment = false;
         let inString = null;
+        let inTriple = null; // '"""' or "'''" — persists across lines, unlike single-char strings
         let blockCommentStart = null;
         let stringStart = null;
+        let tripleStart = null;
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             const lineNum = i + 1;
@@ -168,6 +170,10 @@ class JungleScanner {
                 const char = line[j];
                 const next = line[j + 1];
                 const prev = line[j - 1];
+                if (inTriple) {
+                    if (line.slice(j, j + 3) === inTriple) { inTriple = null; tripleStart = null; j += 2; }
+                    continue;
+                }
                 if (inBlockComment) {
                     if (char === '*' && next === '/') { inBlockComment = false; j++; }
                     continue;
@@ -178,7 +184,14 @@ class JungleScanner {
                 }
                 if (char === '/' && next === '/') break;
                 if (char === '/' && next === '*') { inBlockComment = true; blockCommentStart = { line: lineNum, column: j + 1 }; j++; continue; }
-                if ((char === '"' || char === "'") && line.slice(j, j + 3) === char.repeat(3)) { j += 2; continue; }
+                // Triple-quoted strings (Python docstrings, etc.) span multiple lines — track them
+                // as a distinct persistent state so quotes/brackets inside don't get misread as code.
+                if ((char === '"' || char === "'") && line.slice(j, j + 3) === char.repeat(3)) {
+                    inTriple = char.repeat(3);
+                    tripleStart = { line: lineNum, column: j + 1 };
+                    j += 2;
+                    continue;
+                }
                 if (char === '"' || char === "'" || char === '`') { inString = char; stringStart = { line: lineNum, column: j + 1 }; continue; }
                 if (bracketPairs[char]) {
                     stack.push({ char, line: lineNum, column: j + 1 });
@@ -201,6 +214,9 @@ class JungleScanner {
         }
         if (inBlockComment && blockCommentStart) {
             errors.push(this.makeIssue(blockCommentStart.line, "Unclosed block comment detected.", "Add */ to close this block comment.", "Comment check", blockCommentStart.column));
+        }
+        if (inTriple && tripleStart) {
+            errors.push(this.makeIssue(tripleStart.line, `Unclosed triple-quoted string starting with ${inTriple}.`, `Add a closing ${inTriple}.`, "String check", tripleStart.column));
         }
         if (inString && stringStart) {
             errors.push(this.makeIssue(stringStart.line, `Unclosed string literal starting with ${inString}.`, `Add a closing ${inString}.`, "String check", stringStart.column));
