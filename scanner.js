@@ -160,6 +160,24 @@ class JungleScanner {
         while (k >= 0 && line[k] === '\\') { count++; k--; }
         return count % 2 === 1;
     }
+    // Detects PHP/Bash/Ruby/HCL heredoc & nowdoc blocks (<<<TAG ... TAG; or <<EOF ... EOF)
+    // and returns a boolean per line marking lines that are entirely inside one — their
+    // raw text (which can contain any quotes/brackets/apostrophes) must not be scanned as code.
+    static computeHeredocSkip(lines) {
+        const skip = new Array(lines.length).fill(false);
+        const openRe = /<<[<~-]?\s*(['"]?)([A-Za-z_]\w*)\1\s*$/;
+        for (let i = 0; i < lines.length; i++) {
+            const m = lines[i].match(openRe);
+            if (!m) continue;
+            const tag = m[2];
+            const closeRe = new RegExp(`^\\s*${tag}\\s*[;,)]?\\s*$`);
+            for (let k = i + 1; k < lines.length; k++) {
+                skip[k] = true;
+                if (closeRe.test(lines[k])) break;
+            }
+        }
+        return skip;
+    }
     static scanDelimiters(lines, lang) {
         const errors = [];
         const stack = [];
@@ -170,6 +188,7 @@ class JungleScanner {
         const regexCapable = lang === 'Javascript' || lang === 'TypeScript' || lang === 'Ruby';
         const regexPreChars = new Set(['(', ',', '=', ':', '[', '!', '&', '|', '?', ';', '{', '}', '+', '-', '*', '%', '<', '>', '~', '^', '\n']);
         const regexKeywords = new Set(['return', 'typeof', 'instanceof', 'case', 'in', 'of', 'new', 'delete', 'void', 'throw', 'yield', 'do', 'else']);
+        const heredocSkip = this.computeHeredocSkip(lines);
         let inBlockComment = false;
         let inString = null;
         let inTriple = null; // '"""' or "'''" — persists across lines, unlike single-char strings
@@ -180,11 +199,23 @@ class JungleScanner {
         let tripleStart = null;
         let lastSig = '\n'; // last non-whitespace, non-comment/string character seen so far
         for (let i = 0; i < lines.length; i++) {
+            if (heredocSkip[i]) continue; // heredoc/nowdoc body or its closing tag — raw text, not code
             const line = lines[i];
             const lineNum = i + 1;
             for (let j = 0; j < line.length; j++) {
                 const char = line[j];
                 const next = line[j + 1];
+                // Rust lifetime annotations ('a, 'static, <'a>) look like an unclosed char
+                // literal — a real char literal always has a closing quote right after one
+                // character (or an escape sequence); a lifetime never does.
+                if (lang === 'Rust' && char === "'" && !inString && !inTriple && !inRegex) {
+                    const identMatch = line.slice(j + 1).match(/^[A-Za-z_]\w*/);
+                    if (identMatch && line[j + 1 + identMatch[0].length] !== "'") {
+                        j += identMatch[0].length;
+                        lastSig = identMatch[0].slice(-1);
+                        continue;
+                    }
+                }
                 if (inRegex) {
                     if (char === '\\') { j++; continue; }
                     if (char === '[') inCharClass = true;
@@ -726,7 +757,8 @@ class JungleScanner {
                 if (!/;\s*$/.test(trimmed) && /^\s*(echo|print|return|\$\w+\s*=)/.test(line)) {
                     const selfContained = bracketDepths.end[idx] === bracketDepths.start[idx];
                     const endsWithContinuation = /[.+\-*/&|,(\[]$/.test(trimmed);
-                    if (selfContained && !endsWithContinuation) {
+                    const opensHeredoc = /<<<\s*['"]?[A-Za-z_]\w*['"]?\s*$/.test(trimmed);
+                    if (selfContained && !endsWithContinuation && !opensHeredoc) {
                         e(lineNum, "PHP statement may be missing a semicolon.", "Add ';' at the end of the line.", "PHP syntax");
                     }
                 }
