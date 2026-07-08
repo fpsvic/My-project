@@ -2,7 +2,7 @@ class JungleScanner {
     static scan(lang, code) {
         const lines = code.split('\n');
         const issues = [
-            ...this.scanDelimiters(lines),
+            ...this.scanDelimiters(lines, lang),
             ...this.scanLanguagePatterns(lang, lines),
             ...this.scanUniversal(lang, lines)
         ];
@@ -43,7 +43,7 @@ class JungleScanner {
                 } else {
                     // All chunks done — now run whole-file scanners (they are fast, O(n) single pass)
                     const issues = [
-                        ...this.scanDelimiters(lines),
+                        ...this.scanDelimiters(lines, lang),
                         ...this.scanLanguagePatterns(lang, lines),
                         ...this.scanUniversal(lang, lines)
                     ];
@@ -152,24 +152,46 @@ class JungleScanner {
         }
         return issues;
     }
-    static scanDelimiters(lines) {
+    // True if an odd number of backslashes immediately precede position j on `line`
+    // (an even count means they cancel out in pairs — a literal backslash, not an escape).
+    static isEscaped(line, j) {
+        let count = 0;
+        let k = j - 1;
+        while (k >= 0 && line[k] === '\\') { count++; k--; }
+        return count % 2 === 1;
+    }
+    static scanDelimiters(lines, lang) {
         const errors = [];
         const stack = [];
         const bracketPairs = { '(': ')', '[': ']', '{': '}' };
         const matchingPairs = { ')': '(', ']': '[', '}': '{' };
+        // Languages where a bare '/' can start a regex literal (not just division) —
+        // without this, patterns like /don't match/ or /[a-z]\// get misread as strings/brackets.
+        const regexCapable = lang === 'Javascript' || lang === 'TypeScript' || lang === 'Ruby';
+        const regexPreChars = new Set(['(', ',', '=', ':', '[', '!', '&', '|', '?', ';', '{', '}', '+', '-', '*', '%', '<', '>', '~', '^', '\n']);
+        const regexKeywords = new Set(['return', 'typeof', 'instanceof', 'case', 'in', 'of', 'new', 'delete', 'void', 'throw', 'yield', 'do', 'else']);
         let inBlockComment = false;
         let inString = null;
         let inTriple = null; // '"""' or "'''" — persists across lines, unlike single-char strings
+        let inRegex = false;
+        let inCharClass = false; // inside [...] of a regex literal
         let blockCommentStart = null;
         let stringStart = null;
         let tripleStart = null;
+        let lastSig = '\n'; // last non-whitespace, non-comment/string character seen so far
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             const lineNum = i + 1;
             for (let j = 0; j < line.length; j++) {
                 const char = line[j];
                 const next = line[j + 1];
-                const prev = line[j - 1];
+                if (inRegex) {
+                    if (char === '\\') { j++; continue; }
+                    if (char === '[') inCharClass = true;
+                    else if (char === ']') inCharClass = false;
+                    else if (char === '/' && !inCharClass) { inRegex = false; lastSig = '/'; }
+                    continue;
+                }
                 if (inTriple) {
                     if (line.slice(j, j + 3) === inTriple) { inTriple = null; tripleStart = null; j += 2; }
                     continue;
@@ -179,11 +201,22 @@ class JungleScanner {
                     continue;
                 }
                 if (inString) {
-                    if (char === inString && prev !== '\\') inString = null;
+                    if (char === inString && !this.isEscaped(line, j)) inString = null;
                     continue;
                 }
                 if (char === '/' && next === '/') break;
                 if (char === '/' && next === '*') { inBlockComment = true; blockCommentStart = { line: lineNum, column: j + 1 }; j++; continue; }
+                if (regexCapable && char === '/' && next !== '/' && next !== '*') {
+                    // Look back at the last significant token to decide if '/' opens a regex
+                    // (after an operator/keyword) rather than being division.
+                    const wordMatch = line.slice(0, j).match(/([A-Za-z_$][\w$]*)\s*$/);
+                    const trailingWord = wordMatch ? wordMatch[1] : '';
+                    if (regexPreChars.has(lastSig) || regexKeywords.has(trailingWord)) {
+                        inRegex = true;
+                        inCharClass = false;
+                        continue;
+                    }
+                }
                 // Triple-quoted strings (Python docstrings, etc.) span multiple lines — track them
                 // as a distinct persistent state so quotes/brackets inside don't get misread as code.
                 if ((char === '"' || char === "'") && line.slice(j, j + 3) === char.repeat(3)) {
@@ -192,7 +225,7 @@ class JungleScanner {
                     j += 2;
                     continue;
                 }
-                if (char === '"' || char === "'" || char === '`') { inString = char; stringStart = { line: lineNum, column: j + 1 }; continue; }
+                if (char === '"' || char === "'" || char === '`') { inString = char; stringStart = { line: lineNum, column: j + 1 }; lastSig = char; continue; }
                 if (bracketPairs[char]) {
                     stack.push({ char, line: lineNum, column: j + 1 });
                 } else if (matchingPairs[char]) {
@@ -205,12 +238,15 @@ class JungleScanner {
                         }
                     }
                 }
+                if (!/\s/.test(char)) lastSig = char;
             }
             if (inString && inString !== '`' && !line.trimEnd().endsWith('\\')) {
                 errors.push(this.makeIssue(stringStart.line, `Unclosed string literal starting with ${inString}.`, `Add a closing ${inString} before the end of the line.`, "String check", stringStart.column));
                 inString = null;
                 stringStart = null;
             }
+            inRegex = false; // regex literals don't span raw lines
+            if (!inTriple && !inString) lastSig = '\n';
         }
         if (inBlockComment && blockCommentStart) {
             errors.push(this.makeIssue(blockCommentStart.line, "Unclosed block comment detected.", "Add */ to close this block comment.", "Comment check", blockCommentStart.column));
