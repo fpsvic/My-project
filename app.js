@@ -41,7 +41,6 @@ var activeView = 'editor'; // 'editor', 'preview', 'terminal', 'console'
 var manualLanguageOverride = false;
 var terminalHistory = [];
 var terminalHistoryIdx = -1;
-
 function showConsoleIssues(issues, filename) {
     if (!issues || issues.length === 0) {
         consoleViewBody.innerHTML = `<span style="color:#74a896">✓ No issues detected in ${filename || 'current file'}.</span>`;
@@ -79,7 +78,6 @@ function executeTerminalCommand(cmdLine) {
     const p = JungleUI.getCurrentProject();
     const files = p ? Object.keys(p.files) : [];
     const now = new Date();
-
     switch (command) {
         case 'help':
             terminalPrint(
@@ -131,43 +129,33 @@ function executeTerminalCommand(cmdLine) {
     exit               Return to editor view
 `);
             break;
-
         case 'clear':
             terminalViewBody.textContent = 'Jungle Terminal — type \'help\' for commands.\n';
             break;
-
         case 'pwd':
             terminalPrint(`/workspace/${p ? p.name.replace(/\s+/g, '-').toLowerCase() : 'project'}\n`);
             break;
-
         case 'whoami':
             terminalPrint(`jungle-user\n`);
             break;
-
         case 'hostname':
             terminalPrint(`jungle-sandbox\n`);
             break;
-
         case 'uname':
             terminalPrint(`Linux jungle-sandbox 6.1.0 #1 SMP x86_64 GNU/Linux\n`);
             break;
-
         case 'date':
             terminalPrint(`${now.toDateString()} ${now.toTimeString().split(' ')[0]}\n`);
             break;
-
         case 'uptime':
             terminalPrint(`up 0 days, session active — jungle sandbox\n`);
             break;
-
         case 'env':
             terminalPrint(`SHELL=/bin/bash\nLANG=en_US.UTF-8\nTERM=xterm-256color\nUSER=jungle-user\nHOME=/workspace\nPATH=/usr/local/bin:/usr/bin:/bin\nEDITOR=jungle\nJUNGLE_VERSION=1.0.0\n`);
             break;
-
         case 'echo':
             terminalPrint(args.join(' ').replace(/^["']|["']$/g, '') + '\n');
             break;
-
         case 'ls':
             if (!p) { terminalPrint(`ls: no project open\n`); break; }
             if (files.length === 0) { terminalPrint(`(empty project)\n`); break; }
@@ -177,13 +165,11 @@ function executeTerminalCommand(cmdLine) {
                 return `${f.padEnd(28)} ${String(lines).padStart(4)} lines`;
             }).join('\n') + '\n');
             break;
-
         case 'cat':
             if (!args[0]) { terminalPrint(`cat: missing operand\n`); break; }
             if (!p || p.files[args[0]] === undefined) { terminalPrint(`cat: ${args[0]}: No such file\n`); break; }
             terminalPrint((p.files[args[0]] || '(empty)') + '\n');
             break;
-
         case 'head': {
             if (!args[0]) { terminalPrint(`head: missing operand\n`); break; }
             if (!p || p.files[args[0]] === undefined) { terminalPrint(`head: ${args[0]}: No such file\n`); break; }
@@ -191,7 +177,6 @@ function executeTerminalCommand(cmdLine) {
             terminalPrint(headLines + '\n');
             break;
         }
-
         case 'tail': {
             if (!args[0]) { terminalPrint(`tail: missing operand\n`); break; }
             if (!p || p.files[args[0]] === undefined) { terminalPrint(`tail: ${args[0]}: No such file\n`); break; }
@@ -199,7 +184,6 @@ function executeTerminalCommand(cmdLine) {
             terminalPrint(tailLines + '\n');
             break;
         }
-
         case 'wc': {
             if (!args[0]) { terminalPrint(`wc: missing operand\n`); break; }
             if (!p || p.files[args[0]] === undefined) { terminalPrint(`wc: ${args[0]}: No such file\n`); break; }
@@ -210,7 +194,6 @@ function executeTerminalCommand(cmdLine) {
             terminalPrint(`${String(lineCount).padStart(6)} ${String(wordCount).padStart(7)} ${String(charCount).padStart(7)} ${args[0]}\n`);
             break;
         }
-
         case 'grep': {
             if (args.length < 2) { terminalPrint(`Usage: grep <pattern> <file>\n`); break; }
             if (!p || p.files[args[1]] === undefined) { terminalPrint(`grep: ${args[1]}: No such file\n`); break; }
@@ -223,7 +206,6 @@ function executeTerminalCommand(cmdLine) {
             terminalPrint(matched.length ? matched.join('\n') + '\n' : `(no matches)\n`);
             break;
         }
-
         case 'touch':
             if (!args[0]) { terminalPrint(`touch: missing file operand\n`); break; }
             if (!p) { terminalPrint(`touch: no project open\n`); break; }
@@ -233,7 +215,6 @@ function executeTerminalCommand(cmdLine) {
             JungleUI.renderFileList();
             terminalPrint(`Created: ${args[0]}\n`);
             break;
-
         case 'rm':
             if (!args[0]) { terminalPrint(`rm: missing operand\n`); break; }
             if (!p || p.files[args[0]] === undefined) { terminalPrint(`rm: ${args[0]}: No such file\n`); break; }
@@ -245,7 +226,6 @@ function executeTerminalCommand(cmdLine) {
             JungleUI.loadFile(p.currentFile);
             terminalPrint(`removed '${args[0]}'\n`);
             break;
-
         case 'mv':
             if (args.length < 2) { terminalPrint(`Usage: mv <old> <new>\n`); break; }
             if (!p || p.files[args[0]] === undefined) { terminalPrint(`mv: ${args[0]}: No such file\n`); break; }
@@ -257,7 +237,6 @@ function executeTerminalCommand(cmdLine) {
             JungleUI.renderFileList();
             terminalPrint(`'${args[0]}' -> '${args[1]}'\n`);
             break;
-
         case 'cp':
             if (args.length < 2) { terminalPrint(`Usage: cp <src> <dst>\n`); break; }
             if (!p || p.files[args[0]] === undefined) { terminalPrint(`cp: ${args[0]}: No such file\n`); break; }
@@ -266,33 +245,27 @@ function executeTerminalCommand(cmdLine) {
             JungleUI.renderFileList();
             terminalPrint(`'${args[0]}' -> '${args[1]}'\n`);
             break;
-
         case 'mkdir':
             terminalPrint(`mkdir: directories are virtual in Jungle — use touch to create files\n`);
             break;
-
         case 'stat':
             if (!args[0]) { terminalPrint(`stat: missing operand\n`); break; }
             if (!p || p.files[args[0]] === undefined) { terminalPrint(`stat: ${args[0]}: No such file\n`); break; }
             { const c = p.files[args[0]] || ''; terminalPrint(`  File: ${args[0]}\n  Size: ${c.length} bytes\n Lines: ${c.split('\n').length}\n`); }
             break;
-
         case 'open':
             if (!args[0]) { terminalPrint(`Usage: open <filename>\n`); break; }
             if (!p || p.files[args[0]] === undefined) { terminalPrint(`open: ${args[0]}: No such file\n`); break; }
             JungleUI.switchToFile(args[0]);
             terminalPrint(`Opened ${args[0]}\n`);
             break;
-
         case 'info':
             if (!p) { terminalPrint(`No project open.\n`); break; }
             terminalPrint(`Project:     ${p.name}\nFile:        ${p.currentFile}\nLanguage:    ${selectedLanguages[0]}\nFiles:       ${files.length}\nTotal LOC:   ${files.reduce((n, f) => n + (p.files[f] || '').split('\n').length, 0)}\nRuntime:     Jungle Sandbox (Judge0 / Piston / WASM)\n`);
             break;
-
         case 'history':
             terminalPrint(terminalHistory.slice().reverse().map((c, i) => `  ${String(i+1).padStart(3)}  ${c}`).join('\n') + '\n');
             break;
-
         case 'analyze':
         case 'lint':
             if (!p) { terminalPrint(`No project open.\n`); break; }
@@ -301,16 +274,13 @@ function executeTerminalCommand(cmdLine) {
               else { terminalPrint(issues.map(i => `  ${i.severity === 'error' ? '✗' : '⚠'} Line ${i.line}: [${i.kind}] ${i.msg}`).join('\n') + '\n'); }
             }
             break;
-
         case 'fmt':
         case 'format':
             terminalPrint(`fmt: auto-format not yet implemented\n`);
             break;
-
         case 'exit':
             switchView('editor');
             break;
-
         case 'run':
             if (!p) { terminalPrint(`No project open.\n`); break; }
             if (args[0]) {
@@ -319,7 +289,6 @@ function executeTerminalCommand(cmdLine) {
             }
             JungleRunner.execute(selectedLanguages[0], p.files[p.currentFile], p.files);
             break;
-
         case 'node':
         case 'python':
         case 'python3':
@@ -334,7 +303,6 @@ function executeTerminalCommand(cmdLine) {
             JungleRunner.execute(langMap[command], p.files[targetFile], p.files);
             break;
         }
-
         default:
             terminalPrint(`${command}: command not found — type 'help' for a list of commands\n`);
     }
@@ -414,7 +382,6 @@ function switchView(view, showInput = false) {
     // Always keep the active file highlighted in the file list
     highlightActiveFile();
 }
-
 enterBtn.onclick = () => { splashScreen.classList.add('fade-out'); setTimeout(() => { splashScreen.style.display = 'none'; splashScreen.style.pointerEvents = 'none'; }, 400); projectsDashboard.classList.add('show'); JungleUI.renderProjectsDashboard(); };
 exitToSplashBtn.onclick = () => { splashScreen.style.display = 'flex'; splashScreen.style.pointerEvents = 'auto'; setTimeout(() => splashScreen.classList.remove('fade-out'), 50); projectsDashboard.classList.remove('show'); };
 exitToHubHeaderBtn.onclick = () => { workspaceContainer.style.display = 'none'; projectsDashboard.classList.add('show'); JungleUI.renderProjectsDashboard(); };
@@ -589,7 +556,6 @@ tabConsoleBtn.onclick = () => { switchView('console'); };
 projectTitleBtn.onclick = () => {
     const p = JungleUI.getCurrentProject();
     if (!p || Object.keys(p.files).length === 0) { switchView('editor'); return; }
-
     // Detect language per file by extension
     function langFromFilename(name) {
         const ext = name.split('.').pop().toLowerCase();
@@ -600,15 +566,12 @@ projectTitleBtn.onclick = () => {
             gd: 'GDScript', sol: 'Solidity', nix: 'Nix', tf: 'HCL', hcl: 'HCL', tfvars: 'HCL' };
         return map[ext] || 'Javascript';
     }
-
     const tokenCSS = `.token-keyword{color:#FFB86C}.token-string{color:#06CF7A}.token-comment{color:#6272A4;font-style:italic}.token-number{color:#FF79C6}.token-type{color:#8BE9FD}.token-fn{color:#f1fa8c}.token-builtin{color:#4d9de0}.token-op{color:#FF5555}.token-punct{color:#7f848e}.token-attr{color:#FFB86C}.token-tag{color:#FF79C6}.token-property{color:#FFB86C}.token-decorator{color:#bd93f9;font-style:italic}`;
-
     const sections = Object.entries(p.files).map(([name, content]) => {
         const lang = langFromFilename(name);
         const hlHtml = JungleUI.highlightCode(lang, content || '');
         return `<div class="file-block"><div class="file-sep">--- ${name.replace(/</g,'&lt;')} ---</div><pre class="file-code">${hlHtml || ''}</pre></div>`;
     }).join('');
-
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -619,7 +582,6 @@ ${tokenCSS}
 .file-sep{color:#528b74;margin-bottom:10px;font-size:13px;}
 .file-code{overflow-x:auto;white-space:pre;tab-size:4;font-family:'Fira Code',monospace;font-size:13.5px;line-height:1.6;}
 </style></head><body>${sections}</body></html>`;
-
     const doc = previewFrame.contentDocument || previewFrame.contentWindow.document;
     doc.open(); doc.write(html); doc.close();
     switchView('preview');
@@ -670,7 +632,6 @@ const TEMPLATES = {
 </body>
 </html>`,
             'script.js': `let count = 0;
-
 function increment() {
     count++;
     document.getElementById('counter').textContent = count;
@@ -683,10 +644,8 @@ function increment() {
         files: {
             'main.py': `def greet(name):
     return f"Hello, {name}!"
-
 def add(a, b):
     return a + b
-
 def fizzbuzz(n):
     for i in range(1, n + 1):
         if i % 15 == 0:
@@ -697,13 +656,11 @@ def fizzbuzz(n):
             print("Buzz")
         else:
             print(i)
-
 def main():
     print(greet("World"))
     print(f"3 + 7 = {add(3, 7)}")
     print("\\nFizzBuzz up to 20:")
     fizzbuzz(20)
-
 main()
 `
         },
@@ -713,15 +670,12 @@ main()
         lang: 'Javascript',
         files: {
             'main.js': `// JavaScript App Starter
-
 function greet(name) {
     return \`Hello, \${name}!\`;
 }
-
 function sum(numbers) {
     return numbers.reduce((acc, n) => acc + n, 0);
 }
-
 function bubbleSort(arr) {
     const a = [...arr];
     for (let i = 0; i < a.length; i++) {
@@ -731,7 +685,6 @@ function bubbleSort(arr) {
     }
     return a;
 }
-
 async function fetchJoke() {
     try {
         const res = await fetch('https://official-joke-api.appspot.com/random_joke');
@@ -922,11 +875,9 @@ function renderLangPickerGrid(filter) {
         };
     });
 }
-
 window.onload = () => {
     projects = JungleStorage.getProjects();
 };
-
 // ── Drag-and-drop file import ─────────────────────────────────────────────────
 (function setupDragDrop() {
     const zones = [
@@ -934,22 +885,18 @@ window.onload = () => {
         document.getElementById('file-list'),
         document.getElementById('preview-frame'),
     ];
-
     function isZip(file) {
         return file.name.toLowerCase().endsWith('.zip') ||
                file.type === 'application/zip' ||
                file.type === 'application/x-zip-compressed';
     }
-
     function handleFiles(fileList) {
         const files = Array.from(fileList);
         const zips = files.filter(isZip);
         const valid = files.filter(f => !isZip(f));
-
         if (zips.length > 0) {
             JungleUI.showToast('⛔ This editor does not allow ZIP files. Please drag or create a normal file.', null, 'error');
         }
-
         valid.forEach(file => {
             const reader = new FileReader();
             reader.onload = e => {
@@ -966,7 +913,6 @@ window.onload = () => {
             reader.readAsText(file);
         });
     }
-
     zones.forEach(zone => {
         if (!zone) return;
         zone.addEventListener('dragover', e => {

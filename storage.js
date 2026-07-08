@@ -19,7 +19,6 @@ class JungleStorage {
         this.updateStorageBadge();
     }
     static getDefaultProjects() { return []; }
-
     // --- Storage size ---
     static getStorageSize() {
         const data = localStorage.getItem('jungle_sandbox_projects') || '';
@@ -35,7 +34,6 @@ class JungleStorage {
         const badge = document.getElementById('storage-size-badge');
         if (badge) badge.textContent = this.getStorageSize().formatted;
     }
-
     // --- IndexedDB backup ---
     static _openIDB() {
         return new Promise((resolve, reject) => {

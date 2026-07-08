@@ -182,13 +182,10 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; margin: 0; ba
 .border-\\[\\#2e3c37\\] { border-color: #2e3c37; }
 .hover\\:bg-\\[\\#1a2320\\]:hover { background-color: #1a2320; }
 `;
-
 function installJungleStyles(cssText) {
     var styleElement = document.createElement('style');
     styleElement.setAttribute('data-source', 'styles.ts');
     styleElement.textContent = cssText;
     document.head.appendChild(styleElement);
 }
-
 installJungleStyles(jungleStyles);
-

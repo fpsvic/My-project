@@ -208,15 +208,12 @@ class JungleUI {
         grid.appendChild(createCard);
     }
     static collapsedFolders = new Set();
-
     static renderFilesList() {
         fileListContainer.innerHTML = '';
         const p = this.getCurrentProject();
         if (!p) return;
-
         const rootFiles = [];
         const folderMap = {};
-
         Object.keys(p.files).forEach(filename => {
             const slash = filename.indexOf('/');
             if (slash === -1) {
@@ -227,29 +224,23 @@ class JungleUI {
                 folderMap[folder].push(filename);
             }
         });
-
         // Explicit empty folders
         (p.folders || []).forEach(f => { if (!folderMap[f]) folderMap[f] = []; });
-
         rootFiles.forEach(fn => this._renderFileLi(fn, fileListContainer, p, false));
         Object.keys(folderMap).sort().forEach(folder =>
             this._renderFolder(folder, folderMap[folder], fileListContainer, p)
         );
     }
-
     static renderFileList() { this.renderFilesList(); }
-
     static _renderFileLi(filename, container, p, nested) {
         const li = document.createElement('li');
         li.dataset.file = filename;
         if (nested) li.classList.add('nested');
         if (filename === p.currentFile) li.classList.add('active');
-
         const title = document.createElement('span');
         title.className = 'flex-1 overflow-hidden truncate pointer-events-auto cursor-pointer';
         title.textContent = '📄 ' + (nested ? filename.split('/').pop() : filename);
         title.onclick = () => this.switchToFile(filename);
-
         const actions = document.createElement('div');
         actions.className = 'file-item-actions';
         const del = document.createElement('button');
@@ -257,17 +248,14 @@ class JungleUI {
         del.innerHTML = '🗑️';
         del.onclick = e => { e.stopPropagation(); this.deleteFile(filename); };
         actions.appendChild(del);
-
         li.appendChild(title);
         li.appendChild(actions);
         container.appendChild(li);
     }
-
     static _renderFolder(folder, files, container, p) {
         const collapsed = this.collapsedFolders.has(folder);
         const li = document.createElement('li');
         li.className = 'folder-item';
-
         const row = document.createElement('div');
         row.className = 'folder-row';
         row.onclick = () => {
@@ -275,15 +263,12 @@ class JungleUI {
             else this.collapsedFolders.add(folder);
             this.renderFilesList();
         };
-
         const chevron = document.createElement('span');
         chevron.className = 'folder-chevron';
         chevron.textContent = collapsed ? '▶' : '▼';
-
         const name = document.createElement('span');
         name.className = 'folder-name';
         name.textContent = '📁 ' + folder + '/';
-
         const actions = document.createElement('div');
         actions.className = 'file-item-actions';
         const del = document.createElement('button');
@@ -292,12 +277,10 @@ class JungleUI {
         del.title = 'Delete folder and all contents';
         del.onclick = e => { e.stopPropagation(); this.deleteFolder(folder, files); };
         actions.appendChild(del);
-
         row.appendChild(chevron);
         row.appendChild(name);
         row.appendChild(actions);
         li.appendChild(row);
-
         if (!collapsed) {
             const inner = document.createElement('ul');
             inner.className = 'folder-files';
@@ -311,10 +294,8 @@ class JungleUI {
             }
             li.appendChild(inner);
         }
-
         container.appendChild(li);
     }
-
     static deleteFolder(folder, files) {
         const p = this.getCurrentProject();
         if (!p) return;
@@ -374,7 +355,6 @@ class JungleUI {
         if (code.endsWith('\n')) code += ' ';
         let escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const lang = selectedLanguages[0];
-
         // Safe placeholder encoding — prevents nested HTML from innerHTML injection
         const spans = [];
         function tok(cls, content) {
@@ -385,13 +365,11 @@ class JungleUI {
         function finalize(s) {
             return s.replace(/\x00(\d+)\x00/g, (_, i) => spans[+i]);
         }
-
         // Shared operator/punctuation pass (applied after primary tokenization)
         function addOpsAndPunct(s) {
             return s.replace(/([^>\x00])([+\-*/%=!<>&|^~?:]+)(?=[^<\x00])/g, (m, pre, op) => pre + tok('token-op', op))
                     .replace(/(?<=[^>\x00])([{}[\]();,.])/g, p => tok('token-punct', p));
         }
-
         if (lang === 'Python') {
             escaped = escaped.replace(
                 /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?'''|f"""[\s\S]*?"""|f'''[\s\S]*?'''|f"(?:\\.|[^"\\])*"|f'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(@[\w.]+)|(\bdef\s+(\w+))|(\bclass\s+(\w+))|\b(def|class|return|if|elif|else|while|for|in|not in|is not|import|from|as|with|lambda|yield|raise|try|except|finally|break|continue|pass|del|global|nonlocal|and|or|not|is|async|await)\b|\b(True|False|None|self|cls)\b|\b(print|len|range|type|isinstance|issubclass|super|hasattr|getattr|setattr|delattr|repr|str|int|float|list|dict|set|tuple|enumerate|zip|map|filter|sorted|reversed|open|input|abs|max|min|sum|any|all|id|hash|iter|next|vars|dir|callable|staticmethod|classmethod|property)\b|\b(\d+\.?\d*(?:[eE][+-]?\d+)?[jJ]?|0x[\da-fA-F]+|0b[01]+|0o[0-7]+)\b/g,
@@ -555,11 +533,9 @@ class JungleUI {
             // JS/TS default
             escaped = JungleUI._highlightJS(escaped, tok);
         }
-
         highlightOverlay.innerHTML = finalize(escaped);
         this.updateLineNumbers();
     }
-
     // Returns syntax-highlighted HTML for arbitrary lang+code (used by Whole Project view)
     static highlightCode(lang, code) {
         let escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -577,7 +553,6 @@ class JungleUI {
         JungleUI.updateCodeHighlight();
         return html;
     }
-
     static _highlightJS(escaped, tok) {
         return escaped.replace(
             /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(\/(?:[^/\\\n]|\\.)+\/[gimsuy]*)|(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|\b((?:async\s+)?function\*?\s+(\w+)|(\w+)\s*(?==\s*(?:async\s+)?(?:function|\([^)]*\)\s*=>|\w+\s*=>)))|(\b(\w+)\s*\()|\b(const|let|var|return|if|else|while|for|of|in|import|export|default|class|extends|new|this|super|async|await|void|typeof|instanceof|delete|try|catch|finally|throw|switch|case|break|continue|do|yield|static|get|set|from|as|debugger)\b|\b(type|interface|enum|implements|declare|readonly|abstract|override|keyof|infer|never|unknown|any|namespace|satisfies|asserts|is|out|accessor)\b|\b(true|false|null|undefined|NaN|Infinity)\b|\b(console|Math|JSON|Object|Array|String|Number|Boolean|Promise|Map|Set|WeakMap|WeakSet|Date|Error|RegExp|Symbol|Proxy|Reflect|globalThis|window|document|navigator|fetch|setTimeout|setInterval|clearTimeout|clearInterval|queueMicrotask|requestAnimationFrame|localStorage|sessionStorage|performance|URL|FormData|Headers|Request|Response)\b|\b([A-Z][A-Za-z0-9_]*)\b|\b(\d+\.?\d*(?:[eE][+-]?\d+)?n?|0x[\da-fA-F]+|0b[01]+|0o[0-7]+)\b/g,
@@ -597,7 +572,6 @@ class JungleUI {
             }
         );
     }
-
     static _highlightCSS(escaped, tok) {
         return escaped.replace(
             /(\/\*[\s\S]*?\*\/)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(#[0-9a-fA-F]{3,8}(?=[;\s,)])|rgb\w*\([^)]*\)|hsl\w*\([^)]*\))|((?:[\w-]+\s*,\s*)*[\w-]+\s*\{)|(@[\w-]+)|(\b\d+\.?\d*(?:px|em|rem|%|vh|vw|vmin|vmax|dvh|dvw|svh|svw|ch|ex|fr|s|ms|deg|rad|turn|dpi|dpcm)?\b)|\b(animation|appearance|aspect-ratio|background|border|border-radius|bottom|box-shadow|box-sizing|clip|clip-path|color|column|content|cursor|direction|display|filter|flex|float|font|gap|grid|height|inset|justify|left|letter-spacing|line-height|list-style|margin|max-height|max-width|min-height|min-width|object-fit|opacity|order|outline|overflow|padding|place|pointer-events|position|resize|right|row-gap|scroll|shape|text|top|transform|transition|user-select|visibility|white-space|width|will-change|word|writing-mode|z-index)\b|\b(auto|none|block|flex|grid|inline|inline-block|inline-flex|inline-grid|absolute|relative|fixed|sticky|static|inherit|initial|unset|revert|normal|bold|italic|center|left|right|justify|solid|dashed|dotted|hidden|visible|scroll|clip|ellipsis|nowrap|wrap|row|column|start|end|stretch|space-between|space-around|space-evenly|transparent|currentColor)\b/g,

@@ -45,7 +45,6 @@ class JungleRunner {
         'Nix':        { compiled: false, runtime: 'nix-instantiate',     judge0: null, piston: null },
         'HCL':        { compiled: false, runtime: 'Terraform / OpenTofu',judge0: null, piston: null },
     };
-
     // Returns all project files of the same language concatenated, with the active file last
     static bundleFiles(lang, code, files, currentFile) {
         if (!files || Object.keys(files).length <= 1) return code;
@@ -66,14 +65,12 @@ class JungleRunner {
         if (siblings.length === 0) return code;
         return siblings.join('\n\n') + '\n\n// ── ' + currentFile + ' ──\n' + code;
     }
-
     static async execute(lang, code, files) {
         try {
             const p0 = JungleUI.getCurrentProject();
             const fname = (p0 && p0.currentFile) || 'file';
             // Merge sibling files of the same language into one bundle for execution
             const bundled = this.bundleFiles(lang, code, files, fname);
-
             const scanIssues = JungleScanner.scan(lang, code);
             const scanErrors = scanIssues.filter(i => i.severity === 'error');
             const scanWarnings = scanIssues.filter(i => i.severity !== 'error');
@@ -93,15 +90,12 @@ class JungleRunner {
             terminalStatus.className = "text-[#74a896] font-bold animate-pulse";
             const p = JungleUI.getCurrentProject();
             if (!p) return;
-
             // Use bundled code for all tiers (replaces single-file `code`)
             code = bundled;
-
             const meta = this.LANG_META[lang] || { compiled: false, runtime: lang };
             const actionLabel = meta.compiled
                 ? `⚙️ Compiling with ${meta.runtime}...`
                 : `▶ Running with ${meta.runtime}...`;
-
             // ── Tier 1: Visual JS/TS — DOM/canvas code rendered in preview iframe ─
             if ((lang === 'Javascript' || lang === 'TypeScript') && this.isVisualCode(code)) {
                 let jsCode = code;
@@ -113,7 +107,6 @@ class JungleRunner {
                 this.renderJSPreview(jsCode);
                 return;
             }
-
             // ── Tier 2: Native JS console output (always works, no network) ─────
             if (lang === 'Javascript') {
                 terminalViewBody.textContent = "";
@@ -121,7 +114,6 @@ class JungleRunner {
                 this.showRunResult(res.stdout, res.stderr, lang, { errName: res.errName, errStack: res.errStack });
                 return;
             }
-
             // ── Tier 3: TypeScript — in-browser tsc (offline-capable) ─────────
             if (lang === 'TypeScript') {
                 terminalViewBody.textContent = "⚙️ Compiling TypeScript (tsc)...";
@@ -134,19 +126,16 @@ class JungleRunner {
                     terminalViewBody.textContent += `\n  → ${tsErr.message}\n⚠️ tsc failed — falling back to Judge0...`;
                 }
             }
-
             // ── Tier 4: SQL — SQLite WASM (offline-capable) ──────────────────
             if (lang === 'SQL') {
                 await this.runSqlJs(code);
                 return;
             }
-
             // ── Tier 5a: Turtle Python — Skulpt renders natively in preview iframe ─
             if (lang === 'Python' && this.isTurtleCode(code)) {
                 this.renderSkulptPreview(code);
                 return;
             }
-
             // ── Tier 5b: Visual Python — matplotlib/turtle via Pyodide → preview ─
             if (lang === 'Python' && this.isVisualPython(code)) {
                 switchView('terminal', false);
@@ -166,7 +155,6 @@ class JungleRunner {
                     terminalViewBody.textContent += `\n⚠️ Visual Python failed: ${e.message}\n   Falling back to API execution...`;
                 }
             }
-
             // ── Tier 6: Judge0 CE — real compilers, online ────────────────────
             terminalViewBody.textContent = `🌐 ${actionLabel}\n   Connecting to Judge0...`;
             const j0 = await this.runJudge0(lang, code);
@@ -174,7 +162,6 @@ class JungleRunner {
                 this.showRunResult(j0.stdout, j0.stderr, lang, { compiler: meta.runtime });
                 return;
             }
-
             // ── Tier 7: Piston cluster — compiled + interpreted, online ────────
             terminalViewBody.textContent = `⚠️ Judge0 unreachable — trying Piston...\n   ${actionLabel}`;
             const piston = await this.runPistonDirect(lang, code, p);
@@ -182,7 +169,6 @@ class JungleRunner {
                 this.showRunResult(piston.stdout, piston.stderr, lang);
                 return;
             }
-
             // ── Tier 8: WASM offline runtimes — last resort ───────────────────
             const wasmKey = meta.wasm;
             const wasmRunners = {
@@ -201,7 +187,6 @@ class JungleRunner {
                     terminalViewBody.textContent += `\n⚠️ WASM runtime failed: ${e.message}`;
                 }
             }
-
             // All tiers exhausted
             terminalStatus.textContent = "ALL RUNTIMES OFFLINE";
             terminalStatus.className = "text-rose-500 font-bold";
@@ -210,11 +195,9 @@ class JungleRunner {
                 likelyCause: `JS/HTML run locally; TypeScript compiles in-browser; SQL uses SQLite WASM. All API endpoints (Judge0, Piston) are unreachable, and ${lang} has no offline WASM runtime.`,
                 suggestion: "Check network connectivity or try a different language. JavaScript, TypeScript, HTML, and SQL always work offline."
             });
-
         } catch (globalErr) { this.handleGlobalFailure(globalErr); }
         terminalViewBody.scrollTop = terminalViewBody.scrollHeight;
     }
-
     // ── TypeScript in-browser compilation via CDN tsc ─────────────────────────
     static async compileTypeScript(code) {
         if (!window.ts) {
@@ -244,20 +227,16 @@ class JungleRunner {
         }
         return result.outputText;
     }
-
     // ── Visual output detection ───────────────────────────────────────────────
     static isVisualCode(code) {
         return /\b(document\.|window\.(onload|addEventListener)|getElementById|querySelector|innerHTML|appendChild|createElement|canvas|getContext|ctx\.|requestAnimationFrame|body\.style|drawImage|fillRect|clearRect|strokeRect|beginPath|arc\(|lineTo|moveTo)\b/.test(code);
     }
-
     static isVisualPython(code) {
         return /\b(import\s+turtle|import\s+pygame|matplotlib|pyplot|plt\s*\.|seaborn|plotly|bokeh|turtle\s*\.|Turtle\b|pygame|PIL|Image\.open|cv2\.|imshow|savefig|show\(\)|scatter\(|plot\(|bar\(|pie\(|hist\()\b/.test(code);
     }
-
     static isTurtleCode(code) {
         return /\bimport\s+turtle\b/.test(code) || /\bturtle\s*\./.test(code) || /\bTurtle\s*\(/.test(code);
     }
-
     // ── Skulpt turtle: render Python turtle graphics in preview iframe ─────────
     static renderSkulptPreview(code) {
         const patchedCode = code
@@ -309,7 +288,6 @@ Sk.misceval.asyncToPromise(function() {
         terminalStatus.className = "text-emerald-400 font-bold";
         JungleUI.showToast("Turtle graphics rendered in Preview panel.", null);
     }
-
     // ── Render JS/TS in preview iframe with full DOM access ──────────────────
     static renderJSPreview(jsCode) {
         const doc = previewFrame.contentDocument || previewFrame.contentWindow.document;
@@ -326,7 +304,6 @@ ${escaped}
         terminalStatus.className = "text-emerald-400 font-bold";
         JungleUI.showToast("Visual output shown in Preview panel.", null);
     }
-
     // ── Pyodide visual: run matplotlib/turtle code, capture PNG images ────────
     static async runPyodideVisual(code) {
         if (!window._pyodide) {
@@ -344,13 +321,11 @@ ${escaped}
         const out = [], err = [];
         py.setStdout({ batched: s => out.push(s) });
         py.setStderr({ batched: s => err.push(s) });
-
         // Patch out blocking turtle calls — exitonclick/mainloop hang in browser
         const patchedCode = code.replace(
             /\b(?:screen|turtle|t|wn)\s*\.\s*(?:exitonclick|done|mainloop|listen)\s*\(\s*\)/g,
             'pass  # browser: event loop disabled'
         );
-
         const wrapper = `
 import io as _io_j, base64 as _b64_j
 _jngl_imgs = []
@@ -386,7 +361,6 @@ except Exception: pass
             const pyErrs = rawErrs ? rawErrs.toJs().join('\n') : '';
             rawImgs && rawImgs.destroy && rawImgs.destroy();
             rawErrs && rawErrs.destroy && rawErrs.destroy();
-
             // Capture turtle canvas if turtle ran but produced no matplotlib figures
             if (images.length === 0) {
                 const tc = document.getElementById('turtle-canvas');
@@ -394,13 +368,11 @@ except Exception: pass
                     try { images = [tc.toDataURL('image/png').split(',')[1]]; } catch(_) {}
                 }
             }
-
             return { images, stdout: out.join('\n'), stderr: pyErrs || err.join('\n') };
         } catch(e) {
             return { images: [], stdout: out.join('\n'), stderr: e.message || String(e) };
         }
     }
-
     // ── Render matplotlib PNG images + stdout in preview iframe ──────────────
     static renderPyVisualOutput(images, stdout, stderr) {
         const stdoutHtml = stdout.trim()
@@ -430,7 +402,6 @@ ${imgBoxes}
         terminalStatus.className = "text-[#74a896] font-bold";
         JungleUI.showToast("Plot rendered in Preview panel.", null);
     }
-
     // ── Native JS execution via sandboxed iframe + postMessage ─────────────────
     static runNativeJS(code) {
         return new Promise(resolve => {
@@ -463,7 +434,6 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
             }, 10000);
         });
     }
-
     // ── Pyodide — Python WASM (offline fallback) ──────────────────────────────
     static async runPyodide(code) {
         if (!window._pyodide) {
@@ -484,7 +454,6 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         catch (e) { err.push(e.message); }
         return { stdout: out.join('\n'), stderr: err.join('\n') };
     }
-
     // ── php-wasm — PHP 8 WASM (offline fallback) ──────────────────────────────
     static async runPhpWasm(code) {
         if (!window._phpWasm) {
@@ -502,7 +471,6 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
             resolve({ stdout: out.join(''), stderr: err.join('') });
         });
     }
-
     // ── wasmoon — Lua 5.4 WASM (offline fallback) ────────────────────────────
     static async runLuaWasm(code) {
         if (!window._luaFactory) {
@@ -518,7 +486,6 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         lua.global.close();
         return { stdout: out.join('\n'), stderr: err.join('\n') };
     }
-
     // ── Opal — Ruby → JS transpiler (offline fallback) ───────────────────────
     static async runRubyOpal(code) {
         if (!window.Opal) {
@@ -546,7 +513,6 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         }
         return { stdout: out.join(''), stderr: '' };
     }
-
     // ── sql.js — SQLite WASM ──────────────────────────────────────────────────
     static async runSqlJs(code) {
         switchView('terminal', false);
@@ -586,7 +552,6 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
             terminalStatus.className = "text-rose-500 font-bold";
         }
     }
-
     // ── Judge0 CE — real compilers, 35+ languages ─────────────────────────────
     static async runJudge0(lang, code) {
         const meta = this.LANG_META[lang];
@@ -616,7 +581,6 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         }
         return null;
     }
-
     // ── Piston — returns {stdout, stderr} or null ─────────────────────────────
     static async runPistonDirect(lang, code, p) {
         const meta = this.LANG_META[lang];
@@ -647,7 +611,6 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         }
         return null;
     }
-
     // ── Shared result display ─────────────────────────────────────────────────
     static showRunResult(stdout, stderr, lang, meta = {}) {
         const hasFail = stderr && stderr.trim();
@@ -665,7 +628,6 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         }
         terminalViewBody.scrollTop = terminalViewBody.scrollHeight;
     }
-
     static handleGlobalFailure(err) {
         switchView('terminal', false);
         terminalStatus.textContent = "FAILED TO RUN";
@@ -676,20 +638,17 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         });
         JungleUI.showToast("❌ Failed to run! Tap here to inspect terminal diagnostics.", () => { switchView('terminal', false); });
     }
-
     static parseError(stderr, stdout, lang, meta) {
         let errorMsg = "Execution anomaly detected.", lineNo = "Unknown line", file = "main";
         let column = null, likelyCause = "", suggestion = "", errorType = "";
         const combined = (stderr || "") + "\n" + (stdout || "");
         const lines = combined.trim().split('\n').filter(Boolean);
-
         if (/execution timed out/i.test(combined)) {
             errorMsg = "Execution timed out after 10 seconds.";
             errorType = "Timeout";
             const insight = this.explainError("timeout", lang, combined);
             return { errorMsg, lineNo: "—", file, column, likelyCause: insight.likelyCause, suggestion: "Check for infinite loops (while(true), for(;;), or a recursive call with no base case). Add a break condition.", rawOutput: combined.trim(), errorType };
         }
-
         if (lang === 'Python') {
             const frameMatches = [...combined.matchAll(/File\s+"([^"]+)",\s+line\s+(\d+)/gi)];
             if (frameMatches.length > 0) { const last = frameMatches[frameMatches.length - 1]; file = last[1]; lineNo = last[2]; }
@@ -742,7 +701,6 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         suggestion = insight.suggestion;
         return { errorMsg, lineNo, file, column, likelyCause, suggestion, rawOutput: combined.trim(), errorType };
     }
-
     static explainError(errorMsg, lang, rawOutput) {
         const text = `${errorMsg}\n${rawOutput || ""}`.toLowerCase();
         const rules = [
@@ -778,7 +736,6 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         if (lang === 'Go') return { likelyCause: "The Go compiler rejected the program or the binary panicked at runtime.", suggestion: "Check the first compiler error; Go errors are precise and usually point directly at the issue." };
         return { likelyCause: "The selected runtime reported an execution error.", suggestion: "Inspect the raw output and confirm the file language matches the selected runtime." };
     }
-
     static getCodeFrame(file, lineNo, column = null) {
         const p = JungleUI.getCurrentProject();
         if (!p || !p.files) return "";
@@ -796,13 +753,11 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         }
         return frame.join('\n');
     }
-
     static severityIcon(sev) {
         if (sev === 'warning') return '⚠️';
         if (sev === 'info') return 'ℹ️';
         return '⛔';
     }
-
     static formatSimpleReport(details) {
         const lineNo = details.lineNo || "Unknown";
         const errorKind = details.errorType || this.getSimpleErrorKind(details.errorMsg || "");
@@ -814,7 +769,6 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         if (details.suggestion) out += `\nSuggestion:   ${details.suggestion}`;
         return out;
     }
-
     static formatTraceback(stderr) {
         if (!stderr || !stderr.trim()) return '';
         const lines = stderr.trim().split('\n');
@@ -828,7 +782,6 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         }
         return out.join('\n');
     }
-
     static getSimpleErrorKind(message) {
         const text = String(message).toLowerCase();
         if (/indentation|expected an indented block|unexpected indent/.test(text)) return "Indentation error";
@@ -846,7 +799,6 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         if (/linker|undefined reference|unresolved/.test(text)) return "Linker error";
         return "Error";
     }
-
     static simplifyErrorMessage(message) {
         let text = String(message || "unknown error").trim();
         if (/Unexpected end of input/i.test(text)) return "unexpected end of input";
@@ -869,7 +821,6 @@ try{${code.replace(/<\/script>/gi,'<\\/script>')}\nparent.postMessage({__jDone:t
         text = text.replace(/^syntaxerror:\s*/i, "").replace(/^error:\s*/i, "").replace(/^typeerror:\s*/i, "").replace(/^referenceerror:\s*/i, "").replace(/^nameerror:\s*/i, "").replace(/^valueerror:\s*/i, "").replace(/^attributeerror:\s*/i, "").replace(/\s+/g, " ").replace(/[.。]+$/, "");
         return text || "unknown error";
     }
-
     static printCrashAnalysis(details, stdout, stderr) {
         let output = this.formatSimpleReport(details);
         if (details.lineNo && details.lineNo !== "Unknown" && details.lineNo !== "—") {

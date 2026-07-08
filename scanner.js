@@ -15,7 +15,6 @@ class JungleScanner {
         issues.sort((a, b) => (order[a.severity] ?? 1) - (order[b.severity] ?? 1) || a.line - b.line);
         return issues;
     }
-
     // Async chunked scan — processes 200 lines at a time, yielding between chunks
     // Falls back to sync scan() for files under 500 lines
     static scanAsync(lang, code) {
@@ -29,7 +28,6 @@ class JungleScanner {
             // Sub-scanners that operate per-line and can be chunked
             const chunkableResults = [];
             let chunkIdx = 0;
-
             const processChunk = () => {
                 const start = chunkIdx * CHUNK;
                 const end = Math.min(start + CHUNK, lines.length);
@@ -56,11 +54,9 @@ class JungleScanner {
                     resolve(issues);
                 }
             };
-
             setTimeout(processChunk, 0);
         });
     }
-
     static scanPythonIndentation(lines) {
         const issues = [];
         const depths = this.computeBracketDepths(lines);
@@ -1014,13 +1010,11 @@ class JungleScanner {
         });
         return issues;
     }
-
     // Universal advanced checks — apply to all languages
     static scanUniversalAdvanced(lang, lines) {
         const issues = [];
         const e = (ln, msg, hint, kind, col, sev) => issues.push(this.makeIssue(ln, msg, hint, kind, col ?? null, sev ?? "info"));
         const fullCode = lines.join('\n');
-
         // Detect files with no actual code (only whitespace/comments)
         const commentPatterns = lang === 'Python' || lang === 'Ruby' || lang === 'Bash'
             ? /^\s*(#.*)?$/
@@ -1029,12 +1023,10 @@ class JungleScanner {
         if (!hasCode && lines.length > 0) {
             e(1, "File contains no executable code — only whitespace or comments.", "Add code or remove the file if it is no longer needed.", "Code quality", null, "info");
         }
-
         // Large file warning
         if (lines.length > 600) {
             e(1, `File is ${lines.length} lines long.`, "Consider splitting this into smaller modules — large files are harder to navigate and test.", "Code quality", null, "info");
         }
-
         // Detect very long functions (>50 lines between open and close brace)
         // Works for JS/TS/Java/C/C++/Go/Rust — brace-delimited languages
         const bracelangs = ['Javascript','TypeScript','Java','C','C++','Go','Rust','PHP','C#','Kotlin','Swift'];
@@ -1065,10 +1057,8 @@ class JungleScanner {
                 }
             }
         }
-
         return issues;
     }
-
     // Advanced HTML checks
     static scanHtmlPatterns(lines) {
         const issues = [];
@@ -1194,14 +1184,12 @@ class JungleScanner {
         let hasColor = false;
         let hasBgColor = false;
         const vendorPrefixProps = {};
-
         // Track per-rule-block state for duplicate property and margin:auto checks
         let inBlock = false;
         let blockProps = new Map(); // prop -> first line seen
         let blockStartLine = -1;
         let blockHasWidth = false;
         let marginAutoLine = -1;
-
         lines.forEach((line, idx) => {
             const lineNum = idx + 1;
             const trimmed = line.trim();
@@ -1226,7 +1214,6 @@ class JungleScanner {
                 const prop = standardMatch[1];
                 if (vendorPrefixProps[prop]) vendorPrefixProps[prop].hasStandard = true;
             }
-
             // Block tracking for duplicate properties, margin:auto, z-index, float, 0px
             if (trimmed.endsWith('{')) {
                 inBlock = true;
@@ -1244,7 +1231,6 @@ class JungleScanner {
                 blockHasWidth = false;
                 marginAutoLine = -1;
             }
-
             if (inBlock && trimmed.includes(':') && !trimmed.startsWith('//') && !trimmed.startsWith('/*')) {
                 const propMatch = trimmed.match(/^([\w-]+)\s*:/);
                 if (propMatch) {
@@ -1378,16 +1364,13 @@ class JungleScanner {
         }
         return null;
     }
-
     static detectLanguage(code) {
         if (!code || code.trim().length < 3) return null;
         const scores = {};
         const add = (lang, pts) => { scores[lang] = (scores[lang] || 0) + pts; };
-
         // Early hint: a single unmistakable token is enough to tentatively identify
         const hint = this.earlyHint(code);
         if (hint) add(hint, 50);
-
         // --- Python ---
         if (/^\s*def\s+\w+\s*\(/m.test(code)) add('Python', 20);
         if (/^\s*class\s+\w+.*:/m.test(code)) add('Python', 15);
@@ -1399,7 +1382,6 @@ class JungleScanner {
         if (/\blambda\b/.test(code)) add('Python', 12);
         if (/\bprint\s*\(/.test(code) && !/console\./.test(code) && !/System\.out/.test(code) && !/\bprintln\b/.test(code)) add('Python', 10);
         if (/#[^!]/.test(code) && !/\/\//.test(code)) add('Python', 5);
-
         // --- JavaScript ---
         if (/\bconsole\.log\b/.test(code)) add('Javascript', 22);
         if (/\bdocument\.\w+|\bwindow\.\w+/.test(code)) add('Javascript', 20);
@@ -1411,7 +1393,6 @@ class JungleScanner {
         if (/=>\s*[{(]/.test(code)) add('Javascript', 10);
         if (/\bnull\b/.test(code) && /\bundefined\b/.test(code)) add('Javascript', 10);
         if (/\bdocument\.getElementById\b/.test(code)) add('Javascript', 22);
-
         // --- TypeScript ---
         if (/\binterface\s+[A-Z]/.test(code)) add('TypeScript', 28);
         if (/\btype\s+[A-Z]\w*\s*=/.test(code)) add('TypeScript', 25);
@@ -1420,13 +1401,11 @@ class JungleScanner {
         if (/\bReadonly<|\bPartial<|\bRequired<|\bRecord</.test(code)) add('TypeScript', 28);
         if (/\)\s*:\s*[A-Za-z][\w<>[\]| ]+\s*(=>|\{)/.test(code)) add('TypeScript', 18);
         if (/<[A-Z]\w*>/.test(code) && /\binterface\b|\btype\b/.test(code)) add('TypeScript', 12);
-
         // --- HTML ---
         if (/<!DOCTYPE\s+html>/i.test(code)) add('HTML', 40);
         if (/<html[\s>]/i.test(code)) add('HTML', 25);
         if (/<\/?(div|span|body|head|script|style|meta|link)\b/i.test(code)) add('HTML', 20);
         if (/<\/\w+>/.test(code) && /<\w[\w-]*[\s>]/.test(code)) add('HTML', 15);
-
         // --- C++ ---
         if (/#include\s*<\w+>/.test(code)) add('C++', 22);
         if (/\bstd::/.test(code)) add('C++', 25);
@@ -1435,7 +1414,6 @@ class JungleScanner {
         if (/\bvector\s*<|\bmap\s*<|\bunordered_map\s*</.test(code)) add('C++', 22);
         if (/\bint\s+main\s*\(\s*\)/.test(code) && /#include/.test(code)) add('C++', 15);
         if (/\bdelete\s+\w+/.test(code) && /\bnew\b/.test(code)) add('C++', 15);
-
         // --- C ---
         if (/#include\s*<stdio\.h>/.test(code)) add('C', 30);
         if (/\bprintf\s*\(/.test(code) && !/#include\s*<iostream>/.test(code) && !/\bstd::/.test(code)) add('C', 22);
@@ -1443,7 +1421,6 @@ class JungleScanner {
         if (/\bmalloc\s*\(|\bcalloc\s*\(|\bfree\s*\(/.test(code)) add('C', 22);
         if (/\bint\s+main\s*\(\s*void\s*\)/.test(code)) add('C', 22);
         if (/#include\s*<string\.h>|#include\s*<stdlib\.h>/.test(code)) add('C', 15);
-
         // --- Java ---
         if (/\bpublic\s+static\s+void\s+main\s*\(/.test(code)) add('Java', 35);
         if (/\bSystem\.out\.print/.test(code)) add('Java', 28);
@@ -1452,7 +1429,6 @@ class JungleScanner {
         if (/@Override\b/.test(code)) add('Java', 22);
         if (/\bArrayList\b|\bHashMap\b|\bLinkedList\b/.test(code)) add('Java', 18);
         if (/\bthrows\s+\w+Exception\b/.test(code)) add('Java', 20);
-
         // --- C# ---
         if (/\bConsole\.Write(?:Line)?\s*\(/.test(code)) add('C#', 28);
         if (/\busing\s+System\b/.test(code)) add('C#', 28);
@@ -1461,7 +1437,6 @@ class JungleScanner {
         if (/\bList<\w+>\b|\bDictionary</.test(code)) add('C#', 18);
         if (/\bforeach\s*\(/.test(code) && /\bvar\b/.test(code)) add('C#', 15);
         if (/\[Serializable\]|\[HttpGet\]|\[ApiController\]/.test(code)) add('C#', 25);
-
         // --- Go ---
         if (/^package\s+\w+/m.test(code)) add('Go', 28);
         if (/\bfunc\s+main\s*\(\)/.test(code)) add('Go', 28);
@@ -1469,7 +1444,6 @@ class JungleScanner {
         if (/:=/.test(code) && /^package\b/m.test(code)) add('Go', 15);
         if (/\bgoroutine\b|\bchan\b|\bselect\b/.test(code)) add('Go', 25);
         if (/\bimport\s+\(/.test(code) && /^package\b/m.test(code)) add('Go', 18);
-
         // --- Rust ---
         if (/\bfn\s+main\s*\(\)/.test(code)) add('Rust', 25);
         if (/\bprintln!\s*\(/.test(code)) add('Rust', 28);
@@ -1479,13 +1453,11 @@ class JungleScanner {
         if (/\buse\s+std::/.test(code)) add('Rust', 22);
         if (/\bmatch\s+\w+\s*\{/.test(code)) add('Rust', 15);
         if (/\bunwrap\s*\(\)/.test(code)) add('Rust', 12);
-
         // --- PHP ---
         if (/<\?php/.test(code)) add('PHP', 40);
         if (/\$[a-zA-Z_]\w*/.test(code) && /\becho\b/.test(code)) add('PHP', 22);
         if (/\bforeach\s*\(\s*\$/.test(code)) add('PHP', 22);
         if (/\barray\s*\(/.test(code) && /\$/.test(code)) add('PHP', 15);
-
         // --- Ruby ---
         if (/^\s*end\s*$/m.test(code)) add('Ruby', 18);
         if (/\bputs\s+/.test(code) && /^\s*end\s*$/m.test(code)) add('Ruby', 20);
@@ -1493,57 +1465,48 @@ class JungleScanner {
         if (/\battr_(reader|writer|accessor)\b/.test(code)) add('Ruby', 28);
         if (/=~\s*\//.test(code)) add('Ruby', 18);
         if (/\.each\s+do\b|\bmap\s*\{/.test(code)) add('Ruby', 18);
-
         // --- Swift ---
         if (/\bimport\s+(Foundation|UIKit|SwiftUI)\b/.test(code)) add('Swift', 35);
         if (/\bguard\s+let\b|\bif\s+let\b/.test(code)) add('Swift', 22);
         if (/@State\b|@Binding\b|@Published\b|@ObservedObject\b/.test(code)) add('Swift', 35);
         if (/\bvar\s+\w+\s*:\s*[A-Z]/.test(code) && /\bfunc\b/.test(code)) add('Swift', 18);
         if (/\bnil\b/.test(code) && /\bfunc\b/.test(code)) add('Swift', 10);
-
         // --- Kotlin ---
         if (/\bfun\s+main\s*\(/.test(code)) add('Kotlin', 28);
         if (/\bprintln\s*\(/.test(code) && /\bval\b|\bvar\b/.test(code)) add('Kotlin', 22);
         if (/\bdata\s+class\s+\w+/.test(code)) add('Kotlin', 28);
         if (/\bwhen\s*\(/.test(code)) add('Kotlin', 22);
         if (/\bval\s+\w+\s*:/.test(code) && /\bfun\b/.test(code)) add('Kotlin', 15);
-
         // --- Bash ---
         if (/^#!\/bin\/(bash|sh)/m.test(code)) add('Bash', 40);
         if (/\[\[.*\]\]/.test(code)) add('Bash', 25);
         if (/\bfi\b/.test(code) && /\bthen\b/.test(code)) add('Bash', 22);
         if (/\bdone\b/.test(code) && /\bdo\b/.test(code)) add('Bash', 20);
         if (/\$\{[^}]+\}/.test(code)) add('Bash', 12);
-
         // --- R ---
         if (/<-\s*\w/.test(code) && !/\bclass\b/.test(code)) add('R', 22);
         if (/\blibrary\s*\(/.test(code)) add('R', 22);
         if (/\bggplot\s*\(|\bdplyr\b|\btidyr\b/.test(code)) add('R', 28);
         if (/\bdata\.frame\s*\(/.test(code)) add('R', 22);
-
         // --- Lua ---
         if (/\blocal\s+\w+\s*=/.test(code) && /\bend\b/.test(code)) add('Lua', 22);
         if (/\bipairs\s*\(|\bpairs\s*\(/.test(code)) add('Lua', 25);
         if (/\bfunction\s+\w+\s*\(/.test(code) && /\bend\b/.test(code) && !/\bdef\b/.test(code)) add('Lua', 18);
         if (/--[^\n]/.test(code) && /\blocal\b/.test(code)) add('Lua', 12);
-
         // --- Scala ---
         if (/\bobject\s+\w+\s+extends\b/.test(code)) add('Scala', 28);
         if (/\bcase\s+class\b/.test(code)) add('Scala', 28);
         if (/\bdef\s+\w+\s*\(/.test(code) && /\bval\b/.test(code)) add('Scala', 15);
         if (/\bprintln\s*\(/.test(code) && /\bval\b/.test(code) && /\bdef\b/.test(code)) add('Scala', 15);
-
         // --- Haskell ---
         if (/\bmain\s*=\s*do\b/.test(code)) add('Haskell', 35);
         if (/\bputStrLn\b|\bputStr\b/.test(code)) add('Haskell', 28);
         if (/\bimport\s+Data\./.test(code)) add('Haskell', 22);
         if (/\s->\s/.test(code) && /\b(where|let|in)\b/.test(code)) add('Haskell', 18);
-
         // --- Dart ---
         if (/\bvoid\s+main\s*\(\s*\)/.test(code) && /\bprint\s*\(/.test(code)) add('Dart', 25);
         if (/\bimport\s+'package:flutter/.test(code)) add('Dart', 40);
         if (/\bWidget\b|\bStatefulWidget\b|\bStatelessWidget\b/.test(code)) add('Dart', 35);
-
         // --- Perl ---
         if (/^#!\/usr\/bin\/(perl|env\s+perl)/m.test(code)) add('Perl', 40);
         if (/\buse\s+strict\b/.test(code)) add('Perl', 22);
@@ -1552,104 +1515,88 @@ class JungleScanner {
         if (/\bsub\s+\w+\s*\{/.test(code)) add('Perl', 18);
         if (/\bchomp\b/.test(code)) add('Perl', 22);
         if (/\$_\b|\@_\b/.test(code)) add('Perl', 15);
-
         // --- Elixir ---
         if (/\bdefmodule\b/.test(code)) add('Elixir', 35);
         if (/\bIO\.puts\b/.test(code)) add('Elixir', 28);
         if (/\|>/.test(code) && /\bdef\b/.test(code)) add('Elixir', 20);
         if (/\bdef\s+\w+\s*\(/.test(code) && /\bend\b/.test(code) && /\bdo\b/.test(code)) add('Elixir', 18);
-
         // --- Erlang ---
         if (/^-module\s*\(/m.test(code)) add('Erlang', 40);
         if (/\bio:format\b/.test(code)) add('Erlang', 28);
         if (/^-export\s*\(/m.test(code)) add('Erlang', 25);
         if (/\bspawn\s*\(|\breceive\b/.test(code)) add('Erlang', 20);
-
         // --- OCaml ---
         if (/\blet\s*\(\s*\)\s*=/.test(code)) add('OCaml', 35);
         if (/\bPrintf\.printf\b/.test(code)) add('OCaml', 28);
         if (/\blet\s+rec\b/.test(code)) add('OCaml', 22);
         if (/\bmatch\b.+\bwith\b/s.test(code) && !/\bRust\b/.test(code)) add('OCaml', 18);
         if (/\bopen\s+[A-Z]\w+/.test(code)) add('OCaml', 15);
-
         // --- F# ---
         if (/\[<EntryPoint>\]/.test(code)) add('F#', 40);
         if (/\bprintfn\b/.test(code)) add('F#', 30);
         if (/\bopen\s+System\b/.test(code) && /\bprintfn\b/.test(code)) add('F#', 18);
         if (/\|>/.test(code) && /\blet\b/.test(code) && /\bprintfn\b/.test(code)) add('F#', 15);
-
         // --- Clojure ---
         if (/^\s*\(ns\s+\w/m.test(code)) add('Clojure', 35);
         if (/^\s*\(defn\b/m.test(code)) add('Clojure', 30);
         if (/^\s*\(println\b/m.test(code)) add('Clojure', 22);
         if (/^\s*\(def\s+\w/m.test(code)) add('Clojure', 18);
-
         // --- Julia ---
         if (/\busing\s+\w+(?:,\s*\w+)*\s*$/m.test(code)) add('Julia', 25);
         if (/\bfunction\s+\w+\s*\(/.test(code) && /\bend\b/.test(code) && /::\w+/.test(code)) add('Julia', 22);
         if (/\b@show\b|\b@time\b|\b@assert\b/.test(code)) add('Julia', 22);
         if (/::Int(?:64)?|::Float(?:64)?|::String\b/.test(code)) add('Julia', 20);
         if (/\bprintln\s*\(/.test(code) && /\busing\b/.test(code)) add('Julia', 15);
-
         // --- Lisp ---
         if (/^\s*\(defun\b/m.test(code)) add('Lisp', 35);
         if (/^\s*\(format\s+t\b/m.test(code)) add('Lisp', 28);
         if (/^\s*\(setq\b/m.test(code)) add('Lisp', 22);
         if (/^\s*\(let\s+\(/m.test(code)) add('Lisp', 18);
-
         // --- Prolog ---
         if (/^\?-\s/m.test(code)) add('Prolog', 35);
         if (/:-\s*use_module\b/.test(code)) add('Prolog', 30);
         if (/\b\w+\s*:-\s*\w+/.test(code)) add('Prolog', 22);
         if (/\bwrite\s*\(/.test(code) && /\.\s*$/m.test(code)) add('Prolog', 15);
-
         // --- Fortran ---
         if (/\bIMPLICIT\s+NONE\b/i.test(code)) add('Fortran', 35);
         if (/\bPROGRAM\s+\w+/i.test(code) && /\bEND\s+PROGRAM\b/i.test(code)) add('Fortran', 30);
         if (/\bWRITE\s*\(\s*\*\s*,/i.test(code)) add('Fortran', 25);
         if (/\bREAL\s*::|INTEGER\s*::|LOGICAL\s*::/i.test(code)) add('Fortran', 22);
         if (/\bSUBROUTINE\s+\w+/i.test(code)) add('Fortran', 20);
-
         // --- COBOL ---
         if (/\bIDENTIFICATION\s+DIVISION\b/i.test(code)) add('COBOL', 40);
         if (/\bPROGRAM-ID\b/i.test(code)) add('COBOL', 30);
         if (/\bDATA\s+DIVISION\b|\bPROCEDURE\s+DIVISION\b/i.test(code)) add('COBOL', 25);
         if (/\bDISPLAY\s+["']/.test(code)) add('COBOL', 18);
         if (/\bMOVE\b.+\bTO\b/i.test(code)) add('COBOL', 18);
-
         // --- Assembly ---
         if (/section\s+\.(text|data|bss)\b/i.test(code)) add('Assembly', 35);
         if (/\bglobal\s+_start\b/.test(code)) add('Assembly', 30);
         if (/\bmov\s+[a-z]{2,3}\s*,/i.test(code)) add('Assembly', 22);
         if (/\bint\s+0x80\b|\bsyscall\b/.test(code)) add('Assembly', 25);
         if (/\bpush\s+\w+|\bpop\s+\w+/.test(code) && /\bret\b/.test(code)) add('Assembly', 20);
-
         // --- D ---
         if (/\bimport\s+std\.stdio\b/.test(code)) add('D', 35);
         if (/\bwriteln\s*\(/.test(code)) add('D', 25);
         if (/\bimmutable\b/.test(code) && /\bauto\b/.test(code)) add('D', 20);
         if (/\bvoid\s+main\s*\(\s*\)/.test(code) && /\bwriteln\b/.test(code)) add('D', 20);
-
         // --- Zig ---
         if (/@import\s*\("std"\)/.test(code)) add('Zig', 40);
         if (/\bcomptime\b/.test(code)) add('Zig', 25);
         if (/\bpub\s+fn\s+main\b/.test(code)) add('Zig', 22);
         if (/\bstd\.debug\.print\b/.test(code)) add('Zig', 25);
         if (/\bconst\s+\w+\s*=\s*@import\b/.test(code)) add('Zig', 22);
-
         // --- Nim ---
         if (/^import\s+\w+/m.test(code) && /\becho\s+"/.test(code)) add('Nim', 30);
         if (/\bproc\s+\w+\s*\(/.test(code)) add('Nim', 25);
         if (/\becho\s+"/.test(code) && /\bvar\b/.test(code)) add('Nim', 18);
         if (/\bwhen\s+isMainModule\b/.test(code)) add('Nim', 30);
-
         // --- Pascal ---
         if (/\bprogram\s+\w+\s*;/i.test(code)) add('Pascal', 35);
         if (/\bbegin\b/i.test(code) && /\bend\.\s*$/im.test(code)) add('Pascal', 28);
         if (/\bwriteln\s*\(/.test(code) && /\bbegin\b/i.test(code)) add('Pascal', 22);
         if (/\bvar\b/i.test(code) && /\binteger\b|\bstring\b|\breal\b/i.test(code)) add('Pascal', 18);
         if (/\bprocedure\s+\w+/i.test(code)) add('Pascal', 18);
-
         // Negative scoring: penalize languages when clear contradicting signals are present
         const sub = (lang, pts) => { scores[lang] = (scores[lang] || 0) - pts; };
         if (/\bconsole\.log\b/.test(code) || /\bdocument\.\w/.test(code)) { sub('Python', 20); sub('Java', 10); sub('Go', 10); }
@@ -1664,12 +1611,10 @@ class JungleScanner {
         if (/\bprintln!\s*\(/.test(code)) { sub('Kotlin', 10); sub('Javascript', 10); }
         // Clamp negative scores to 0
         Object.keys(scores).forEach(k => { if (scores[k] < 0) scores[k] = 0; });
-
         const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
         if (sorted.length === 0) return null;
         const [topLang, topScore] = sorted[0];
         const runnerUp = sorted[1] ? sorted[1][1] : 0;
-
         if (topScore >= 10 && topScore - runnerUp >= 8) {
             const confidence = topScore >= 35 ? 'confirmed' : topScore >= 18 ? 'tentative' : null;
             if (!confidence) return null;
