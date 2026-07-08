@@ -178,6 +178,21 @@ class JungleScanner {
         }
         return skip;
     }
+    // Perl POD documentation blocks (=pod / =head1 / etc. through =cut) are prose, not
+    // code — they must not be scanned for brackets/strings any more than a heredoc body.
+    static computePodSkip(lines, lang) {
+        const skip = new Array(lines.length).fill(false);
+        if (lang !== 'Perl') return skip;
+        let inPod = false;
+        for (let i = 0; i < lines.length; i++) {
+            if (!inPod && /^=\w+/.test(lines[i])) inPod = true;
+            if (inPod) {
+                skip[i] = true;
+                if (/^=cut\b/.test(lines[i])) inPod = false;
+            }
+        }
+        return skip;
+    }
     static scanDelimiters(lines, lang) {
         const errors = [];
         const stack = [];
@@ -189,11 +204,14 @@ class JungleScanner {
         const regexPreChars = new Set(['(', ',', '=', ':', '[', '!', '&', '|', '?', ';', '{', '}', '+', '-', '*', '%', '<', '>', '~', '^', '\n']);
         const regexKeywords = new Set(['return', 'typeof', 'instanceof', 'case', 'in', 'of', 'new', 'delete', 'void', 'throw', 'yield', 'do', 'else']);
         const heredocSkip = this.computeHeredocSkip(lines);
+        const podSkip = this.computePodSkip(lines, lang);
         // Single line-comment prefix, by language, for the many languages that don't use // or #.
-        const hashCommentLangs = new Set(['Python', 'Ruby', 'Bash', 'Perl', 'R', 'Nix', 'Julia', 'Elixir', 'HCL', 'GDScript']);
+        const hashCommentLangs = new Set(['Python', 'Ruby', 'Bash', 'Perl', 'R', 'Nix', 'Julia', 'Elixir', 'HCL', 'GDScript', 'Nim']);
         const percentCommentLangs = new Set(['Erlang', 'Prolog']);
         const semicolonCommentLangs = new Set(['Lisp', 'Clojure', 'Assembly']);
         const dashCommentLangs = new Set(['Haskell', 'Lua', 'SQL']);
+        const bangCommentLangs = new Set(['Fortran']);
+        const asteriskGtCommentLangs = new Set(['COBOL']); // free-format *> inline comments
         // Languages using (* *) instead of C-style /* */ block comments.
         const parenStarBlockLangs = new Set(['OCaml', 'F#', 'Pascal']);
         // Lisp/Clojure use ' only as the quote reader macro (e.g. '(1 2) or 'symbol) —
@@ -210,7 +228,7 @@ class JungleScanner {
         let tripleStart = null;
         let lastSig = '\n'; // last non-whitespace, non-comment/string character seen so far
         for (let i = 0; i < lines.length; i++) {
-            if (heredocSkip[i]) continue; // heredoc/nowdoc body or its closing tag — raw text, not code
+            if (heredocSkip[i] || podSkip[i]) continue; // heredoc/nowdoc/POD body — raw text, not code
             const line = lines[i];
             const lineNum = i + 1;
             for (let j = 0; j < line.length; j++) {
@@ -254,8 +272,10 @@ class JungleScanner {
                     continue;
                 }
                 if (blockCommentCloser) {
-                    const matches = blockCommentCloser.length === 1 ? char === blockCommentCloser : line.slice(j, j + 2) === blockCommentCloser;
-                    if (matches) { j += blockCommentCloser.length - 1; blockCommentCloser = null; }
+                    if (line.slice(j, j + blockCommentCloser.length) === blockCommentCloser) {
+                        j += blockCommentCloser.length - 1;
+                        blockCommentCloser = null;
+                    }
                     continue;
                 }
                 if (inString) {
@@ -281,9 +301,12 @@ class JungleScanner {
                     continue;
                 }
                 if (dashCommentLangs.has(lang) && line.slice(j, j + 2) === '--') break;
+                if (asteriskGtCommentLangs.has(lang) && line.slice(j, j + 2) === '*>') break;
                 if (hashCommentLangs.has(lang) && char === '#') break;
                 if (percentCommentLangs.has(lang) && char === '%') break;
                 if (semicolonCommentLangs.has(lang) && char === ';') break;
+                if (bangCommentLangs.has(lang) && char === '!') break;
+                if (lang === 'HTML' && line.slice(j, j + 4) === '<!--') { blockCommentCloser = '-->'; blockCommentStart = { line: lineNum, column: j + 1 }; j += 3; continue; }
                 if (char === '/' && next === '/') break;
                 if (char === '/' && next === '*') { blockCommentCloser = '*/'; blockCommentStart = { line: lineNum, column: j + 1 }; j++; continue; }
                 if (regexCapable && char === '/' && next !== '/' && next !== '*') {
