@@ -189,7 +189,18 @@ class JungleScanner {
         const regexPreChars = new Set(['(', ',', '=', ':', '[', '!', '&', '|', '?', ';', '{', '}', '+', '-', '*', '%', '<', '>', '~', '^', '\n']);
         const regexKeywords = new Set(['return', 'typeof', 'instanceof', 'case', 'in', 'of', 'new', 'delete', 'void', 'throw', 'yield', 'do', 'else']);
         const heredocSkip = this.computeHeredocSkip(lines);
-        let inBlockComment = false;
+        // Single line-comment prefix, by language, for the many languages that don't use // or #.
+        const hashCommentLangs = new Set(['Python', 'Ruby', 'Bash', 'Perl', 'R', 'Nix', 'Julia', 'Elixir', 'HCL', 'GDScript']);
+        const percentCommentLangs = new Set(['Erlang', 'Prolog']);
+        const semicolonCommentLangs = new Set(['Lisp', 'Clojure', 'Assembly']);
+        const dashCommentLangs = new Set(['Haskell', 'Lua', 'SQL']);
+        // Languages using (* *) instead of C-style /* */ block comments.
+        const parenStarBlockLangs = new Set(['OCaml', 'F#', 'Pascal']);
+        // Lisp/Clojure use ' only as the quote reader macro (e.g. '(1 2) or 'symbol) —
+        // strings are always double-quoted, so a bare ' must never open a string there.
+        const noSingleQuoteStringLangs = new Set(['Lisp', 'Clojure']);
+        let blockCommentCloser = null; // '*/', '*)', or '}' depending on language — null means not in one
+        let inHaskellBlockComment = 0; // nesting depth — Haskell {- -} comments nest
         let inString = null;
         let inTriple = null; // '"""' or "'''" — persists across lines, unlike single-char strings
         let inRegex = false;
@@ -205,16 +216,26 @@ class JungleScanner {
             for (let j = 0; j < line.length; j++) {
                 const char = line[j];
                 const next = line[j + 1];
-                // Rust lifetime annotations ('a, 'static, <'a>) look like an unclosed char
-                // literal — a real char literal always has a closing quote right after one
-                // character (or an escape sequence); a lifetime never does.
-                if (lang === 'Rust' && char === "'" && !inString && !inTriple && !inRegex) {
+                // Rust lifetime annotations ('a, 'static, <'a>) and Haskell's prime-suffix
+                // identifier convention (x', map') look like an unclosed char literal — a real
+                // char literal always closes right after one character (or escape); these never do.
+                if ((lang === 'Rust' || lang === 'Haskell') && char === "'" && !inString && !inTriple && !inRegex && !blockCommentCloser && !inHaskellBlockComment) {
+                    const prevChar = line[j - 1];
+                    if (lang === 'Haskell' && prevChar && /[A-Za-z0-9_']/.test(prevChar)) {
+                        // trailing prime on an identifier (x', map'') — just a normal character
+                        lastSig = char;
+                        continue;
+                    }
                     const identMatch = line.slice(j + 1).match(/^[A-Za-z_]\w*/);
                     if (identMatch && line[j + 1 + identMatch[0].length] !== "'") {
                         j += identMatch[0].length;
                         lastSig = identMatch[0].slice(-1);
                         continue;
                     }
+                }
+                if (noSingleQuoteStringLangs.has(lang) && char === "'" && !inString && !inTriple) {
+                    lastSig = char;
+                    continue; // quote reader macro, e.g. '(1 2 3) or 'symbol — never a string
                 }
                 if (inRegex) {
                     if (char === '\\') { j++; continue; }
@@ -227,16 +248,44 @@ class JungleScanner {
                     if (line.slice(j, j + 3) === inTriple) { inTriple = null; tripleStart = null; j += 2; }
                     continue;
                 }
-                if (inBlockComment) {
-                    if (char === '*' && next === '/') { inBlockComment = false; j++; }
+                if (inHaskellBlockComment) {
+                    if (line.slice(j, j + 2) === '{-') { inHaskellBlockComment++; j++; }
+                    else if (line.slice(j, j + 2) === '-}') { inHaskellBlockComment--; j++; }
+                    continue;
+                }
+                if (blockCommentCloser) {
+                    const matches = blockCommentCloser.length === 1 ? char === blockCommentCloser : line.slice(j, j + 2) === blockCommentCloser;
+                    if (matches) { j += blockCommentCloser.length - 1; blockCommentCloser = null; }
                     continue;
                 }
                 if (inString) {
                     if (char === inString && !this.isEscaped(line, j)) inString = null;
                     continue;
                 }
+                if (lang === 'Pascal' && char === '{') {
+                    // In Pascal, { ... } is ALWAYS a comment — blocks use begin/end, never braces.
+                    blockCommentCloser = '}';
+                    blockCommentStart = { line: lineNum, column: j + 1 };
+                    continue;
+                }
+                if (parenStarBlockLangs.has(lang) && char === '(' && next === '*') {
+                    blockCommentCloser = '*)';
+                    blockCommentStart = { line: lineNum, column: j + 1 };
+                    j++;
+                    continue;
+                }
+                if (lang === 'Haskell' && line.slice(j, j + 2) === '{-') {
+                    inHaskellBlockComment = 1;
+                    blockCommentStart = { line: lineNum, column: j + 1 };
+                    j++;
+                    continue;
+                }
+                if (dashCommentLangs.has(lang) && line.slice(j, j + 2) === '--') break;
+                if (hashCommentLangs.has(lang) && char === '#') break;
+                if (percentCommentLangs.has(lang) && char === '%') break;
+                if (semicolonCommentLangs.has(lang) && char === ';') break;
                 if (char === '/' && next === '/') break;
-                if (char === '/' && next === '*') { inBlockComment = true; blockCommentStart = { line: lineNum, column: j + 1 }; j++; continue; }
+                if (char === '/' && next === '*') { blockCommentCloser = '*/'; blockCommentStart = { line: lineNum, column: j + 1 }; j++; continue; }
                 if (regexCapable && char === '/' && next !== '/' && next !== '*') {
                     // Look back at the last significant token to decide if '/' opens a regex
                     // (after an operator/keyword) rather than being division.
@@ -279,8 +328,11 @@ class JungleScanner {
             inRegex = false; // regex literals don't span raw lines
             if (!inTriple && !inString) lastSig = '\n';
         }
-        if (inBlockComment && blockCommentStart) {
-            errors.push(this.makeIssue(blockCommentStart.line, "Unclosed block comment detected.", "Add */ to close this block comment.", "Comment check", blockCommentStart.column));
+        if (blockCommentCloser && blockCommentStart) {
+            errors.push(this.makeIssue(blockCommentStart.line, "Unclosed block comment detected.", `Add ${blockCommentCloser} to close this block comment.`, "Comment check", blockCommentStart.column));
+        }
+        if (inHaskellBlockComment > 0 && blockCommentStart) {
+            errors.push(this.makeIssue(blockCommentStart.line, "Unclosed block comment detected.", "Add -} to close this block comment.", "Comment check", blockCommentStart.column));
         }
         if (inTriple && tripleStart) {
             errors.push(this.makeIssue(tripleStart.line, `Unclosed triple-quoted string starting with ${inTriple}.`, `Add a closing ${inTriple}.`, "String check", tripleStart.column));
